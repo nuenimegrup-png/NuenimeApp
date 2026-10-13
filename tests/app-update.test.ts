@@ -10,10 +10,10 @@ describe("Aniraku direct-distribution update logic", () => {
   });
 
   it("accepts only a trusted Aniraku GitHub APK asset and namespaces dismissal by release", () => {
-    const asset = { name: "Aniraku-v4.2.4.apk", size: 88_000_000, content_type: "application/vnd.android.package-archive", browser_download_url: "https://github.com/Aniraku/Aniraku-App/releases/download/v4.2.4/Aniraku-v4.2.4.apk" };
-    expect(trustedAnirakuApkAsset(asset)).toMatchObject({ name: "Aniraku-v4.2.4.apk", size: 88_000_000 });
-    expect(trustedAnirakuApkAsset({ ...asset, browser_download_url: "https://example.com/Aniraku-v4.2.4.apk" })).toBeNull();
-    expect(parseGitHubRelease({ tag_name: "v4.2.4", name: "v4.2.4", html_url: "https://github.com/Aniraku/Aniraku-App/releases/tag/v4.2.4", assets: [asset] })).toMatchObject({ version: "4.2.4", assetName: "Aniraku-v4.2.4.apk" });
+    const asset = { name: "Nuenime-v5.0.0.apk", size: 88_000_000, content_type: "application/vnd.android.package-archive", browser_download_url: "https://github.com/nuenimegrup-png/NuenimeApp/releases/download/v5.0.0/Nuenime-v5.0.0.apk" };
+    expect(trustedAnirakuApkAsset(asset)).toMatchObject({ name: "Nuenime-v5.0.0.apk", size: 88_000_000 });
+    expect(trustedAnirakuApkAsset({ ...asset, browser_download_url: "https://example.com/Nuenime-v5.0.0.apk" })).toBeNull();
+    expect(parseGitHubRelease({ tag_name: "v5.0.0", name: "v5.0.0", html_url: "https://github.com/nuenimegrup-png/NuenimeApp/releases/tag/v5.0.0", assets: [asset] })).toMatchObject({ version: "5.0.0", assetName: "Nuenime-v5.0.0.apk" });
     expect(parseGitHubRelease({ tag_name: "v4.2.1" })).toBeNull();
     expect(updateDismissalKey("v4.2.4")).toBe("aniraku.update.dismissed:4.2.4");
   });

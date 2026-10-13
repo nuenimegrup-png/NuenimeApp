@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export const ANIRAKU_LATEST_RELEASE_URL = "https://api.github.com/repos/Aniraku/Aniraku-App/releases/latest";
+export const ANIRAKU_LATEST_RELEASE_URL = "https://api.github.com/repos/nuenimegrup-png/NuenimeApp/releases/latest";
 export const UPDATE_CHECK_CACHE_KEY = "aniraku.update.latest-release.v1";
 export const UPDATE_CHECK_TTL_MS = 12 * 60 * 60 * 1000;
 
@@ -40,7 +40,8 @@ export function trustedAnirakuApkAsset(value: unknown) {
   try {
     const parsed = new URL(downloadUrl);
     const isReleaseAsset = parsed.origin === "https://github.com"
-      && parsed.pathname.startsWith("/Aniraku/Aniraku-App/releases/download/");
+      && (parsed.pathname.startsWith("/nuenimegrup-png/NuenimeApp/releases/download/")
+        || parsed.pathname.startsWith("/Aniraku/Aniraku-App/releases/download/"));
     const isApk = name.toLowerCase().endsWith(".apk");
     const isAndroidPackage = !asset?.content_type || asset.content_type === "application/vnd.android.package-archive" || asset.content_type === "application/octet-stream";
     return isReleaseAsset && isApk && isAndroidPackage && Number.isSafeInteger(size) && size > 0

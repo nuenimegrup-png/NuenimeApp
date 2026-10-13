@@ -1,6 +1,6 @@
 // ═══ ANIRAKU V5.4 — Landing Page JS ═══
 
-const REPO = "Aniraku/Aniraku-App";
+const REPO = "nuenimegrup-png/NuenimeApp";
 const api = "https://api.github.com/repos";
 const FALLBACK_TAG = "v5.6.0";
 // Archive: latest release expanded + this many compact rows visible;

@@ -32,7 +32,8 @@ export async function downloadAndInstallAnirakuUpdate(release: AppRelease) {
   }
   const trustedDownload = parsedDownload.protocol === "https:"
     && parsedDownload.origin === "https://github.com"
-    && parsedDownload.pathname.startsWith("/Aniraku/Aniraku-App/releases/download/");
+    && (parsedDownload.pathname.startsWith("/nuenimegrup-png/NuenimeApp/releases/download/")
+      || parsedDownload.pathname.startsWith("/Aniraku/Aniraku-App/releases/download/"));
   const trustedName = /^[A-Za-z0-9._-]+\.apk$/.test(release.assetName) && !release.assetName.includes("..");
   if (!trustedDownload || !trustedName) {
     throw new Error("THE PUBLISHED UPDATE ASSET COULD NOT BE VERIFIED.");
