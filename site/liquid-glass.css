@@ -1,0 +1,502 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   NUENIME — LIQUID GLASS THEME (APPLE iOS 18 / VISIONOS AESTHETICS)
+   Ultra-premium frosted glassmorphism, iridescent specular refractions,
+   fluid chromatic ambient orbs, and native iPhone interface elements.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --lg-bg-deep: #05070c;
+  --lg-glass-surface: rgba(255, 255, 255, 0.07);
+  --lg-glass-surface-hover: rgba(255, 255, 255, 0.12);
+  --lg-glass-border: rgba(255, 255, 255, 0.20);
+  --lg-glass-border-light: rgba(255, 255, 255, 0.40);
+  --lg-glass-specular: rgba(255, 255, 255, 0.65);
+  
+  --lg-cyan: #38bdf8;
+  --lg-indigo: #6366f1;
+  --lg-violet: #a855f7;
+  --lg-rose: #f43f5e;
+  --lg-amber: #f59e0b;
+  
+  --lg-font-display: "Plus Jakarta Sans", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
+  --lg-font-body: "Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif;
+  --lg-font-brand: "Nunito", "Plus Jakarta Sans", sans-serif;
+}
+
+/* ─── FULLSCREEN PRELOADER CONTAINER ─── */
+#liquid-glass-preloader {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  background: var(--lg-bg-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-family: var(--lg-font-body);
+  color: #ffffff;
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+              visibility 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  perspective: 1200px;
+}
+
+#liquid-glass-preloader.fade-out {
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(1.04) translateY(-10px);
+  pointer-events: none;
+}
+
+/* ─── AMBIENT FLUID ORBS (CHROMATIC BACKGROUND) ─── */
+.lg-ambient-container {
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  filter: blur(80px);
+  opacity: 0.85;
+  will-change: transform;
+}
+
+.lg-fluid-orb {
+  position: absolute;
+  border-radius: 50%;
+  mix-blend-mode: screen;
+  will-change: transform, border-radius;
+}
+
+.lg-orb-1 {
+  width: 550px;
+  height: 550px;
+  top: 15%;
+  left: 10%;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.9) 0%, rgba(56, 189, 248, 0.4) 60%, transparent 80%);
+  animation: lgFloatOrb1 16s ease-in-out infinite alternate;
+}
+
+.lg-orb-2 {
+  width: 600px;
+  height: 600px;
+  bottom: 10%;
+  right: 12%;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.85) 0%, rgba(244, 63, 94, 0.4) 60%, transparent 80%);
+  animation: lgFloatOrb2 18s ease-in-out infinite alternate;
+}
+
+.lg-orb-3 {
+  width: 480px;
+  height: 480px;
+  top: 45%;
+  right: 25%;
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.6) 0%, rgba(236, 72, 153, 0.3) 60%, transparent 80%);
+  animation: lgFloatOrb3 14s ease-in-out infinite alternate;
+}
+
+.lg-orb-4 {
+  width: 350px;
+  height: 350px;
+  top: 20%;
+  right: 40%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.7) 0%, rgba(99, 102, 241, 0.3) 70%, transparent 90%);
+  animation: lgFloatOrb1 12s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes lgFloatOrb1 {
+  0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+  50% { transform: translate(80px, -60px) scale(1.15) rotate(120deg); }
+  100% { transform: translate(-50px, 90px) scale(0.9) rotate(240deg); }
+}
+
+@keyframes lgFloatOrb2 {
+  0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+  50% { transform: translate(-90px, 80px) scale(1.18) rotate(-140deg); }
+  100% { transform: translate(70px, -70px) scale(0.95) rotate(-280deg); }
+}
+
+@keyframes lgFloatOrb3 {
+  0% { transform: translate(0, 0) scale(0.95); }
+  50% { transform: translate(-60px, -50px) scale(1.22); }
+  100% { transform: translate(50px, 40px) scale(1.05); }
+}
+
+/* ─── DYNAMIC OVERLAY GRID & NOISE ─── */
+.lg-noise-layer {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+/* ─── IPHONE CHASSIS & GLASS CARD CONTAINER ─── */
+.lg-phone-frame {
+  position: relative;
+  width: 90vw;
+  max-width: 440px;
+  min-height: 560px;
+  border-radius: 48px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 60%, rgba(255, 255, 255, 0.06) 100%);
+  border: 1px solid var(--lg-glass-border);
+  box-shadow: 
+    0 40px 100px -15px rgba(0, 0, 0, 0.8),
+    0 20px 40px -10px rgba(99, 102, 241, 0.25),
+    inset 0 1.5px 2px var(--lg-glass-specular),
+    inset 0 -1.5px 2px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(40px) saturate(220%);
+  -webkit-backdrop-filter: blur(40px) saturate(220%);
+  padding: 24px 28px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  transform-style: preserve-3d;
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0.2, 1), box-shadow 0.3s ease;
+  z-index: 10;
+  overflow: hidden;
+}
+
+/* Glossy light sheen stripe that sweeps across */
+.lg-glass-specular-sheen {
+  position: absolute;
+  top: -150%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    60deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.08) 46%,
+    rgba(255, 255, 255, 0.22) 50%,
+    rgba(255, 255, 255, 0.08) 54%,
+    transparent 60%
+  );
+  transform: rotate(25deg);
+  pointer-events: none;
+  animation: lgSheenSweep 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes lgSheenSweep {
+  0% { transform: translateY(-80%) rotate(25deg); }
+  35%, 100% { transform: translateY(80%) rotate(25deg); }
+}
+
+/* ─── APPLE DYNAMIC ISLAND ─── */
+.lg-dynamic-island {
+  position: relative;
+  background: #000000;
+  border-radius: 24px;
+  height: 38px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  box-shadow: 
+    0 6px 18px rgba(0, 0, 0, 0.6),
+    inset 0 1px 1px rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  min-width: 170px;
+}
+
+.lg-island-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.lg-island-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--lg-cyan);
+  box-shadow: 0 0 10px var(--lg-cyan);
+  animation: lgPulse 2s infinite ease-in-out;
+}
+
+.lg-island-label {
+  font-family: var(--lg-font-body);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #e2e8f0;
+  text-transform: uppercase;
+}
+
+.lg-island-right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.lg-soundwave {
+  display: flex;
+  align-items: center;
+  gap: 2.5px;
+  height: 12px;
+}
+
+.lg-wave-bar {
+  width: 2.5px;
+  background: #38bdf8;
+  border-radius: 2px;
+  animation: lgWave 1.2s ease-in-out infinite alternate;
+}
+
+.lg-wave-bar:nth-child(1) { height: 6px; animation-delay: 0.1s; }
+.lg-wave-bar:nth-child(2) { height: 12px; animation-delay: 0.3s; }
+.lg-wave-bar:nth-child(3) { height: 8px; animation-delay: 0.2s; }
+.lg-wave-bar:nth-child(4) { height: 4px; animation-delay: 0.4s; }
+
+@keyframes lgWave {
+  0% { transform: scaleY(0.4); }
+  100% { transform: scaleY(1.2); }
+}
+
+@keyframes lgPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+/* ─── CENTRAL LIQUID GLASS EMBLEM ─── */
+.lg-center-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin: 36px 0 28px;
+  width: 100%;
+}
+
+.lg-emblem-wrap {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 30px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.04) 100%);
+  border: 1px solid var(--lg-glass-border-light);
+  box-shadow: 
+    0 20px 40px rgba(0, 0, 0, 0.4),
+    inset 0 2px 2px var(--lg-glass-specular),
+    0 0 40px rgba(99, 102, 241, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 22px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.lg-emblem-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 36px;
+  border: 1.5px dashed rgba(255, 255, 255, 0.25);
+  animation: lgSpin 24s linear infinite;
+}
+
+@keyframes lgSpin {
+  100% { transform: rotate(360deg); }
+}
+
+.lg-brand-title {
+  font-family: var(--lg-font-brand);
+  font-size: 38px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  background: linear-gradient(180deg, #ffffff 30%, #cbd5e1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 6px;
+}
+
+.lg-edition-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-family: var(--lg-font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--lg-cyan);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.lg-brand-tagline {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #94a3b8;
+  max-width: 280px;
+  font-weight: 500;
+}
+
+/* ─── LIQUID PROGRESS BAR & COUNTER ─── */
+.lg-progress-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lg-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-family: var(--lg-font-body);
+}
+
+.lg-status-text {
+  font-size: 12px;
+  color: #cbd5e1;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.lg-percentage-value {
+  font-family: var(--lg-font-display);
+  font-size: 20px;
+  font-weight: 800;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.lg-track-container {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 99px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 2px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.lg-progress-bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 99px;
+  background: linear-gradient(
+    90deg,
+    #38bdf8 0%,
+    #818cf8 35%,
+    #c084fc 70%,
+    #f472b6 100%
+  );
+  background-size: 200% 100%;
+  box-shadow: 0 0 16px rgba(129, 140, 248, 0.7);
+  transition: width 0.15s cubic-bezier(0.1, 0.9, 0.2, 1);
+  animation: lgGradientMove 3s linear infinite;
+  position: relative;
+}
+
+.lg-progress-bar-fill::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 12px;
+  height: 100%;
+  background: #ffffff;
+  border-radius: 99px;
+  box-shadow: 0 0 10px #ffffff;
+  opacity: 0.9;
+}
+
+@keyframes lgGradientMove {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+/* ─── BOTTOM CONTROLS & IPHONE HOME INDICATOR ─── */
+.lg-bottom-controls {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.lg-btn-skip {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  padding: 8px 20px;
+  color: #cbd5e1;
+  font-family: var(--lg-font-body);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0.2, 1);
+  backdrop-filter: blur(12px);
+}
+
+.lg-btn-skip:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.lg-home-bar {
+  width: 135px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 99px;
+  margin-top: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* ─── FLOATING REPLAY / THEME SWITCHER BUTTON ─── */
+.lg-floating-trigger {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 99999;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 99px;
+  padding: 10px 18px;
+  color: #ffffff;
+  font-family: var(--lg-font-display);
+  font-size: 12.5px;
+  font-weight: 700;
+  box-shadow: 
+    0 12px 30px rgba(0, 0, 0, 0.5),
+    0 0 25px rgba(56, 189, 248, 0.25),
+    inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(24px) saturate(200%);
+  -webkit-backdrop-filter: blur(24px) saturate(200%);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.lg-floating-trigger:hover {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: var(--lg-cyan);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 
+    0 16px 36px rgba(0, 0, 0, 0.6),
+    0 0 35px rgba(56, 189, 248, 0.4);
+}
+
+.lg-floating-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--lg-cyan);
+  box-shadow: 0 0 8px var(--lg-cyan);
+  animation: lgPulse 1.8s infinite ease-in-out;
+}

@@ -1,0 +1,871 @@
+-- ==============================================================================
+-- NUENIME - SUPABASE DATABASE MIGRATION SCRIPT
+-- ==============================================================================
+-- Menyiapkan seluruh tabel, RLS (Row Level Security), trigger otomatis profil,
+-- indeks performa, dan relasi data untuk Nuenime Anime Streaming.
+-- Jalankan skrip ini langsung di SQL Editor Supabase Dashboard Anda.
+-- ==============================================================================
+
+-- 1. EXTENSIONS
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- ==============================================================================
+-- 2. TABEL: PROFILES
+-- Menyimpan data profil pengguna yang terhubung langsung dengan auth.users.
+-- ==============================================================================
+CREATE SEQUENCE IF NOT EXISTS public.profile_member_seq START WITH 1 INCREMENT BY 1;
+
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  username TEXT UNIQUE,
+  display_name TEXT,
+  avatar_url TEXT,
+  banner_url TEXT,
+  bio TEXT,
+  location TEXT,
+  socials JSONB DEFAULT '{}'::jsonb,
+  member_number BIGINT UNIQUE DEFAULT nextval('public.profile_member_seq'),
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+-- ==============================================================================
+-- 3. TABEL: BOOKMARKS (SUBSCRIBE / FAVORIT)
+-- Menyimpan daftar anime langganan / tersimpan dari setiap pengguna.
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.bookmarks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  anime_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  image TEXT,
+  score NUMERIC,
+  type TEXT,
+  added_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT NOT NULL,
+  CONSTRAINT uq_bookmarks_user_anime UNIQUE (user_id, anime_id)
+);
+
+-- ==============================================================================
+-- 4. TABEL: WATCH_HISTORY (RIWAYAT NONTON)
+-- Menyimpan riwayat episode yang ditonton, durasi, dan progres durasi (resume).
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.watch_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  anime_id INTEGER NOT NULL,
+  anime_title TEXT NOT NULL,
+  anime_image TEXT,
+  episode_number INTEGER NOT NULL,
+  episode_title TEXT,
+  episode_thumbnail TEXT,
+  timestamp BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT NOT NULL,
+  progress NUMERIC DEFAULT 0 NOT NULL,
+  duration NUMERIC DEFAULT 0 NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  CONSTRAINT uq_watch_history_user_anime_ep UNIQUE (user_id, anime_id, episode_number)
+);
+
+-- ==============================================================================
+-- 5. TABEL: EPISODE_RATINGS (RATING EPISODE)
+-- Menyimpan skor rating (1-10) yang diberikan user untuk episode anime.
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.episode_ratings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  anime_id INTEGER NOT NULL,
+  episode_number INTEGER NOT NULL,
+  score INTEGER NOT NULL CHECK (score >= 1 AND score <= 10),
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  CONSTRAINT uq_episode_ratings_user_anime_ep UNIQUE (user_id, anime_id, episode_number)
+);
+
+-- ==============================================================================
+-- 6. TABEL: NOTIFICATIONS (PEMBERITAHUAN / ALERTS)
+-- Notifikasi episode baru, rilis jadwal, atau sistem.
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  title TEXT,
+  message TEXT NOT NULL,
+  type TEXT DEFAULT 'system',
+  anime_id INTEGER,
+  episode_number INTEGER,
+  read BOOLEAN DEFAULT FALSE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+-- ==============================================================================
+-- 7. TABEL: COMMENTS (KOMENTAR & DISKUSI)
+-- Komentar diskusi episode anime & balasan (thread).
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.comments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  anime_id INTEGER NOT NULL,
+  episode_number INTEGER,
+  parent_id UUID REFERENCES public.comments(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  gif_url TEXT,
+  is_spoiler BOOLEAN DEFAULT FALSE NOT NULL,
+  likes INTEGER DEFAULT 0 NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+-- ==============================================================================
+-- 8. TABEL: COMMENT_LIKES (LIKE KOMENTAR)
+-- Relasi like komentar agar satu user hanya bisa memberi like 1 kali.
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.comment_likes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  comment_id UUID NOT NULL REFERENCES public.comments(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  CONSTRAINT uq_comment_likes_user_comment UNIQUE (user_id, comment_id)
+);
+
+-- ==============================================================================
+-- 9. TABEL TAMBAHAN: USER_SETTINGS & USER_ROLES (MENCEGAH ERROR DELETE ACCOUNT)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.user_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  settings JSONB DEFAULT '{}'::jsonb NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  CONSTRAINT uq_user_settings_user UNIQUE (user_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.user_roles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  role TEXT DEFAULT 'user' NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  CONSTRAINT uq_user_roles_user UNIQUE (user_id)
+);
+
+-- ==============================================================================
+-- 10. INDEXES (PENGOPTIMALAN PERFORMA QUERY)
+-- ==============================================================================
+CREATE INDEX IF NOT EXISTS idx_bookmarks_user ON public.bookmarks(user_id, added_at DESC);
+CREATE INDEX IF NOT EXISTS idx_watch_history_user ON public.watch_history(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_watch_history_anime ON public.watch_history(anime_id, episode_number);
+CREATE INDEX IF NOT EXISTS idx_episode_ratings_lookup ON public.episode_ratings(user_id, anime_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON public.notifications(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_comments_anime ON public.comments(anime_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_comments_parent ON public.comments(parent_id);
+CREATE INDEX IF NOT EXISTS idx_comment_likes_lookup ON public.comment_likes(user_id, comment_id);
+
+-- ==============================================================================
+-- 11. ROW LEVEL SECURITY (RLS) POLICIES
+-- Menjamin keamanan data setiap user hanya dapat diakses & diubah oleh pemiliknya.
+-- ==============================================================================
+
+-- PROFILES
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Profiles are viewable by everyone" ON public.profiles;
+CREATE POLICY "Profiles are viewable by everyone"
+  ON public.profiles FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles;
+CREATE POLICY "Users can insert their own profile"
+  ON public.profiles FOR INSERT
+  WITH CHECK (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
+CREATE POLICY "Users can update their own profile"
+  ON public.profiles FOR UPDATE
+  USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can delete their own profile" ON public.profiles;
+CREATE POLICY "Users can delete their own profile"
+  ON public.profiles FOR DELETE
+  USING (auth.uid() = id);
+
+-- BOOKMARKS
+ALTER TABLE public.bookmarks ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own bookmarks" ON public.bookmarks;
+CREATE POLICY "Users can view own bookmarks"
+  ON public.bookmarks FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can insert own bookmarks" ON public.bookmarks;
+CREATE POLICY "Users can insert own bookmarks"
+  ON public.bookmarks FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can delete own bookmarks" ON public.bookmarks;
+CREATE POLICY "Users can delete own bookmarks"
+  ON public.bookmarks FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- WATCH_HISTORY
+ALTER TABLE public.watch_history ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own watch history" ON public.watch_history;
+CREATE POLICY "Users can view own watch history"
+  ON public.watch_history FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can insert own watch history" ON public.watch_history;
+CREATE POLICY "Users can insert own watch history"
+  ON public.watch_history FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update own watch history" ON public.watch_history;
+CREATE POLICY "Users can update own watch history"
+  ON public.watch_history FOR UPDATE
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can delete own watch history" ON public.watch_history;
+CREATE POLICY "Users can delete own watch history"
+  ON public.watch_history FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- EPISODE_RATINGS
+ALTER TABLE public.episode_ratings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Ratings are viewable by everyone" ON public.episode_ratings;
+CREATE POLICY "Ratings are viewable by everyone"
+  ON public.episode_ratings FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Users can manage own ratings" ON public.episode_ratings;
+CREATE POLICY "Users can manage own ratings"
+  ON public.episode_ratings FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- NOTIFICATIONS
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
+CREATE POLICY "Users can view own notifications"
+  ON public.notifications FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
+CREATE POLICY "Users can update own notifications"
+  ON public.notifications FOR UPDATE
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can insert own notifications" ON public.notifications;
+CREATE POLICY "Users can insert own notifications"
+  ON public.notifications FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- COMMENTS
+ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Comments are viewable by everyone" ON public.comments;
+CREATE POLICY "Comments are viewable by everyone"
+  ON public.comments FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can create comments" ON public.comments;
+CREATE POLICY "Authenticated users can create comments"
+  ON public.comments FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update own comments" ON public.comments;
+CREATE POLICY "Users can update own comments"
+  ON public.comments FOR UPDATE
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can delete own comments" ON public.comments;
+CREATE POLICY "Users can delete own comments"
+  ON public.comments FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- COMMENT_LIKES
+ALTER TABLE public.comment_likes ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Comment likes are viewable by everyone" ON public.comment_likes;
+CREATE POLICY "Comment likes are viewable by everyone"
+  ON public.comment_likes FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can like comments" ON public.comment_likes;
+CREATE POLICY "Authenticated users can like comments"
+  ON public.comment_likes FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can remove own likes" ON public.comment_likes;
+CREATE POLICY "Users can remove own likes"
+  ON public.comment_likes FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- USER_SETTINGS
+ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage own settings" ON public.user_settings;
+CREATE POLICY "Users can manage own settings"
+  ON public.user_settings FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- USER_ROLES
+ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view own roles" ON public.user_roles;
+CREATE POLICY "Users can view own roles"
+  ON public.user_roles FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- ==============================================================================
+-- 12. AUTOMATIC PROFILE CREATION TRIGGER (GOOGLE OAUTH SIGNUP)
+-- Saat user login via Google OAuth pertama kali, trigger ini otomatis mengambil
+-- nama lengkap, avatar dari akun Google, dan menyimpannya di tabel public.profiles!
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  extracted_username TEXT;
+  extracted_display_name TEXT;
+  extracted_avatar_url TEXT;
+BEGIN
+  -- Ekstrak display name dari metadata Google OAuth
+  extracted_display_name := COALESCE(
+    new.raw_user_meta_data->>'full_name',
+    new.raw_user_meta_data->>'name',
+    SPLIT_PART(new.email, '@', 1),
+    'Nuenime Member'
+  );
+
+  -- Ekstrak atau generate username unik
+  extracted_username := LOWER(REGEXP_REPLACE(
+    COALESCE(
+      new.raw_user_meta_data->>'user_name',
+      SPLIT_PART(new.email, '@', 1),
+      'user_' || SUBSTRING(new.id::text, 1, 6)
+    ),
+    '[^a-zA-Z0-9_]', '_', 'g'
+  ));
+
+  -- Pastikan panjang username 3-20 karakter
+  IF LENGTH(extracted_username) < 3 THEN
+    extracted_username := extracted_username || '_' || SUBSTRING(new.id::text, 1, 4);
+  ELSIF LENGTH(extracted_username) > 20 THEN
+    extracted_username := SUBSTRING(extracted_username, 1, 20);
+  END IF;
+
+  -- Ekstrak avatar URL dari Google
+  extracted_avatar_url := COALESCE(
+    new.raw_user_meta_data->>'avatar_url',
+    new.raw_user_meta_data->>'picture',
+    NULL
+  );
+
+  -- Masukkan profil baru atau perbarui jika sudah ada
+  INSERT INTO public.profiles (id, username, display_name, avatar_url, member_number)
+  VALUES (
+    new.id,
+    extracted_username,
+    extracted_display_name,
+    extracted_avatar_url,
+    nextval('public.profile_member_seq')
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    display_name = COALESCE(public.profiles.display_name, EXCLUDED.display_name),
+    avatar_url = COALESCE(public.profiles.avatar_url, EXCLUDED.avatar_url),
+    updated_at = NOW();
+
+  RETURN NEW;
+END;
+$$;
+
+-- Pasang trigger ke auth.users
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- ==============================================================================
+-- 13. SISTEM LEVEL & EXP PER AKUN SERTA PENGHAPUSAN KOMENTAR AMAN
+-- ==============================================================================
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS exp BIGINT DEFAULT 0 NOT NULL,
+  ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1 NOT NULL,
+  ADD COLUMN IF NOT EXISTS is_vip BOOLEAN DEFAULT FALSE NOT NULL;
+
+CREATE TABLE IF NOT EXISTS public.user_xp_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  activity_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  base_xp INTEGER NOT NULL,
+  bonus_xp INTEGER DEFAULT 0 NOT NULL,
+  total_xp INTEGER NOT NULL,
+  multiplier NUMERIC DEFAULT 1.0 NOT NULL,
+  description TEXT NOT NULL,
+  metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  CONSTRAINT uq_user_xp_activity_target UNIQUE (user_id, activity_type, target_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_xp_transactions_user_date
+  ON public.user_xp_transactions(user_id, created_at DESC);
+
+ALTER TABLE public.user_xp_transactions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own xp transactions" ON public.user_xp_transactions;
+CREATE POLICY "Users can view own xp transactions"
+  ON public.user_xp_transactions FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE OR REPLACE FUNCTION public.calculate_user_level(p_total_xp BIGINT)
+RETURNS INTEGER
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+  v_xp BIGINT := GREATEST(0, COALESCE(p_total_xp, 0));
+  v_level INTEGER := 1;
+  v_base BIGINT := 0;
+  v_cost BIGINT;
+BEGIN
+  LOOP
+    v_cost := 50 + (v_level - 1) * 15;
+    IF v_xp < v_base + v_cost THEN
+      RETURN v_level;
+    END IF;
+    v_base := v_base + v_cost;
+    v_level := v_level + 1;
+    IF v_level >= 200000 THEN
+      RETURN v_level;
+    END IF;
+  END LOOP;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.grant_user_xp(
+  p_activity_type TEXT,
+  p_target_id TEXT,
+  p_base_xp INTEGER,
+  p_description TEXT,
+  p_metadata JSONB DEFAULT '{}'::jsonb
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  v_user_id UUID;
+  v_is_vip BOOLEAN := FALSE;
+  v_bonus_xp INTEGER := 0;
+  v_multiplier NUMERIC := 1.0;
+  v_total_xp INTEGER;
+  v_old_exp BIGINT := 0;
+  v_old_level INTEGER := 1;
+  v_new_exp BIGINT;
+  v_new_level INTEGER;
+  v_level_up BOOLEAN := FALSE;
+  v_today_comment_count INTEGER;
+BEGIN
+  v_user_id := auth.uid();
+  IF v_user_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Pengguna belum terautentikasi');
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.user_xp_transactions
+    WHERE user_id = v_user_id AND activity_type = p_activity_type AND target_id = p_target_id
+  ) THEN
+    SELECT COALESCE(exp, 0), COALESCE(level, 1) INTO v_old_exp, v_old_level
+    FROM public.profiles WHERE id = v_user_id;
+
+    RETURN jsonb_build_object(
+      'success', false,
+      'duplicate', true,
+      'message', 'Aktivitas ini sudah pernah memberikan EXP sebelumnya.',
+      'current_exp', v_old_exp,
+      'current_level', v_old_level
+    );
+  END IF;
+
+  IF p_activity_type = 'comment' THEN
+    SELECT COUNT(*) INTO v_today_comment_count
+    FROM public.user_xp_transactions
+    WHERE user_id = v_user_id
+      AND activity_type = 'comment'
+      AND created_at >= CURRENT_DATE;
+
+    IF v_today_comment_count >= 5 THEN
+      SELECT COALESCE(exp, 0), COALESCE(level, 1) INTO v_old_exp, v_old_level
+      FROM public.profiles WHERE id = v_user_id;
+
+      RETURN jsonb_build_object(
+        'success', false,
+        'duplicate', false,
+        'capped', true,
+        'message', 'Batas harian EXP untuk komentar telah tercapai.',
+        'current_exp', v_old_exp,
+        'current_level', v_old_level
+      );
+    END IF;
+  END IF;
+
+  SELECT COALESCE(exp, 0), COALESCE(level, 1), COALESCE(is_vip, false)
+  INTO v_old_exp, v_old_level, v_is_vip
+  FROM public.profiles
+  WHERE id = v_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    INSERT INTO public.profiles (id, exp, level, is_vip)
+    VALUES (v_user_id, 0, 1, false)
+    ON CONFLICT (id) DO NOTHING;
+    v_old_exp := 0;
+    v_old_level := 1;
+    v_is_vip := false;
+  END IF;
+
+  IF v_is_vip = TRUE THEN
+    v_bonus_xp := ROUND(p_base_xp * 0.5);
+    v_multiplier := 1.5;
+  ELSE
+    v_bonus_xp := 0;
+    v_multiplier := 1.0;
+  END IF;
+
+  v_total_xp := p_base_xp + v_bonus_xp;
+  v_new_exp := v_old_exp + v_total_xp;
+  v_new_level := public.calculate_user_level(v_new_exp);
+
+  IF v_new_level > v_old_level THEN
+    v_level_up := TRUE;
+  END IF;
+
+  INSERT INTO public.user_xp_transactions (
+    user_id, activity_type, target_id, base_xp, bonus_xp, total_xp, multiplier, description, metadata
+  )
+  VALUES (
+    v_user_id, p_activity_type, p_target_id, p_base_xp, v_bonus_xp, v_total_xp, v_multiplier, p_description, p_metadata
+  );
+
+  UPDATE public.profiles
+  SET exp = v_new_exp, level = v_new_level, updated_at = NOW()
+  WHERE id = v_user_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'activity_type', p_activity_type,
+    'description', p_description,
+    'base_xp', p_base_xp,
+    'bonus_xp', v_bonus_xp,
+    'total_xp', v_total_xp,
+    'multiplier', v_multiplier,
+    'is_vip', v_is_vip,
+    'old_level', v_old_level,
+    'new_level', v_new_level,
+    'level_up', v_level_up,
+    'new_total_exp', v_new_exp
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.delete_comment(comment_id_input UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  v_user_id UUID;
+  v_comment_owner UUID;
+  v_is_admin BOOLEAN := FALSE;
+  v_exp_row RECORD;
+  v_current_exp BIGINT;
+  v_new_exp BIGINT;
+  v_new_level INTEGER;
+BEGIN
+  v_user_id := auth.uid();
+  IF v_user_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Pengguna belum terautentikasi');
+  END IF;
+
+  SELECT user_id INTO v_comment_owner
+  FROM public.comments
+  WHERE id = comment_id_input;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Komentar tidak ditemukan atau sudah dihapus');
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = v_user_id AND role IN ('admin', 'superadmin', 'owner')
+  ) INTO v_is_admin;
+
+  IF v_comment_owner != v_user_id AND NOT v_is_admin THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Tidak memiliki izin untuk menghapus komentar ini');
+  END IF;
+
+  FOR v_exp_row IN
+    SELECT id, total_xp FROM public.user_xp_transactions
+    WHERE user_id = v_comment_owner
+      AND activity_type = 'comment'
+      AND target_id = comment_id_input::text
+  LOOP
+    SELECT COALESCE(exp, 0) INTO v_current_exp
+    FROM public.profiles WHERE id = v_comment_owner FOR UPDATE;
+
+    v_new_exp := GREATEST(0, v_current_exp - v_exp_row.total_xp);
+    v_new_level := public.calculate_user_level(v_new_exp);
+
+    UPDATE public.profiles
+    SET exp = v_new_exp, level = v_new_level, updated_at = NOW()
+    WHERE id = v_comment_owner;
+
+    INSERT INTO public.user_xp_transactions (
+      user_id, activity_type, target_id, base_xp, bonus_xp, total_xp, multiplier, description, metadata
+    )
+    VALUES (
+      v_comment_owner, 'comment_reversal', 'reversal:' || comment_id_input::text,
+      -v_exp_row.total_xp, 0, -v_exp_row.total_xp, 1.0,
+      'Pengurangan EXP: Komentar dihapus',
+      jsonb_build_object('original_transaction_id', v_exp_row.id)
+    )
+    ON CONFLICT (user_id, activity_type, target_id) DO NOTHING;
+  END LOOP;
+
+  DELETE FROM public.comment_likes
+  WHERE comment_id IN (SELECT id FROM public.comments WHERE parent_id = comment_id_input);
+
+  DELETE FROM public.comments
+  WHERE parent_id = comment_id_input;
+
+  DELETE FROM public.comment_likes
+  WHERE comment_id = comment_id_input;
+
+  DELETE FROM public.comments
+  WHERE id = comment_id_input;
+
+  RETURN jsonb_build_object('success', true, 'deleted_id', comment_id_input);
+END;
+$$;
+
+-- ==============================================================================
+-- 14. SISTEM COOLDOWN PROFIL (BANNER 7 HARI, NAMA 24 JAM, AVATAR 24 JAM)
+-- ==============================================================================
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS banner_updated_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS name_updated_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS avatar_updated_at TIMESTAMPTZ;
+
+CREATE OR REPLACE FUNCTION public.check_profile_cooldown(p_user_id UUID, p_type TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_banner_at TIMESTAMPTZ;
+  v_name_at TIMESTAMPTZ;
+  v_avatar_at TIMESTAMPTZ;
+  v_last_at TIMESTAMPTZ;
+  v_cooldown_interval INTERVAL;
+  v_seconds_remaining BIGINT := 0;
+  v_can_change BOOLEAN := TRUE;
+BEGIN
+  SELECT banner_updated_at, name_updated_at, avatar_updated_at
+  INTO v_banner_at, v_name_at, v_avatar_at
+  FROM public.profiles
+  WHERE id = p_user_id;
+
+  IF p_type = 'banner' THEN
+    v_last_at := v_banner_at;
+    v_cooldown_interval := INTERVAL '7 days';
+  ELSIF p_type = 'name' THEN
+    v_last_at := v_name_at;
+    v_cooldown_interval := INTERVAL '24 hours';
+  ELSIF p_type = 'avatar' THEN
+    v_last_at := v_avatar_at;
+    v_cooldown_interval := INTERVAL '24 hours';
+  ELSE
+    RAISE EXCEPTION 'Unknown cooldown type: %', p_type;
+  END IF;
+
+  IF v_last_at IS NOT NULL AND v_last_at > (NOW() - v_cooldown_interval) THEN
+    v_can_change := FALSE;
+    v_seconds_remaining := GREATEST(0, EXTRACT(EPOCH FROM (v_last_at + v_cooldown_interval - NOW()))::BIGINT);
+  END IF;
+
+  RETURN jsonb_build_object(
+    'can_change', v_can_change,
+    'seconds_remaining', v_seconds_remaining,
+    'last_updated_at', v_last_at
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.update_profile_banner(p_banner_url TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid UUID := auth.uid();
+  v_last_at TIMESTAMPTZ;
+  v_remaining BIGINT;
+  v_clean_url TEXT;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'UNAUTHORIZED: Harus login untuk mengubah banner.';
+  END IF;
+
+  v_clean_url := NULLIF(TRIM(p_banner_url), '');
+
+  IF v_clean_url IS NOT NULL THEN
+    IF LENGTH(v_clean_url) > 2048 THEN
+      RAISE EXCEPTION 'INVALID_URL: Panjang URL banner melebihi batas 2048 karakter.';
+    END IF;
+    IF v_clean_url !~* '^https?://.+' THEN
+      RAISE EXCEPTION 'INVALID_URL: URL banner harus diawali dengan http:// atau https://';
+    END IF;
+  END IF;
+
+  SELECT banner_updated_at INTO v_last_at FROM public.profiles WHERE id = v_uid;
+  IF v_last_at IS NOT NULL AND v_last_at > (NOW() - INTERVAL '7 days') THEN
+    v_remaining := EXTRACT(EPOCH FROM (v_last_at + INTERVAL '7 days' - NOW()))::BIGINT;
+    RAISE EXCEPTION 'COOLDOWN_ACTIVE:BANNER:%', v_remaining;
+  END IF;
+
+  UPDATE public.profiles
+  SET
+    banner_url = v_clean_url,
+    banner_updated_at = NOW(),
+    updated_at = NOW()
+  WHERE id = v_uid;
+
+  RETURN jsonb_build_object(
+    'success', TRUE,
+    'banner_url', v_clean_url,
+    'banner_updated_at', NOW()
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.update_profile_display_name(p_display_name TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid UUID := auth.uid();
+  v_last_at TIMESTAMPTZ;
+  v_remaining BIGINT;
+  v_clean_name TEXT;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'UNAUTHORIZED: Harus login untuk mengubah nama.';
+  END IF;
+
+  v_clean_name := TRIM(p_display_name);
+  IF v_clean_name IS NULL OR LENGTH(v_clean_name) < 2 THEN
+    RAISE EXCEPTION 'INVALID_NAME: Nama tampilan minimal 2 karakter.';
+  END IF;
+
+  IF LENGTH(v_clean_name) > 30 THEN
+    RAISE EXCEPTION 'INVALID_NAME: Nama tampilan maksimal 30 karakter.';
+  END IF;
+
+  SELECT name_updated_at INTO v_last_at FROM public.profiles WHERE id = v_uid;
+  IF v_last_at IS NOT NULL AND v_last_at > (NOW() - INTERVAL '24 hours') THEN
+    v_remaining := EXTRACT(EPOCH FROM (v_last_at + INTERVAL '24 hours' - NOW()))::BIGINT;
+    RAISE EXCEPTION 'COOLDOWN_ACTIVE:NAME:%', v_remaining;
+  END IF;
+
+  UPDATE public.profiles
+  SET
+    display_name = v_clean_name,
+    name_updated_at = NOW(),
+    updated_at = NOW()
+  WHERE id = v_uid;
+
+  UPDATE auth.users
+  SET raw_user_meta_data = jsonb_set(
+    COALESCE(raw_user_meta_data, '{}'::jsonb),
+    '{display_name}',
+    to_jsonb(v_clean_name)
+  )
+  WHERE id = v_uid;
+
+  RETURN jsonb_build_object(
+    'success', TRUE,
+    'display_name', v_clean_name,
+    'name_updated_at', NOW()
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.update_profile_avatar(p_avatar_url TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid UUID := auth.uid();
+  v_last_at TIMESTAMPTZ;
+  v_remaining BIGINT;
+  v_clean_url TEXT;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'UNAUTHORIZED: Harus login untuk mengubah avatar.';
+  END IF;
+
+  v_clean_url := NULLIF(TRIM(p_avatar_url), '');
+  IF v_clean_url IS NOT NULL THEN
+    IF LENGTH(v_clean_url) > 2048 THEN
+      RAISE EXCEPTION 'INVALID_URL: Panjang URL avatar melebihi batas 2048 karakter.';
+    END IF;
+    IF v_clean_url !~* '^https?://.+' THEN
+      RAISE EXCEPTION 'INVALID_URL: URL avatar harus diawali dengan http:// atau https://';
+    END IF;
+  END IF;
+
+  SELECT avatar_updated_at INTO v_last_at FROM public.profiles WHERE id = v_uid;
+  IF v_last_at IS NOT NULL AND v_last_at > (NOW() - INTERVAL '24 hours') THEN
+    v_remaining := EXTRACT(EPOCH FROM (v_last_at + INTERVAL '24 hours' - NOW()))::BIGINT;
+    RAISE EXCEPTION 'COOLDOWN_ACTIVE:AVATAR:%', v_remaining;
+  END IF;
+
+  UPDATE public.profiles
+  SET
+    avatar_url = v_clean_url,
+    avatar_updated_at = NOW(),
+    updated_at = NOW()
+  WHERE id = v_uid;
+
+  UPDATE auth.users
+  SET raw_user_meta_data = jsonb_set(
+    COALESCE(raw_user_meta_data, '{}'::jsonb),
+    '{avatar_url}',
+    to_jsonb(v_clean_url)
+  )
+  WHERE id = v_uid;
+
+  RETURN jsonb_build_object(
+    'success', TRUE,
+    'avatar_url', v_clean_url,
+    'avatar_updated_at', NOW()
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.check_profile_cooldown(UUID, TEXT) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.update_profile_banner(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.update_profile_display_name(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.update_profile_avatar(TEXT) TO authenticated;
+
+-- ==============================================================================
+-- SELESAI: Skrip Database Supabase Nuenime Siap Digunakan!
+-- ==============================================================================
+
