@@ -118,8 +118,8 @@ export default function SettingsScreen() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  const appVersion = `Nuenime v${Constants.expoConfig?.version || "1.4.9"} (${
-    Constants.expoConfig?.android?.versionCode || 47
+  const appVersion = `Nuenime v${Constants.expoConfig?.version || "0.0.1"} (${
+    Constants.expoConfig?.android?.versionCode || 1
   })`;
 
   // Load account-specific settings whenever auth user changes (isolating Account A and B)
