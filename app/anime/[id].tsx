@@ -3,6 +3,7 @@ import { useWindowDimensions } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   Alert,
   Platform,
@@ -172,6 +173,12 @@ export default function AnimeDetailScreen() {
     [anime.data?.relations?.edges]
   );
 
+  // MUST be before early returns to avoid Rules of Hooks violation
+  const cleanedSynopsis = useMemo(
+    () => cleanSynopsisText(anime.data?.description),
+    [anime.data?.description]
+  );
+
   useEffect(() => {
     setEpisodePage((current) => Math.min(current, totalEpisodePages - 1));
   }, [totalEpisodePages]);
@@ -246,10 +253,6 @@ export default function AnimeDetailScreen() {
 
   const data = anime.data;
   const title = animeTitle(data);
-  const cleanedSynopsis = useMemo(
-    () => cleanSynopsisText(data.description),
-    [data.description]
-  );
   const isSynopsisLong = cleanedSynopsis.length > 200 || cleanedSynopsis.includes("\n\n");
   const openEpisode = (episodeNumber: number) => {
     const isFuture = isConfirmedFutureRelease({
@@ -358,7 +361,17 @@ export default function AnimeDetailScreen() {
               cachePolicy="memory-disk"
             />
           ) : null}
-          <View style={styles.backdropOverlay} />
+          {/* Gradient fade: top darkened → fully transparent in middle → solid bg at bottom */}
+          <LinearGradient
+            colors={[
+              "rgba(11,14,23,0.35)",
+              "rgba(11,14,23,0.0)",
+              "rgba(11,14,23,0.85)",
+              "rgba(11,14,23,1.0)",
+            ]}
+            locations={[0, 0.3, 0.72, 1]}
+            style={StyleSheet.absoluteFill}
+          />
         </View>
 
         {/* Hero Section (Poster + Anime Metadata) */}
@@ -1171,14 +1184,8 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   backdropOverlay: {
+    // Kept for reference — replaced by LinearGradient in JSX
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(11, 14, 23, 0.5)",
-    ...(Platform.OS === "web"
-      ? ({
-          backgroundImage:
-            "linear-gradient(180deg, rgba(11,14,23,0.2) 0%, rgba(11,14,23,0.7) 60%, rgba(11,14,23,1) 100%)",
-        } as any)
-      : {}),
   },
 
   // ─── 3. HERO CONTENT ROW ───

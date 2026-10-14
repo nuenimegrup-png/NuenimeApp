@@ -1,8 +1,9 @@
-﻿import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Alert,
   Image,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,33 +16,55 @@ import * as Clipboard from "expo-clipboard";
 import { AppIcon } from "@/components/app-icon";
 import { nothing } from "@/components/nothing-ui";
 import { NativeScreen } from "@/components/screen";
+import {
+  type SupportConfig,
+  getSupportConfig,
+  DEFAULT_SUPPORT_CONFIG,
+} from "@/lib/support-service";
 
-const SAWERIA_URL = "https://saweria.co/Nuenime";
-
-// GIF URLs
-const ANIME_GIF_URI = "https://media1.giphy.com/media/v1.Y2lkPTZjMDliOTUyNjlyNmhqaWgzaHBvYXA0cXEzZ3BuaDV4cTFxdHl0dTRod3JzMTcxdSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/Al9XitEIwGgLU9yMfS/giphy.gif";
-const THANKYOU_GIF_URI = "https://media2.giphy.com/media/v1.Y2lkPTZjMDliOTUydG11ZWV3OXNkdzYzdjV6bXdmNTk2ZWNmcW9ydjRjczZ5dDNrOGF2YiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/UJuLfuG78YTDslaBcK/giphy.gif";
+// ── Liquid Glass / Silver palette (matches home screen buttons) ──
+const GLASS_BG      = "rgba(255, 255, 255, 0.12)";
+const GLASS_BORDER  = "rgba(255, 255, 255, 0.22)";
+const GLASS_BG_DIM  = "rgba(255, 255, 255, 0.07)";
+const GLASS_BD_DIM  = "rgba(255, 255, 255, 0.14)";
 
 export default function SupportScreen() {
+  const [config, setConfig] = useState<SupportConfig>(DEFAULT_SUPPORT_CONFIG);
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    let mounted = true;
+    getSupportConfig().then((cfg) => {
+      if (mounted && cfg) {
+        setConfig(cfg);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const openSaweria = async () => {
+    const url = config.saweriaUrl || "https://saweria.co/Nuenime";
     try {
-      await Linking.openURL(SAWERIA_URL);
+      await Linking.openURL(url);
     } catch {
-      Alert.alert("Error", "Tidak bisa membuka Saweria. Silakan buka manual di saweria.co/Nuenime");
+      Alert.alert("Error", `Tidak bisa membuka link donasi. Silakan buka manual di ${url}`);
     }
   };
 
   const copySaweriaLink = async () => {
+    const url = config.saweriaUrl || "https://saweria.co/Nuenime";
     try {
-      await Clipboard.setStringAsync(SAWERIA_URL);
+      await Clipboard.setStringAsync(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
       Alert.alert("Error", "Gagal menyalin link.");
     }
   };
+
+  const displayUrl = (config.saweriaUrl || "saweria.co/Nuenime").replace(/^https?:\/\//i, "");
 
   return (
     <NativeScreen scroll={false}>
@@ -68,17 +91,21 @@ export default function SupportScreen() {
       >
         {/* ── Anime GIF Hero ── */}
         <View style={styles.gifHeroWrap}>
-          <Image
-            source={{ uri: ANIME_GIF_URI }}
-            style={styles.gifHero}
-            resizeMode="cover"
-          />
+          {config.heroGifUrl ? (
+            <Image
+              source={{ uri: config.heroGifUrl }}
+              style={styles.gifHero}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.gifHeroFallback} />
+          )}
           <View style={styles.gifOverlay} />
           <View style={styles.gifTextOverlay}>
-            <Text style={styles.gifBadge}>🎌 NUENIME</Text>
-            <Text style={styles.gifTitle}>Jaga Nuenime Tetap Hidup</Text>
+            <Text style={styles.gifBadge}>{config.headlineBadge || "🎌 NUENIME"}</Text>
+            <Text style={styles.gifTitle}>{config.headlineTitle || "Jaga Nuenime Tetap Hidup"}</Text>
             <Text style={styles.gifSub}>
-              Setiap dukungan kamu sangat berarti untuk kami terus berkembang!
+              {config.headlineSubtitle || "Setiap dukungan kamu sangat berarti untuk kami terus berkembang!"}
             </Text>
           </View>
         </View>
@@ -89,22 +116,34 @@ export default function SupportScreen() {
           <View style={styles.cardTopRow}>
             <View style={styles.saweriaBadge}>
               <Text style={styles.saweriaEmoji}>☕</Text>
-              <Text style={styles.saweriaTitle}>Saweria</Text>
+              <Text style={styles.saweriaTitle}>{config.saweriaTitle || "Saweria"}</Text>
             </View>
-            <View style={styles.livePill}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>AKTIF</Text>
+            <View style={[styles.livePill, !config.saweriaActive && styles.livePillInactive]}>
+              <View
+                style={[
+                  styles.liveDot,
+                  !config.saweriaActive && { backgroundColor: "#F87171" },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.liveText,
+                  !config.saweriaActive && { color: "#F87171" },
+                ]}
+              >
+                {config.saweriaActive ? "AKTIF" : "OFFLINE"}
+              </Text>
             </View>
           </View>
 
           <Text style={styles.cardDesc}>
-            Dukung Nuenime lewat Saweria — sekali bayar, nominal bebas, tidak perlu akun premium.
+            {config.saweriaDescription || "Dukung Nuenime lewat Saweria — sekali bayar, nominal bebas, tidak perlu akun premium."}
           </Text>
 
           {/* URL display */}
           <View style={styles.urlBox}>
-            <AppIcon name="earth" size={14} color="#94A3B8" />
-            <Text style={styles.urlText} numberOfLines={1}>saweria.co/Nuenime</Text>
+            <AppIcon name="earth" size={14} color="#CBD5E1" />
+            <Text style={styles.urlText} numberOfLines={1}>{displayUrl}</Text>
           </View>
 
           {/* Action buttons */}
@@ -115,14 +154,14 @@ export default function SupportScreen() {
               style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.8 }]}
             >
               <Text style={styles.primaryBtnText}>☕ Dukung Sekarang</Text>
-              <AppIcon name="open-in-new" size={14} color="#0B0E17" />
+              <AppIcon name="open-in-new" size={14} color="#FFFFFF" />
             </Pressable>
             <Pressable
               accessibilityRole="button"
               onPress={() => void copySaweriaLink()}
               style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.7 }]}
             >
-              <AppIcon name="content-copy" size={15} color={copied ? "#10B981" : "#94A3B8"} />
+              <AppIcon name="content-copy" size={15} color={copied ? "#10B981" : "#CBD5E1"} />
             </Pressable>
           </View>
 
@@ -137,15 +176,10 @@ export default function SupportScreen() {
         {/* ── Perks ── */}
         <View style={styles.perksCard}>
           <Text style={styles.perksTitle}>Apa yang kamu dukung?</Text>
-          {[
-            { icon: "play-circle", text: "Server & hosting aplikasi Nuenime" },
-            { icon: "bell", text: "Update konten & fitur baru" },
-            { icon: "account-group", text: "Komunitas anime Indonesia" },
-            { icon: "heart", text: "Semangat tim pengembang" },
-          ].map((p) => (
+          {(config.perks && config.perks.length > 0 ? config.perks : DEFAULT_SUPPORT_CONFIG.perks).map((p) => (
             <View key={p.text} style={styles.perkRow}>
               <View style={styles.perkIconWrap}>
-                <AppIcon name={p.icon} size={15} color="#A78BFA" />
+                <AppIcon name={p.icon || "heart"} size={15} color="#E2E8F0" />
               </View>
               <Text style={styles.perkText}>{p.text}</Text>
             </View>
@@ -154,25 +188,27 @@ export default function SupportScreen() {
 
         {/* ── Thank you GIF ── */}
         <View style={styles.thankyouSection}>
-          <Image
-            source={{ uri: THANKYOU_GIF_URI }}
-            style={styles.thankyouGif}
-            resizeMode="contain"
-          />
+          {config.thankYouGifUrl ? (
+            <Image
+              source={{ uri: config.thankYouGifUrl }}
+              style={styles.thankyouGif}
+              resizeMode="contain"
+            />
+          ) : null}
           <Text style={styles.thankyouText}>
             Arigatou gozaimasu! 🙏{"\n"}Dukunganmu sangat berarti untuk Nuenime.
           </Text>
         </View>
 
         <Text style={styles.footnote}>
-          Dukungan bersifat sukarela dan tidak mempengaruhi akses ke fitur Nuenime.
+          {config.footnote || "Dukungan bersifat sukarela dan tidak mempengaruhi akses ke fitur Nuenime."}
         </Text>
       </ScrollView>
     </NativeScreen>
   );
 }
 
-const ACCENT = "#A78BFA";
+const SILVER_ACCENT = "#E2E8F0";
 
 const styles = StyleSheet.create({
   header: {
@@ -191,14 +227,22 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.07)",
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
   },
   headerTitle: { gap: 1 },
   headerEyebrow: {
     fontFamily: "Nunito-Bold",
     fontSize: 10,
-    color: "#64748B",
+    color: "#94A3B8",
     letterSpacing: 1,
   },
   headerText: {
@@ -223,6 +267,11 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  gifHeroFallback: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#161922",
+  },
   gifOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(11,14,23,0.55)",
@@ -238,7 +287,7 @@ const styles = StyleSheet.create({
   gifBadge: {
     fontFamily: "Nunito-ExtraBold",
     fontSize: 10.5,
-    color: ACCENT,
+    color: "#E2E8F0",
     letterSpacing: 1.2,
   },
   gifTitle: {
@@ -254,15 +303,21 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // ── Saweria Card ──
+  // ── Saweria Card (Liquid Glass & Silver) ──
   card: {
     marginHorizontal: 16,
-    backgroundColor: "#161922",
-    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.07)",
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(167,139,250,0.2)",
+    borderColor: GLASS_BORDER,
     padding: 18,
     gap: 14,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
   },
   cardTopRow: {
     flexDirection: "row",
@@ -292,6 +347,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(16,185,129,0.3)",
   },
+  livePillInactive: {
+    backgroundColor: "rgba(239,68,68,0.12)",
+    borderColor: "rgba(239,68,68,0.3)",
+  },
   liveDot: {
     width: 6,
     height: 6,
@@ -314,10 +373,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.12)",
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
@@ -337,24 +396,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: ACCENT,
-    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.22)",
+    borderRadius: 22,
     paddingVertical: 13,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
   },
   primaryBtnText: {
     fontFamily: "Nunito-ExtraBold",
     fontSize: 14,
-    color: "#0B0E17",
+    color: "#FFFFFF",
+    letterSpacing: 0.2,
   },
   secondaryBtn: {
     width: 48,
     height: 48,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 12,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
   },
   copiedToast: {
     flexDirection: "row",
@@ -368,21 +442,27 @@ const styles = StyleSheet.create({
     color: "#10B981",
   },
 
-  // ── Perks ──
+  // ── Perks (Liquid Glass & Silver) ──
   perksCard: {
     marginHorizontal: 16,
-    backgroundColor: "#161922",
-    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    borderColor: "rgba(255, 255, 255, 0.16)",
     padding: 18,
     gap: 12,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
   },
   perksTitle: {
     fontFamily: "Nunito-Bold",
     fontSize: 14,
-    color: "#64748B",
-    letterSpacing: 0.3,
+    color: "#94A3B8",
+    letterSpacing: 0.5,
     textTransform: "uppercase",
   },
   perkRow: {
@@ -391,12 +471,20 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   perkIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: "rgba(167,139,250,0.1)",
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
     alignItems: "center",
     justifyContent: "center",
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
   },
   perkText: {
     fontFamily: "Nunito-SemiBold",
@@ -405,17 +493,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // ── Thank you ──
+  // ── Thank you (Liquid Glass & Silver) ──
   thankyouSection: {
     marginHorizontal: 16,
-    backgroundColor: "#161922",
-    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    borderColor: "rgba(255, 255, 255, 0.16)",
     overflow: "hidden",
     alignItems: "center",
     gap: 14,
     paddingBottom: 18,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
   },
   thankyouGif: {
     width: "100%",
@@ -433,7 +527,7 @@ const styles = StyleSheet.create({
   footnote: {
     fontFamily: "Nunito-Regular",
     fontSize: 11.5,
-    color: "#3F3F46",
+    color: "#64748B",
     textAlign: "center",
     paddingHorizontal: 16,
     lineHeight: 17,

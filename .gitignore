@@ -38,6 +38,7 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+bun.lock
 
 # generated native folders
 /ios

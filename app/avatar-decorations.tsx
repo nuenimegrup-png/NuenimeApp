@@ -203,6 +203,17 @@ export default function AvatarDecorationsScreen() {
       return;
     }
 
+    // Guard: border belum rilis — tidak bisa dibeli
+    if (item.isReleased === false || !item.assetUrl) {
+      hapticWarning();
+      Alert.alert(
+        "Belum Tersedia",
+        `Border "${item.name}" belum dirilis. Nantikan updatenya ya!`,
+        [{ text: "Mengerti" }]
+      );
+      return;
+    }
+
     if (!userId) {
       router.push("/auth" as never);
       return;
@@ -837,10 +848,10 @@ export default function AvatarDecorationsScreen() {
                     </Text>
                   </View>
 
-                  {/* Tombol Aksi: semua border selalu pakai harga di Shop */}
+                  {/* Tombol Aksi */}
                   <View style={styles.cardActionWrap}>
-                    {/* Di tab Shop: selalu tampilkan label harga di atas tombol aksi */}
-                    {activeTab === "shop" && (
+                    {/* Di tab Shop: tampilkan harga hanya jika border sudah rilis */}
+                    {activeTab === "shop" && (border.isReleased !== false && border.assetUrl) && (
                       <View style={styles.shopPriceRow}>
                         <Image source={TOPUP_CRYSTAL_ICON} style={styles.priceCrystalIcon} contentFit="contain" />
                         <Text style={[
@@ -859,6 +870,7 @@ export default function AvatarDecorationsScreen() {
                     )}
 
                     {isOwned ? (
+                      // Sudah dimiliki: tombol Pakai/Sedang Dipakai
                       <Pressable
                         accessibilityRole="button"
                         onPress={() => handleToggleEquip(border.id)}
@@ -877,7 +889,14 @@ export default function AvatarDecorationsScreen() {
                           <Text style={styles.actionTextUnequipped}>Pakai</Text>
                         )}
                       </Pressable>
+                    ) : (border.isReleased === false || !border.assetUrl) ? (
+                      // Belum rilis: tombol dikunci, tidak bisa ditekan
+                      <View style={styles.actionBtnLocked}>
+                        <AppIcon name="lock-outline" size={12} color="#64748B" />
+                        <Text style={styles.actionTextLocked}>Segera Hadir</Text>
+                      </View>
                     ) : (
+                      // Sudah rilis, belum dimiliki: tombol Beli
                       <Pressable
                         accessibilityRole="button"
                         onPress={() => handleBuyPress(border)}

@@ -1,68 +1,26 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Alert,
   Image,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
 import { AppIcon } from "@/components/app-icon";
 import { NativeScreen } from "@/components/screen";
 import { nothing } from "@/components/nothing-ui";
-
-// ─── Types ─────────────────────────────────────────────────────────
-interface SocialLink {
-  icon: string;
-  label: string;
-  url: string;
-}
-
-interface Developer {
-  name: string;
-  tag: string;
-  role: string;
-  avatarUri?: string;
-  accentColor: string;
-  badgeBg: string;
-  badgeBorder: string;
-  social: SocialLink[];
-}
-
-// ─── Data ───────────────────────────────────────────────────────────
-const developers: Developer[] = [
-  {
-    name: "Valora",
-    tag: "Founder Valora Official Grup",
-    role: "Perancang Nuenime, Desain Nuenime, Backend & Frontend",
-    avatarUri: "https://i.ibb.co.com/5h7WVZ0Z/32d6acf9127007583429953eb35f37ec.jpg",
-    accentColor: "#A78BFA",
-    badgeBg: "rgba(139, 92, 246, 0.15)",
-    badgeBorder: "rgba(139, 92, 246, 0.4)",
-    social: [
-      { icon: "facebook", label: "Facebook", url: "" },
-      { icon: "instagram", label: "Instagram", url: "" },
-      { icon: "web", label: "Website", url: "" },
-    ],
-  },
-  {
-    name: "Nueva",
-    tag: "Founder Nuenime",
-    role: "Founder Nuenime, Marketing & Sosial Media",
-    avatarUri: undefined,
-    accentColor: "#38BDF8",
-    badgeBg: "rgba(56, 189, 248, 0.15)",
-    badgeBorder: "rgba(56, 189, 248, 0.4)",
-    social: [
-      { icon: "facebook", label: "Facebook", url: "" },
-      { icon: "instagram", label: "Instagram", url: "" },
-      { icon: "web", label: "Website", url: "" },
-    ],
-  },
-];
+import {
+  type DeveloperMember,
+  type SocialLink,
+  getDevelopers,
+  DEFAULT_DEVELOPERS,
+} from "@/lib/developer-service";
 
 // ─── Social Button (icon only) ────────────────────────────────────────
 function SocialButton({
@@ -103,7 +61,7 @@ function SocialButton({
 }
 
 // ─── Developer Card ──────────────────────────────────────────────────
-function DevCard({ dev }: { dev: Developer }) {
+function DevCard({ dev }: { dev: DeveloperMember }) {
   const [imgError, setImgError] = useState(false);
   const initials = dev.name.charAt(0).toUpperCase();
 
@@ -130,43 +88,80 @@ function DevCard({ dev }: { dev: Developer }) {
       <Text style={styles.devName}>{dev.name}</Text>
 
       {/* Tag badge */}
-      <View style={[styles.tagBadge, { backgroundColor: dev.badgeBg, borderColor: dev.badgeBorder }]}>
-        <AppIcon name="account-circle-outline" size={12} color={dev.accentColor} />
-        <Text style={[styles.tagText, { color: dev.accentColor }]}>{dev.tag}</Text>
-      </View>
+      {dev.tag ? (
+        <View
+          style={[
+            styles.tagBadge,
+            {
+              backgroundColor: dev.badgeBg || "rgba(255,255,255,0.08)",
+              borderColor: dev.badgeBorder || "rgba(255,255,255,0.2)",
+            },
+          ]}
+        >
+          <AppIcon name="account-circle-outline" size={12} color={dev.accentColor} />
+          <Text style={[styles.tagText, { color: dev.accentColor }]}>{dev.tag}</Text>
+        </View>
+      ) : null}
 
       {/* Divider */}
       <View style={styles.divider} />
 
       {/* Role / Jabatan */}
-      <View style={styles.sectionHeader}>
-        <AppIcon name="cog-outline" size={13} color="#64748B" />
-        <Text style={styles.sectionLabel}>JABATAN</Text>
+      <View style={styles.roleSection}>
+        <Text style={styles.roleLabel}>PERAN & TANGGUNG JAWAB</Text>
+        <Text style={styles.roleText}>{dev.role}</Text>
       </View>
-      <Text style={styles.roleText}>{dev.role}</Text>
 
-      {/* Divider */}
-      <View style={styles.divider} />
-
-      {/* Social Media — icons only, centered */}
-      <View style={styles.sectionHeader}>
-        <AppIcon name="earth" size={13} color="#64748B" />
-        <Text style={styles.sectionLabel}>SOSIAL MEDIA</Text>
-      </View>
-      <View style={styles.socialRow}>
-        {dev.social.map((s) => (
-          <SocialButton key={s.label} {...s} accentColor={dev.accentColor} />
-        ))}
+      {/* Social Media (horizontal row, centered) */}
+      <View style={styles.socialSection}>
+        <View style={styles.socialRow}>
+          {dev.social && dev.social.length > 0 ? (
+            dev.social.map((s) => (
+              <SocialButton
+                key={s.label}
+                icon={s.icon}
+                label={s.label}
+                url={s.url}
+                accentColor={dev.accentColor}
+              />
+            ))
+          ) : (
+            <SocialButton
+              icon="web"
+              label="Website"
+              url=""
+              accentColor={dev.accentColor}
+            />
+          )}
+        </View>
       </View>
     </View>
   );
 }
 
-// ─── Main Screen ─────────────────────────────────────────────────────
+// ─── Screen ──────────────────────────────────────────────────────────
 export default function DeveloperScreen() {
+  const [devList, setDevList] = useState<DeveloperMember[]>(DEFAULT_DEVELOPERS);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    getDevelopers()
+      .then((list) => {
+        if (mounted && list && list.length > 0) {
+          setDevList(list);
+        }
+      })
+      .finally(() => {
+        if (mounted) setIsLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
-    // scroll=false so NativeScreen is just a SafeAreaView flex container,
-    // allowing us to have a sticky header + independent ScrollView below.
     <NativeScreen scroll={false}>
       {/* ── Sticky Header (tidak ikut scroll) ── */}
       <View style={styles.header}>
@@ -176,7 +171,7 @@ export default function DeveloperScreen() {
           onPress={() => router.back()}
           style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.6 }]}
         >
-          <AppIcon name="arrow-left" size={22} color={nothing.white} />
+          <AppIcon name="arrow-left" size={21} color={nothing.white} />
         </Pressable>
         <View style={styles.headerTitle}>
           <Text style={styles.titleText}>Developer Nuenime</Text>
@@ -192,7 +187,7 @@ export default function DeveloperScreen() {
       >
         {/* Hero */}
         <View style={styles.heroBadge}>
-          <AppIcon name="users" size={13} color="#A78BFA" />
+          <AppIcon name="users" size={13} color="#E2E8F0" />
           <Text style={styles.heroBadgeText}>TEAM NUENIME</Text>
         </View>
         <Text style={styles.heroHeadline}>Orang di Balik Nuenime</Text>
@@ -200,10 +195,16 @@ export default function DeveloperScreen() {
           Dibangun dengan penuh dedikasi oleh tim kecil namun bersemangat.
         </Text>
 
-        {/* Developer Cards */}
-        {developers.map((dev) => (
-          <DevCard key={dev.name} dev={dev} />
-        ))}
+        {/* Loading Indicator if fetching */}
+        {isLoading && devList.length === 0 ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="small" color="#E2E8F0" />
+            <Text style={styles.loadingText}>Memuat data tim developer...</Text>
+          </View>
+        ) : (
+          /* Developer Cards */
+          devList.map((dev) => <DevCard key={dev.id || dev.name} dev={dev} />)
+        )}
 
         {/* Footer */}
         <Text style={styles.footerText}>
@@ -233,8 +234,16 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.07)",
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
   },
   headerTitle: {
     flex: 1,
@@ -249,7 +258,7 @@ const styles = StyleSheet.create({
   subtitleText: {
     fontFamily: "Nunito-Regular",
     fontSize: 12,
-    color: "#64748B",
+    color: "#94A3B8",
   },
 
   // Scroll area
@@ -269,14 +278,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: "rgba(167, 139, 250, 0.1)",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(167, 139, 250, 0.28)",
+    borderColor: "rgba(255, 255, 255, 0.2)",
   },
   heroBadgeText: {
     fontFamily: "Nunito-ExtraBold",
     fontSize: 11,
-    color: "#A78BFA",
+    color: "#E2E8F0",
     letterSpacing: 1.2,
   },
   heroHeadline: {
@@ -290,21 +299,27 @@ const styles = StyleSheet.create({
   heroSub: {
     fontFamily: "Nunito-Regular",
     fontSize: 13,
-    color: "#71717A",
+    color: "#94A3B8",
     lineHeight: 19,
     marginTop: -4,
   },
 
-  // ─── Card (no gradient, no overflow needed) ───
+  // ─── Liquid Glass Card ───
   card: {
-    backgroundColor: "#161922",
-    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    borderColor: "rgba(255, 255, 255, 0.16)",
     paddingHorizontal: 20,
     paddingVertical: 24,
     alignItems: "center",
     gap: 12,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
   },
 
   // ─── Avatar ───
@@ -348,64 +363,83 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingHorizontal: 12,
     paddingVertical: 5,
-    borderRadius: 10,
+    borderRadius: 20,
     borderWidth: 1,
   },
   tagText: {
-    fontFamily: "Nunito-SemiBold",
+    fontFamily: "Nunito-Bold",
     fontSize: 12,
-    textAlign: "center",
+    letterSpacing: 0.2,
   },
 
   divider: {
     width: "100%",
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    marginVertical: 2,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    marginVertical: 4,
   },
 
-  sectionHeader: {
-    flexDirection: "row",
+  // ─── Role ───
+  roleSection: {
+    width: "100%",
     alignItems: "center",
     gap: 5,
-    alignSelf: "center",
   },
-  sectionLabel: {
+  roleLabel: {
     fontFamily: "Nunito-Bold",
-    fontSize: 10.5,
-    color: "#4B5563",
-    letterSpacing: 0.8,
+    fontSize: 10,
+    color: "#94A3B8",
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
   roleText: {
-    fontFamily: "Nunito-Regular",
-    fontSize: 13.5,
+    fontFamily: "Nunito-SemiBold",
+    fontSize: 13,
     color: "#CBD5E1",
-    lineHeight: 20,
     textAlign: "center",
+    lineHeight: 19,
+    paddingHorizontal: 10,
   },
 
-  // Social — icons only, centered row
+  // ─── Social ───
+  socialSection: {
+    width: "100%",
+    alignItems: "center",
+    paddingTop: 4,
+  },
   socialRow: {
     flexDirection: "row",
-    gap: 12,
+    gap: 16,
     justifyContent: "center",
     alignItems: "center",
   },
   socialBtn: {
-    width: 46,
-    height: 46,
+    width: 44,
+    height: 44,
     borderRadius: 14,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  // Footer
+  loadingBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    justifyContent: "center",
+    paddingVertical: 20,
+  },
+  loadingText: {
+    fontFamily: "Nunito-SemiBold",
+    fontSize: 13,
+    color: "#94A3B8",
+  },
+
   footerText: {
     fontFamily: "Nunito-Regular",
-    fontSize: 12.5,
-    color: "#3F3F46",
+    fontSize: 12,
+    color: "#64748B",
     textAlign: "center",
-    paddingVertical: 8,
+    marginTop: 8,
   },
 });

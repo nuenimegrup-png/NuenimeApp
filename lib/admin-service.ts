@@ -974,18 +974,46 @@ const STORAGE_GACHA_CONFIG = "nuenime.admin.gacha_config";
 
 export async function getAdminGachaConfig(): Promise<GachaConfig> {
   try {
+    const { data, error } = await supabase
+      .from("system_configs")
+      .select("value")
+      .eq("key", "gacha_config")
+      .maybeSingle();
+
+    if (!error && data?.value && typeof data.value === "object") {
+      const val = data.value as any;
+      const res: GachaConfig = {
+        costSingle: typeof val.cost_single === "number" ? val.cost_single : (val.costSingle ?? 1000),
+        costMulti: typeof val.cost_multi === "number" ? val.cost_multi : (val.costMulti ?? 9000),
+        rates: {
+          mythic: typeof val.rates?.mythic === "number" ? val.rates.mythic : 2.0,
+          legends: typeof val.rates?.legends === "number" ? val.rates.legends : 8.0,
+          epic: typeof val.rates?.epic === "number" ? val.rates.epic : 20.0,
+          rare: typeof val.rates?.rare === "number" ? val.rates.rare : 30.0,
+          normal: typeof val.rates?.normal === "number" ? val.rates.normal : 40.0,
+        },
+        bannerTitle: typeof val.banner_title === "string" ? val.banner_title : (val.bannerTitle ?? "Bintang Istana Malam"),
+        bannerDesc: typeof val.banner_desc === "string" ? val.banner_desc : (val.bannerDesc ?? "Wallpaper edisi terbatas & bingkai mistis malam purnama."),
+      };
+      await AsyncStorage.setItem(STORAGE_GACHA_CONFIG, JSON.stringify(res));
+      return res;
+    }
+  } catch {}
+
+  try {
     const raw = await AsyncStorage.getItem(STORAGE_GACHA_CONFIG);
     if (raw) return JSON.parse(raw);
   } catch {}
+
   return {
-    costSingle: 100,
-    costMulti: 900,
+    costSingle: 1000,
+    costMulti: 9000,
     rates: {
-      mythic: 1.0,
-      legends: 4.0,
-      epic: 15.0,
-      rare: 35.0,
-      normal: 45.0,
+      mythic: 2.0,
+      legends: 8.0,
+      epic: 20.0,
+      rare: 30.0,
+      normal: 40.0,
     },
     bannerTitle: "Bintang Istana Malam",
     bannerDesc: "Wallpaper edisi terbatas & bingkai mistis malam purnama.",
@@ -994,6 +1022,20 @@ export async function getAdminGachaConfig(): Promise<GachaConfig> {
 
 export async function saveAdminGachaConfig(config: GachaConfig, admin: AdminUser): Promise<void> {
   await AsyncStorage.setItem(STORAGE_GACHA_CONFIG, JSON.stringify(config));
+  try {
+    await supabase.from("system_configs").upsert({
+      key: "gacha_config",
+      value: {
+        cost_single: config.costSingle,
+        cost_multi: config.costMulti,
+        rates: config.rates,
+        banner_title: config.bannerTitle,
+        banner_desc: config.bannerDesc,
+      },
+      updated_at: new Date().toISOString(),
+    });
+  } catch {}
+
   await logAdminAction({
     admin,
     action: "UPDATE_GACHA_CONFIG",

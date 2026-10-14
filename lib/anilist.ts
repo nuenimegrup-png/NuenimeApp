@@ -186,9 +186,9 @@ async function request<T>(query: string, variables: Record<string, unknown> = {}
   if (existingRequest) return existingRequest as Promise<T>;
 
   const requestPromise = (async () => {
-    try {
+    const fetchFromEndpoint = async (endpoint: string) => {
       await waitForAniListSlot();
-      const response = await fetch(APP_CONFIG.anilistGraphqlUrl, {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: requestBody,
@@ -208,7 +208,24 @@ async function request<T>(query: string, variables: Record<string, unknown> = {}
         if (isPageDepthMessage(payload.errors[0]?.message ?? "")) throw new AniListPageDepthError();
         throw new Error(payload.errors[0]?.message || "AniList returned an invalid response.");
       }
-      const data = payload.data as T;
+      if (!payload.data) throw new Error("AniList returned an empty response.");
+      return payload.data;
+    };
+
+    try {
+      let data: T;
+      try {
+        data = await fetchFromEndpoint(APP_CONFIG.anilistGraphqlUrl);
+      } catch (err: any) {
+        const fallbackUrl = "https://graphql.anilist.co";
+        if (APP_CONFIG.anilistGraphqlUrl !== fallbackUrl && !isAniListPageDepthError(err)) {
+          console.warn(`[AniList] Endpoint ${APP_CONFIG.anilistGraphqlUrl} failed (${err?.message}). Falling back to official AniList...`);
+          data = await fetchFromEndpoint(fallbackUrl);
+        } else {
+          throw err;
+        }
+      }
+
       responseCache.set(cacheKey, { expiresAt: Date.now() + REQUEST_CACHE_TTL_MS, staleUntil: Date.now() + STALE_CACHE_TTL_MS, value: data });
       return data;
     } catch (error) {

@@ -60,14 +60,16 @@ INSERT INTO public.system_configs (key, value) VALUES
   "ends_at": null
 }'::jsonb),
 ('gacha_config', '{
-  "cost_single": 100,
-  "cost_multi": 900,
+  "cost_single": 1000,
+  "cost_multi": 9000,
+  "banner_title": "Bintang Istana Malam",
+  "banner_desc": "Wallpaper edisi terbatas & bingkai mistis malam purnama.",
   "rates": {
-    "mythic": 1.0,
-    "legends": 4.0,
-    "epic": 15.0,
-    "rare": 35.0,
-    "normal": 45.0
+    "mythic": 2.0,
+    "legends": 8.0,
+    "epic": 20.0,
+    "rare": 30.0,
+    "normal": 40.0
   }
 }'::jsonb),
 ('exp_rules', '{
@@ -75,7 +77,25 @@ INSERT INTO public.system_configs (key, value) VALUES
   "comment": 5,
   "daily_login": 10
 }'::jsonb),
-('word_blacklist', '["judi", "slot", "gacor", "bokep", "porn", "kontol", "memek", "anjing", "bangsat", "tolol"]'::jsonb)
+('word_blacklist', '["judi", "slot", "gacor", "bokep", "porn", "kontol", "memek", "anjing", "bangsat", "tolol"]'::jsonb),
+('support_config', '{
+  "saweriaUrl": "https://saweria.co/Nuenime",
+  "saweriaActive": true,
+  "heroGifUrl": "https://media1.giphy.com/media/v1.Y2lkPTZjMDliOTUyNjlyNmhqaWgzaHBvYXA0cXEzZ3BuaDV4cTFxdHl0dTRod3JzMTcxdSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/Al9XitEIwGgLU9yMfS/giphy.gif",
+  "thankYouGifUrl": "https://media2.giphy.com/media/v1.Y2lkPTZjMDliOTUydG11ZWV3OXNkdzYzdjV6bXdmNTk2ZWNmcW9ydjRjczZ5dDNrOGF2YiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/UJuLfuG78YTDslaBcK/giphy.gif",
+  "headlineBadge": "🎌 NUENIME",
+  "headlineTitle": "Jaga Nuenime Tetap Hidup",
+  "headlineSubtitle": "Setiap dukungan kamu sangat berarti untuk kami terus berkembang!",
+  "saweriaTitle": "Saweria",
+  "saweriaDescription": "Dukung Nuenime lewat Saweria — sekali bayar, nominal bebas, tidak perlu akun premium.",
+  "perks": [
+    {"icon": "play-circle", "text": "Server & hosting aplikasi Nuenime"},
+    {"icon": "bell", "text": "Update konten & fitur baru"},
+    {"icon": "account-group", "text": "Komunitas anime Indonesia"},
+    {"icon": "heart", "text": "Semangat tim pengembang"}
+  ],
+  "footnote": "Dukungan bersifat sukarela dan tidak mempengaruhi akses ke fitur Nuenime."
+}'::jsonb)
 ON CONFLICT (key) DO NOTHING;
 
 

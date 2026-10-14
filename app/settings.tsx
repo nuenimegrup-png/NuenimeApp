@@ -406,7 +406,7 @@ export default function SettingsScreen() {
     hapticLight();
     setCheckingUpdate(true);
     try {
-      const res = await checkForAnirakuUpdate(Constants.expoConfig?.version || "1.4.9", { force: true });
+      const res = await checkForAnirakuUpdate(Constants.expoConfig?.version || "0.0.1", { force: true });
       if (res.available && res.release) {
         Alert.alert(
           "Pembaruan Tersedia!",
@@ -424,10 +424,10 @@ export default function SettingsScreen() {
           ]
         );
       } else {
-        Alert.alert("Aplikasi Terkini", `Nuenime v${Constants.expoConfig?.version || "1.4.9"} sudah merupakan versi terbaru.`);
+        Alert.alert("Aplikasi Terkini", `Nuenime v${Constants.expoConfig?.version || "0.0.1"} sudah merupakan versi terbaru.`);
       }
     } catch {
-      Alert.alert("Info Versi", `Nuenime v${Constants.expoConfig?.version || "1.4.9"} adalah versi aktif.`);
+      Alert.alert("Info Versi", `Nuenime v${Constants.expoConfig?.version || "0.0.1"} adalah versi aktif.`);
     } finally {
       setCheckingUpdate(false);
     }

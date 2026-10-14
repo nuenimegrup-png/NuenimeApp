@@ -114,9 +114,15 @@ const MENU_ITEMS: MenuItemDef[] = [
   },
   {
     key: "support",
-    label: "Support & CS",
+    label: "Support & Saweria",
     icon: "headset",
     route: "/admin/support",
+  },
+  {
+    key: "developers",
+    label: "Team Developer",
+    icon: "account-group",
+    route: "/admin/developers",
   },
   {
     key: "analytics",

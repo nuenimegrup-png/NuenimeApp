@@ -254,6 +254,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return () => { mounted = false; sessionValidation.current += 1; appStateSubscription.remove(); subscription?.unsubscribe(); };
   }, [loadProfile]);
 
+let GoogleSigninModule: typeof import("@react-native-google-signin/google-signin") | null = null;
+function getGoogleSignin() {
+  if (Platform.OS === "web") return null;
+  if (!GoogleSigninModule) {
+    try {
+      GoogleSigninModule = require("@react-native-google-signin/google-signin");
+    } catch {
+      return null;
+    }
+  }
+  return GoogleSigninModule;
+}
+
   const signInWithGoogle = useCallback(async () => {
     setLoading(true);
     try {
@@ -266,41 +279,78 @@ export function AuthProvider({ children }: PropsWithChildren) {
         });
         if (error) throw error;
       } else {
-        const redirectUrl = Linking.createURL("auth");
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: {
-            redirectTo: redirectUrl,
-            skipBrowserRedirect: true,
-          },
-        });
-        if (error) throw error;
-        if (!data?.url) throw new Error("Gagal memulai sesi login Google.");
+        const gModule = getGoogleSignin();
+        let nativeSuccess = false;
+        const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
-        const res = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-        if (res.type === "success" && res.url) {
-          const parsed = Linking.parse(res.url);
-          if (parsed.queryParams?.code) {
-            const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(
-              String(parsed.queryParams.code)
-            );
-            if (exchangeError) throw exchangeError;
-            if (sessionData?.session) {
-              setSession(sessionData.session);
-            }
-          } else if (res.url.includes("#")) {
-            const fragment = res.url.split("#")[1];
-            const params = new URLSearchParams(fragment);
-            const access_token = params.get("access_token");
-            const refresh_token = params.get("refresh_token");
-            if (access_token && refresh_token) {
-              const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-                access_token,
-                refresh_token,
+        if (gModule && webClientId) {
+          try {
+            gModule.GoogleSignin.configure({
+              webClientId,
+              scopes: ["profile", "email"],
+            });
+            await gModule.GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+            const response = await gModule.GoogleSignin.signIn();
+            const idToken = response.data?.idToken ?? (response as any)?.idToken;
+            if (idToken) {
+              const { data: sessionData, error: sessionError } = await supabase.auth.signInWithIdToken({
+                provider: "google",
+                token: idToken,
               });
               if (sessionError) throw sessionError;
               if (sessionData?.session) {
                 setSession(sessionData.session);
+                nativeSuccess = true;
+              }
+            }
+          } catch (nativeErr: any) {
+            const isCancelled =
+              nativeErr?.code === gModule.statusCodes?.SIGN_IN_CANCELLED ||
+              nativeErr?.message?.toLowerCase().includes("cancel");
+            if (isCancelled) {
+              return;
+            }
+            console.warn("Native Google Sign-In fallback to browser:", nativeErr?.message);
+          }
+        }
+
+        if (!nativeSuccess) {
+          const redirectUrl = Linking.createURL("auth");
+          const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: {
+              redirectTo: redirectUrl,
+              skipBrowserRedirect: true,
+            },
+          });
+          if (error) throw error;
+          if (!data?.url) throw new Error("Gagal memulai sesi login Google.");
+
+          const res = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+          if (res.type === "success" && res.url) {
+            const parsed = Linking.parse(res.url);
+            if (parsed.queryParams?.code) {
+              const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(
+                String(parsed.queryParams.code)
+              );
+              if (exchangeError) throw exchangeError;
+              if (sessionData?.session) {
+                setSession(sessionData.session);
+              }
+            } else if (res.url.includes("#")) {
+              const fragment = res.url.split("#")[1];
+              const params = new URLSearchParams(fragment);
+              const access_token = params.get("access_token");
+              const refresh_token = params.get("refresh_token");
+              if (access_token && refresh_token) {
+                const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+                  access_token,
+                  refresh_token,
+                });
+                if (sessionError) throw sessionError;
+                if (sessionData?.session) {
+                  setSession(sessionData.session);
+                }
               }
             }
           }

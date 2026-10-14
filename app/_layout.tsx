@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
+import { Image } from "expo-image";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
@@ -15,6 +16,8 @@ import { AniListDownBanner } from "@/components/anilist-down-banner";
 import { FirstRunOnboarding } from "@/components/first-run-onboarding";
 import { useStartupPrefetch } from "@/hooks/use-startup-prefetch";
 import { AiringReminderScheduler } from "@/hooks/use-airing-reminders";
+
+const APP_BG_COLOR = "#0E0E11";
 
 /** Must render inside AppProviders — calls useQueryClient. */
 function StartupPrefetcher() {
@@ -48,15 +51,73 @@ export default function RootLayout() {
     "Nunito-Black": require("../assets/fonts/Nunito-Black.ttf"),
   });
 
+  const [splashVisible, setSplashVisible] = useState(true);
+
   useEffect(() => {
-    void SystemUI.setBackgroundColorAsync(nothing.black).catch(() => {});
+    void SystemUI.setBackgroundColorAsync(APP_BG_COLOR).catch(() => {});
   }, []);
 
-  if (!fontsLoaded) {
-    return <GestureHandlerRootView style={{ flex: 1, backgroundColor: nothing.black }}><StatusBar style="light" translucent backgroundColor="transparent" /><View style={{ flex: 1, backgroundColor: nothing.black }} /></GestureHandlerRootView>;
+  useEffect(() => {
+    if (fontsLoaded) {
+      const timer = setTimeout(() => {
+        setSplashVisible(false);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded || splashVisible) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: APP_BG_COLOR }}>
+        <StatusBar style="light" translucent backgroundColor="transparent" />
+        <View style={{ flex: 1, backgroundColor: APP_BG_COLOR, alignItems: "center", justifyContent: "center" }}>
+          <Image
+            source={require("../assets/images/loading.gif")}
+            style={{ width: "100%", height: "100%" }}
+            contentFit="contain"
+          />
+        </View>
+      </GestureHandlerRootView>
+    );
   }
 
-  return <GestureHandlerRootView style={{ flex: 1, backgroundColor: nothing.black }}><SafeAreaProvider><AppProviders><StartupPrefetcher /><AiringReminderScheduler /><StatusBar style="light" translucent backgroundColor="transparent" /><Stack screenOptions={{ headerShown: false, animation: "fade", contentStyle: { backgroundColor: nothing.black } }}><Stack.Screen name="(tabs)" /><Stack.Screen name="anime/[id]" /><Stack.Screen name="watch/[id]" /><Stack.Screen name="search" options={{ presentation: "card" }} /><Stack.Screen name="auth" options={{ presentation: "modal" }} /><Stack.Screen name="settings" options={{ presentation: "modal" }} /><Stack.Screen name="support" options={{ presentation: "modal" }} /><Stack.Screen name="library" /><Stack.Screen name="legal" options={{ presentation: "modal" }} /><Stack.Screen name="topup" options={{ presentation: "card" }} /><Stack.Screen name="inventory" options={{ presentation: "card" }} /><Stack.Screen name="avatar-decorations" options={{ presentation: "card" }} /><Stack.Screen name="developer" options={{ presentation: "card" }} /></Stack><ConnectivitySignal /><AppUpdatePrompt /><SupportPrompt /><AniListDownBanner /><FirstRunOnboarding onComplete={() => {}} /></AppProviders></SafeAreaProvider></GestureHandlerRootView>;
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: APP_BG_COLOR }}>
+      <SafeAreaProvider>
+        <AppProviders>
+          <StartupPrefetcher />
+          <AiringReminderScheduler />
+          <StatusBar style="light" translucent backgroundColor="transparent" />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              animation: "fade",
+              contentStyle: { backgroundColor: APP_BG_COLOR },
+            }}
+          >
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="anime/[id]" />
+            <Stack.Screen name="watch/[id]" />
+            <Stack.Screen name="search" options={{ presentation: "card" }} />
+            <Stack.Screen name="auth" options={{ presentation: "modal" }} />
+            <Stack.Screen name="settings" options={{ presentation: "modal" }} />
+            <Stack.Screen name="support" options={{ presentation: "modal" }} />
+            <Stack.Screen name="library" />
+            <Stack.Screen name="legal" options={{ presentation: "modal" }} />
+            <Stack.Screen name="topup" options={{ presentation: "card" }} />
+            <Stack.Screen name="inventory" options={{ presentation: "card" }} />
+            <Stack.Screen name="avatar-decorations" options={{ presentation: "card" }} />
+            <Stack.Screen name="developer" options={{ presentation: "card" }} />
+          </Stack>
+          <ConnectivitySignal />
+          <AppUpdatePrompt />
+          <SupportPrompt />
+          <AniListDownBanner />
+          <FirstRunOnboarding onComplete={() => {}} />
+        </AppProviders>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
 }
 
 export function ErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {

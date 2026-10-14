@@ -134,8 +134,8 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   // App version display
-  const versionString = `v${Constants.expoConfig?.version || "1.4.9"} · build ${
-    Constants.expoConfig?.android?.versionCode || 47
+  const versionString = `v${Constants.expoConfig?.version || "0.0.1"} · build ${
+    Constants.expoConfig?.android?.versionCode || 1
   }`;
 
   // Reset to first page ('WELCOME) whenever user is signed out
@@ -189,18 +189,24 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
     setAuthError(null);
     try {
       await auth.signInWithGoogle();
-      onComplete();
-      if (Platform.OS !== "web") {
-        setSigningIn(false);
-      }
+      // On web or when sign-in finishes, auth.user updates
     } catch (err: any) {
-      setSigningIn(false);
       const msg = err?.message || "Gagal masuk dengan Google. Silakan coba lagi.";
       if (!msg.toLowerCase().includes("cancel")) {
         setAuthError(msg);
       }
+    } finally {
+      setSigningIn(false);
     }
   };
+
+  // Only trigger onComplete when auth.user has successfully been established
+  useEffect(() => {
+    if (auth.user) {
+      hapticSuccess();
+      onComplete();
+    }
+  }, [auth.user, onComplete]);
 
   // Pan gesture for swiping up and down
   const panResponder = useRef(
@@ -218,8 +224,14 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
     })
   ).current;
 
-  // Do not display if auth is still validating session, or if user is already logged in
-  if (auth.loading || auth.user) return null;
+  // 1. If user is already authenticated and not signing in, dismiss onboarding
+  if (auth.user && !signingIn) return null;
+
+  // 2. On app start, while auth is initially checking existing session:
+  // keep screen covered in dark background so Home is NEVER shown prematurely
+  if (auth.loading && !signingIn && pageRef.current === 0) {
+    return <View style={[styles.overlay, { backgroundColor: "#0E0E11" }]} />;
+  }
 
   return (
     <View style={styles.overlay} {...panResponder.panHandlers}>
@@ -402,7 +414,7 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
               </Text>
 
               {/* Version at bottom */}
-              <Text style={styles.bottomVersionText}>v1.4.9</Text>
+              <Text style={styles.bottomVersionText}>v{Constants.expoConfig?.version || "0.0.1"}</Text>
             </View>
           </View>
         )}
@@ -414,7 +426,7 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#0B0E17", // Sleek dark grey background
+    backgroundColor: "#0E0E11", // Sleek dark grey background
     zIndex: 99999,
     ...(Platform.OS === "web"
       ? ({

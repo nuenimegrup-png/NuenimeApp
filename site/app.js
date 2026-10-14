@@ -1,8 +1,8 @@
-// ═══ ANIRAKU V5.4 — Landing Page JS ═══
+// ═══ NUENIME V0.0.1 — Landing Page JS ═══
 
 const REPO = "nuenimegrup-png/NuenimeApp";
 const api = "https://api.github.com/repos";
-const FALLBACK_TAG = "v5.6.0";
+const FALLBACK_TAG = "v0.0.1";
 // Archive: latest release expanded + this many compact rows visible;
 // anything older hides behind the "show all" toggle.
 const ARCHIVE_VISIBLE = 4;
@@ -61,11 +61,11 @@ async function loadReleases() {
   };
 
   applyVersion(FALLBACK_TAG);
-  setArchHref("arch-universal", null, `https://github.com/${REPO}/releases/download/${FALLBACK_TAG}/aniraku-${FALLBACK_TAG}-universal.apk`);
-  setArchHref("arch-arm64", null, `https://github.com/${REPO}/releases/download/${FALLBACK_TAG}/aniraku-${FALLBACK_TAG}-arm64.apk`);
-  setArchHref("arch-arm32", null, `https://github.com/${REPO}/releases/download/${FALLBACK_TAG}/aniraku-${FALLBACK_TAG}-arm32.apk`);
+  setArchHref("arch-universal", null, `https://github.com/${REPO}/releases/download/${FALLBACK_TAG}/nuenime-${FALLBACK_TAG}-universal.apk`);
+  setArchHref("arch-arm64", null, `https://github.com/${REPO}/releases/download/${FALLBACK_TAG}/nuenime-${FALLBACK_TAG}-arm64.apk`);
+  setArchHref("arch-arm32", null, `https://github.com/${REPO}/releases/download/${FALLBACK_TAG}/nuenime-${FALLBACK_TAG}-arm32.apk`);
   const heroDl = document.getElementById("hero-download");
-  if (heroDl) heroDl.href = `https://github.com/${REPO}/releases/download/${FALLBACK_TAG}/aniraku-${FALLBACK_TAG}-universal.apk`;
+  if (heroDl) heroDl.href = `https://github.com/${REPO}/releases/download/${FALLBACK_TAG}/nuenime-${FALLBACK_TAG}-universal.apk`;
 
   if (!list) return;
   try {

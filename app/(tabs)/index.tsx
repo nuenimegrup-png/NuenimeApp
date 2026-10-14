@@ -28,6 +28,7 @@ import { AppIcon } from "@/components/app-icon";
 import { InAppEpisodeAlertMonitor } from "@/hooks/use-in-app-episode-alerts";
 import { useWatchHistory } from "@/hooks/use-watch-history";
 import { useBookmarks } from "@/hooks/use-bookmarks";
+import { useNotifications } from "@/hooks/use-notifications";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { useExp } from "@/providers/exp-toast-provider";
 import { EXP_RULES } from "@/lib/user-level";
@@ -76,6 +77,8 @@ export default function HomeScreen() {
   }, [auth.user, grantXp]);
 
   const isAdultParam = nsfwFilterParam(nsfw.enabled);
+  const { notifications } = useNotifications();
+  const unreadNotifCount = notifications.data?.filter((n) => !n.read).length || 0;
   const [notifSheetVisible, setNotifSheetVisible] = useState(false);
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const [selectedGenre, setSelectedGenre] = useState<string>("Action");
@@ -209,7 +212,7 @@ export default function HomeScreen() {
             />
           </View>
 
-          {/* Right Action Icons: Search & DylanCrystal */}
+          {/* Right Action Icons: Search, Notifications/Hadiah & DylanCrystal */}
           <View style={styles.topHeaderActions}>
             <Pressable
               onPress={() => {
@@ -221,6 +224,22 @@ export default function HomeScreen() {
               hitSlop={10}
             >
               <AppIcon name="magnify" size={22} color="#FFFFFF" />
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Notifikasi dan Hadiah"
+              onPress={() => {
+                hapticLight();
+                setNotifSheetVisible(true);
+              }}
+              style={({ pressed }) => [styles.headerIconBtn, pressed && styles.btnPressed]}
+              hitSlop={10}
+            >
+              <View style={{ position: "relative" }}>
+                <AppIcon name="bell" size={22} color="#FFFFFF" />
+                {unreadNotifCount > 0 ? <View style={styles.notifBadgeDot} /> : null}
+              </View>
             </Pressable>
 
             <Pressable
@@ -675,6 +694,17 @@ const styles = StyleSheet.create({
   headerCrystalImg: {
     width: 28,
     height: 28,
+  },
+  notifBadgeDot: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#EF4444",
+    borderWidth: 1.5,
+    borderColor: "#0B0E17",
   },
 
   // ─── NUEGAME BAR ───

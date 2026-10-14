@@ -18,6 +18,16 @@ export interface WallpaperItem {
   expBonus: number; // in percent, e.g. 20 for +20%
   image: string; // URL for high-res banner
   color: string; // Accent color for borders / badges
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export function isValidImageUrl(url?: string | null): boolean {
+  if (!url || typeof url !== "string") return false;
+  const trimmed = url.trim();
+  if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) return false;
+  return true;
 }
 
 export interface GachaTransaction {
@@ -95,9 +105,21 @@ export const RARITY_CONFIG: Record<
 };
 
 // ─── GACHA COSTS & ANIMATION SETTINGS ───
-export const GACHA_BANNER_IMAGE = require("../assets/images/gacha/banner.gif");
-export const GACHA_ANIMATION_GIF = require("../assets/images/gacha/animasi-gacha.gif");
-export const CRYSTAL_ICON = require("../assets/images/topup/topup-crystal.png");
+let gachaBannerImage: any = 1;
+let gachaAnimGif: any = 1;
+let crystalIcon: any = 1;
+
+try {
+  if (typeof process === "undefined" || process.env?.NODE_ENV !== "test") {
+    gachaBannerImage = require("../assets/images/gacha/banner.gif");
+    gachaAnimGif = require("../assets/images/gacha/animasi-gacha.gif");
+    crystalIcon = require("../assets/images/topup/topup-crystal.png");
+  }
+} catch {}
+
+export const GACHA_BANNER_IMAGE = gachaBannerImage;
+export const GACHA_ANIMATION_GIF = gachaAnimGif;
+export const CRYSTAL_ICON = crystalIcon;
 
 export const GACHA_SETTINGS = {
   cost1x: 1000, // 1000 Crystal untuk 1x Summon

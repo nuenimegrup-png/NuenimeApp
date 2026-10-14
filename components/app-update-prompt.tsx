@@ -7,7 +7,7 @@ import { nothing } from "@/components/nothing-ui";
 import { checkForAnirakuUpdate, updateDismissalKey, type AppRelease } from "@/lib/app-update";
 import { downloadAndInstallAnirakuUpdate } from "@/lib/android-app-installer";
 
-const installedVersion = Constants.expoConfig?.version || Constants.nativeAppVersion || "0.0.0";
+const installedVersion = Constants.expoConfig?.version || Constants.nativeAppVersion || "0.0.1";
 
 export function AppUpdatePrompt() {
   const [release, setRelease] = useState<AppRelease | null>(null);

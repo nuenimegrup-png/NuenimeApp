@@ -66,8 +66,9 @@ describe("AniList query construction", () => {
     global.fetch = fetchMock as typeof fetch;
 
     const first = await getAnimePage({ search: "Bleach" });
-    vi.setSystemTime(Date.now() + 5 * 60_000 + 1);
+    vi.advanceTimersByTime(5 * 60_000 + 1);
     const second = await getAnimePage({ search: "Bleach" });
+    vi.useRealTimers();
 
     expect(first.media).toMatchObject([{ id: 7 }]);
     expect(second.media).toMatchObject([{ id: 7 }]);

@@ -37,7 +37,11 @@ import {
   getCrystalBalance,
   getOwnedWallpaperIds,
   setActiveWallpaperId,
+  getGachaConfig,
+  getAllGachaBanners,
+  type DynamicGachaConfig,
 } from "@/lib/gacha-service";
+import { supabase } from "@/lib/supabase";
 
 export default function GachaScreen() {
   const auth = useAnirakuAuth();
@@ -50,6 +54,8 @@ export default function GachaScreen() {
   const [activeWallpaperId, setActiveWallpaperIdState] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showLocked, setShowLocked] = useState(true);
+  const [allBanners, setAllBanners] = useState<WallpaperItem[]>(WALLPAPER_CATALOG);
+  const [gachaConfigState, setGachaConfigState] = useState<DynamicGachaConfig | null>(null);
 
   // ─── TRANSACTION & ANIMATION STATES ───
   const [isSummoning, setIsSummoning] = useState(false);
@@ -82,13 +88,24 @@ export default function GachaScreen() {
   // Responsive 2-column calculation
   const cardWidth = Math.floor((Math.min(windowWidth, 600) - 32 - 12) / 2);
 
+  // ─── DYNAMIC COSTS ───
+  const cost1x = gachaConfigState?.costSingle ?? GACHA_SETTINGS.cost1x;
+  const cost10x = gachaConfigState?.costMulti ?? GACHA_SETTINGS.cost10x;
+
   // ─── INITIAL LOAD ───
   const loadData = useCallback(async () => {
     try {
-      const balance = await getCrystalBalance();
-      setCrystalBalance(balance);
+      const [balance, owned, cfg, bannerList] = await Promise.all([
+        getCrystalBalance(auth.user?.id),
+        getOwnedWallpaperIds(auth.user?.id),
+        getGachaConfig(),
+        getAllGachaBanners(),
+      ]);
 
-      const owned = await getOwnedWallpaperIds();
+      setCrystalBalance(balance);
+      setGachaConfigState(cfg);
+      setAllBanners(bannerList);
+
       // If user has no wallpapers yet, grant default normal wallpaper as starter
       if (owned.length === 0) {
         const starter = ["naruto_ramen"];
@@ -99,9 +116,9 @@ export default function GachaScreen() {
       }
 
       // Sync active equipped wallpaper (either from profile.banner_url or storage)
-      const localActive = await getActiveWallpaperId();
+      const localActive = await getActiveWallpaperId(auth.user?.id);
       if (auth.profile?.banner_url) {
-        const matching = WALLPAPER_CATALOG.find((w) => w.image === auth.profile?.banner_url);
+        const matching = bannerList.find((w) => w.image === auth.profile?.banner_url);
         if (matching) {
           setActiveWallpaperIdState(matching.id);
         } else if (localActive) {
@@ -111,11 +128,41 @@ export default function GachaScreen() {
         setActiveWallpaperIdState(localActive);
       }
     } catch {}
-  }, [auth.profile?.banner_url]);
+  }, [auth.user?.id, auth.profile?.banner_url]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Real-time synchronization dengan Supabase jika balance di-update via admin / topup
+  useEffect(() => {
+    if (!auth.user?.id || auth.user.id === "guest") return;
+
+    const channel = supabase
+      .channel(`gacha-crystal-${auth.user.id}-${Date.now()}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "user_balances",
+          filter: `user_id=eq.${auth.user.id}`,
+        },
+        (payload) => {
+          const newRow = payload.new as any;
+          if (newRow && typeof newRow.crystal_balance === "number") {
+            setCrystalBalance(newRow.crystal_balance);
+          } else {
+            loadData();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [auth.user?.id, loadData]);
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setFeedbackToast({ message, type });
@@ -126,12 +173,12 @@ export default function GachaScreen() {
   const handleStartSummon = async (count: 1 | 10) => {
     if (isSummoning || isAnimationPlaying) return;
 
-    const cost = count === 1 ? GACHA_SETTINGS.cost1x : GACHA_SETTINGS.cost10x;
+    const cost = count === 1 ? cost1x : cost10x;
     if (crystalBalance < cost) {
       hapticWarning();
       setInsufficientDetails({ cost, count });
       setShowInsufficientModal(true);
-      showToast(`Crystal tidak cukup! Silakan top up untuk melakukan gacha lagi.`, "error");
+      showToast(`Crystal tidak cukup! Anda memiliki ${crystalBalance.toLocaleString("id-ID")} Crystal, dibutuhkan ${cost.toLocaleString("id-ID")} Crystal.`, "error");
       return;
     }
 
@@ -141,7 +188,7 @@ export default function GachaScreen() {
 
     try {
       // 1. Process transaction safely & atomic
-      const result = await executeGachaSummon(count);
+      const result = await executeGachaSummon(auth.user?.id, count, gachaConfigState || undefined);
       if (!result.success) {
         setIsSummoning(false);
         Alert.alert("Gagal Summon", result.error || "Terjadi kesalahan saat memproses gacha.");
@@ -151,7 +198,7 @@ export default function GachaScreen() {
       // Update state data immediately in memory
       setCrystalBalance(result.newBalance);
       setGachaResults(result.results);
-      const updatedOwned = await getOwnedWallpaperIds();
+      const updatedOwned = await getOwnedWallpaperIds(auth.user?.id);
       setOwnedIds(updatedOwned);
 
       // 2. Play GIF animation: reset key to restart GIF from frame 0
@@ -186,8 +233,8 @@ export default function GachaScreen() {
 
     setIsApplyingBanner(true);
     try {
-      // 1. Persist to active wallpaper
-      await setActiveWallpaperId(previewItem.id);
+      // 1. Persist to active wallpaper per user
+      await setActiveWallpaperId(auth.user?.id, previewItem.id);
       setActiveWallpaperIdState(previewItem.id);
 
       // 2. Persist to Supabase user profile banner_url
@@ -209,7 +256,7 @@ export default function GachaScreen() {
   // ─── FILTERED WALLPAPERS ───
   const filteredWallpapers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return WALLPAPER_CATALOG.filter((item) => {
+    return allBanners.filter((item) => {
       // Filter by search query
       if (q && !item.name.toLowerCase().includes(q) && !item.anime.toLowerCase().includes(q)) {
         return false;
@@ -221,7 +268,7 @@ export default function GachaScreen() {
       }
       return true;
     });
-  }, [searchQuery, showLocked, ownedIds]);
+  }, [allBanners, searchQuery, showLocked, ownedIds]);
 
   // Group wallpapers by rarity in order: Mythic, Legendary, Epic, Rare, Normal
   const rarityGroups: WallpaperRarity[] = ["Mythic", "Legendary", "Epic", "Rare", "Normal"];
@@ -291,7 +338,7 @@ export default function GachaScreen() {
             {/* Summon 1x (Navy/Slate button) */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Summon 1x, biaya ${GACHA_SETTINGS.cost1x} Daylan Crystal`}
+              accessibilityLabel={`Summon 1x, biaya ${cost1x} Daylan Crystal`}
               disabled={isSummoning}
               onPress={() => handleStartSummon(1)}
               style={({ pressed }) => [
@@ -304,14 +351,14 @@ export default function GachaScreen() {
               <Text style={styles.summonTitle1x}>Summon 1x</Text>
               <View style={styles.summonCostPill}>
                 <Image source={CRYSTAL_ICON} style={styles.btnCrystalIcon} contentFit="contain" />
-                <Text style={styles.summonCostText1x}>{GACHA_SETTINGS.cost1x.toLocaleString()}</Text>
+                <Text style={styles.summonCostText1x}>{cost1x.toLocaleString("id-ID")}</Text>
               </View>
             </Pressable>
 
             {/* Summon 10x (Warm Gold button) */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Summon 10x, biaya ${GACHA_SETTINGS.cost10x} Daylan Crystal`}
+              accessibilityLabel={`Summon 10x, biaya ${cost10x} Daylan Crystal`}
               disabled={isSummoning}
               onPress={() => handleStartSummon(10)}
               style={({ pressed }) => [
@@ -324,7 +371,7 @@ export default function GachaScreen() {
               <Text style={styles.summonTitle10x}>Summon 10x</Text>
               <View style={styles.summonCostPill}>
                 <Image source={CRYSTAL_ICON} style={styles.btnCrystalIcon} contentFit="contain" />
-                <Text style={styles.summonCostText10x}>{GACHA_SETTINGS.cost10x.toLocaleString()}</Text>
+                <Text style={styles.summonCostText10x}>{cost10x.toLocaleString("id-ID")}</Text>
               </View>
             </Pressable>
           </View>
@@ -453,7 +500,7 @@ export default function GachaScreen() {
           {/* ─── 8. WALLPAPER GROUPS BY RARITY ─── */}
           {rarityGroups.map((rarityKey) => {
             const config = RARITY_CONFIG[rarityKey];
-            const groupAllItems = WALLPAPER_CATALOG.filter((w) => w.rarity === rarityKey);
+            const groupAllItems = allBanners.filter((w) => w.rarity === rarityKey);
             const groupVisibleItems = filteredWallpapers.filter((w) => w.rarity === rarityKey);
 
             if (groupVisibleItems.length === 0) return null;

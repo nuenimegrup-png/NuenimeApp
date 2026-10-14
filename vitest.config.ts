@@ -5,6 +5,19 @@ export default defineConfig({
   define: {
     __DEV__: true,
   },
+  plugins: [
+    {
+      name: "mock-binary-assets",
+      transform(_code, id) {
+        if (/\.(gif|png|jpg|jpeg|webp|svg)$/i.test(id)) {
+          return {
+            code: "module.exports = 'mock-asset'; export default 'mock-asset';",
+            map: null,
+          };
+        }
+      },
+    },
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),

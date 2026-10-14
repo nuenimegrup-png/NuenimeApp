@@ -15,7 +15,7 @@ const config: ExpoConfig = {
   slug: env.appSlug,
   version: "0.0.1",
   orientation: "default",
-  icon: "./assets/images/icon.png",
+  icon: "./assets/images/logo-app.png",
   scheme: env.scheme,
   userInterfaceStyle: "dark",
   // SDK 54 is the final Expo release that supports the proven legacy RN
@@ -29,7 +29,7 @@ const config: ExpoConfig = {
   },
   android: {
     versionCode: 1,
-    adaptiveIcon: { backgroundColor: "#090909", foregroundImage: "./assets/images/android-icon-foreground.png" },
+    adaptiveIcon: { backgroundColor: "#0E0E11", foregroundImage: "./assets/images/logo-app.png" },
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
@@ -40,7 +40,7 @@ const config: ExpoConfig = {
       { action: "VIEW", autoVerify: true, data: [{ scheme: "https", host: "aniraku.tech", pathPrefix: "/anime/" }], category: ["BROWSABLE", "DEFAULT"] },
     ],
   },
-  web: { bundler: "metro", output: "single", favicon: "./assets/images/favicon.png" },
+  web: { bundler: "metro", output: "single", favicon: "./assets/images/logo-app.png" },
   plugins: [
     "expo-router",
     "expo-asset",
@@ -50,9 +50,10 @@ const config: ExpoConfig = {
     ["react-native-video", { enableAndroidPictureInPicture: true }],
     ["expo-screen-orientation", { initialOrientation: "DEFAULT" }],
     ["expo-secure-store", { configureAndroidBackup: false }],
-    ["expo-notifications", { icon: "./assets/images/icon.png", color: "#FF4D4D" }],
-    ["expo-splash-screen", { image: "./assets/images/splash-icon.png", imageWidth: 200, resizeMode: "contain", backgroundColor: "#090909", dark: { backgroundColor: "#090909" } }],
-      ["expo-build-properties", { android: { buildArchs: ["armeabi-v7a", "arm64-v8a", "x86_64"], minSdkVersion: 28 } }],
+    ["expo-notifications", { icon: "./assets/images/logo-app.png", color: "#FF4D4D" }],
+    ["expo-splash-screen", { image: "./assets/images/logo-app.png", imageWidth: 200, resizeMode: "contain", backgroundColor: "#0E0E11", dark: { backgroundColor: "#0E0E11" } }],
+    ["expo-build-properties", { android: { buildArchs: ["armeabi-v7a", "arm64-v8a", "x86_64"], minSdkVersion: 28 } }],
+    "@react-native-google-signin/google-signin",
   ],
   // Keep file-route typing, but remove optional compiler/runtime experiments
   // from the compatibility build's startup path.

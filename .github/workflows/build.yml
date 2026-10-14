@@ -9,7 +9,7 @@ on:
       tag:
         description: "Release tag to build (must match the version in app.config.ts)"
         required: false
-        default: "v5.7.3"
+        default: "v0.0.1"
 
 env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
@@ -22,26 +22,12 @@ jobs:
   validate:
     name: Validate (typecheck, lint, tests)
     runs-on: ubuntu-latest
-    # Blocking validate gate: typecheck, lint, and tests must pass before the
-    # APK build starts (see `needs: validate` on the build job). Verified for
-    # Phase I:
-    #   - `pnpm install --frozen-lockfile` ✔ (lockfile re-synced after dropping expo-video)
-    #   - `pnpm check` ✔ (tsc clean)
-    #   - `pnpm lint` ✔ (ESLint 9 config fixed: eslint.config.mjs; 0 errors)
-    #   - `pnpm test` ✔ (tests/aniraku-services + aniraku-avatars now skip when
-    #     EXPO_PUBLIC_* env is absent; with the secrets below they run as live
-    #     smoke probes, so a production endpoint outage will also fail validation)
     continue-on-error: false
-    # Live-configuration secrets: with these set, the suite asserts real
-    # Supabase/AniList endpoints; without them, those tests skip gracefully.
     env:
       EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
       EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
       EXPO_PUBLIC_ANILIST_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_ANILIST_CLIENT_ID }}
-      # Pinned, not secret: metadata ships from Aniraku's offline AniList
-      # mirror (same DB, no rate limits). Keeps validate/prebuild/build — and
-      # therefore the shipped APK — on the same endpoint as the app default.
-      EXPO_PUBLIC_ANILIST_GRAPHQL_URL: "https://graphql.aniraku.tech"
+      EXPO_PUBLIC_ANILIST_GRAPHQL_URL: "https://graphql.anilist.co"
       EXPO_PUBLIC_API_BASE_URL: ${{ secrets.EXPO_PUBLIC_API_BASE_URL }}
       EXPO_PUBLIC_MAL_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_MAL_CLIENT_ID }}
     steps:
@@ -107,9 +93,10 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_ANILIST_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_ANILIST_CLIENT_ID }}
-          EXPO_PUBLIC_ANILIST_GRAPHQL_URL: "https://graphql.aniraku.tech"
+          EXPO_PUBLIC_ANILIST_GRAPHQL_URL: "https://graphql.anilist.co"
           EXPO_PUBLIC_API_BASE_URL: ${{ secrets.EXPO_PUBLIC_API_BASE_URL }}
           EXPO_PUBLIC_MAL_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_MAL_CLIENT_ID }}
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '444728416290-ohgsfpd6bon745bdh5kshvth16rn8eh6.apps.googleusercontent.com' }}
 
       - name: Build APK (${{ matrix.label }})
         run: |
@@ -125,12 +112,16 @@ jobs:
           EXPO_PUBLIC_ANILIST_GRAPHQL_URL: "https://graphql.aniraku.tech"
           EXPO_PUBLIC_API_BASE_URL: ${{ secrets.EXPO_PUBLIC_API_BASE_URL }}
           EXPO_PUBLIC_MAL_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_MAL_CLIENT_ID }}
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '444728416290-ohgsfpd6bon745bdh5kshvth16rn8eh6.apps.googleusercontent.com' }}
 
-      - name: Rename APK
+      - name: Rename and Print APK Fingerprint
         run: |
           APK=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
           cp "$APK" "aniraku-${RELEASE_TAG}-${{ matrix.label }}.apk"
           echo "Built: aniraku-${RELEASE_TAG}-${{ matrix.label }}.apk"
+          echo "================ APK CERTIFICATE FINGERPRINTS ================"
+          keytool -printcert -jarfile "$APK" | grep -iE "SHA1|SHA256" || keytool -printcert -jarfile "$APK"
+          echo "=============================================================="
 
       - uses: actions/upload-artifact@v4
         with:
@@ -158,41 +149,18 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          name: Aniraku ${{ env.RELEASE_TAG }}
+          name: Nuenime ${{ env.RELEASE_TAG }}
           draft: false
           prerelease: false
           body: |
-            ## v5.7.3 — Offline AniList mirror + keyless closed-app notifications
+            ## Nuenime ${{ env.RELEASE_TAG }}
 
-            Three builds for full coverage (Android 9+). The universal APK contains all architectures.
+            - **Fitur Gacha & Koleksi Banner Profil**: Dukungan GIF animasi, PNG, JPG, biaya kustom Dylan Crystal, setting drop rate dinamis di Admin Dashboard.
+            - **Hadiah Massal (Mailbox)**: Pengiriman hadiah massal admin ke seluruh pemain, notifikasi lonceng & popup klaim interaktif.
+            - **Stabilitas API**: Automatic failover ke official AniList GraphQL.
+            - **Perbaikan UI & Legalitas**: Dukungan support & donasi Saweria, Nothing UI styling.
 
-            - `aniraku-v5.7.3-arm64.apk`
-            - `aniraku-v5.7.3-arm32.apk`
-            - `aniraku-v5.7.3-universal.apk`
-
-            ### Added
-            - **Closed-app episode reminders (zero keys)**: local scheduled notifications fire for your Notify Me and bookmarked titles while the app is fully closed — no push accounts, no servers, no credentials.
-            - **Search 2.0**: infinite scroll, filter/sort bottom sheet, pull-to-refresh, smarter empty states.
-            - **Downloads screen**: queue with byte-level progress, Wi-Fi-only and quota settings.
-            - **Player upgrades**: auto-play next episode (opt-in, 5s countdown), subtitle timing offset, Fit/Crop toggle, report-a-broken-source.
-            - **Schedule**: past-day archive, midnight rollover fix, per-title remind-me bells.
-            - **Profile**: inline display-name edit, sign-out, empty-stats state.
-
-            ### Improved
-            - **Metadata on Aniraku's offline AniList mirror (`graphql.aniraku.tech`)**: same database as AniList with no rate limits — request spacing relaxed from 2.1s to 300ms for much faster browsing.
-            - **Library unified**: History / Saved / Alerts in one view with search, sort, grid/list toggle, and per-row delete.
-            - **Speed**: Home data cached up to 10 min and detail up to 15 min, no refetch stampedes on reconnect, optimized images, memoized rails.
-
-            ### Fixed
-            - **"More like this" recommendations restored**: the old query field no longer exists on official AniList either — the rail was silently dead.
-            - **Episode release detection** now uses real airing data instead of a total-episode fallback.
-            - **Accessibility**: labels, roles, and switch semantics across search, home, detail, settings, and onboarding.
-
-            ### Housekeeping
-            - Dead code removed (794 lines), unused deps dropped, ESLint/CI gates hardened — 235 tests green.
-            - **Android versionCode**: 70.
-
-            Download the APK, install, and allow *install from unknown sources* if prompted.
+            Download file APK di bawah ini dan pasang di perangkat Android Anda.
           files: ./artifacts/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

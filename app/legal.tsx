@@ -1,6 +1,6 @@
-﻿import { router } from "expo-router";
+import { router } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AppIcon } from "@/components/app-icon";
 import { nothing } from "@/components/nothing-ui";
 import { NativeScreen } from "@/components/screen";
@@ -148,20 +148,20 @@ export default function LegalScreen() {
             style={({ pressed }) => [styles.sectionCard, pressed && { opacity: 0.7 }]}
           >
             <View style={styles.sectionIconWrap}>
-              <AppIcon name={section.icon} size={18} color="#A78BFA" />
+              <AppIcon name={section.icon} size={18} color="#E2E8F0" />
             </View>
             <View style={styles.sectionBody}>
               <Text style={styles.sectionTitle}>{section.label}</Text>
               <Text style={styles.sectionDetail}>{section.detail}</Text>
             </View>
-            <AppIcon name="chevron-right" size={18} color="#4B5563" />
+            <AppIcon name="chevron-right" size={18} color="#94A3B8" />
           </Pressable>
         ))}
 
         {/* Contact card */}
         <View style={styles.contactCard}>
           <View style={styles.contactHeader}>
-            <AppIcon name="earth" size={15} color="#38BDF8" />
+            <AppIcon name="earth" size={15} color="#E2E8F0" />
             <Text style={styles.contactTitle}>Kontak</Text>
           </View>
           {[
@@ -219,13 +219,21 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.07)",
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
   },
   headerEyebrow: {
     fontFamily: "Nunito-Bold",
     fontSize: 10,
-    color: "#64748B",
+    color: "#94A3B8",
     letterSpacing: 1,
   },
   headerTitle: {
@@ -239,7 +247,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 20,
     paddingBottom: 52,
-    gap: 10,
+    gap: 12,
   },
   scrollInner: {
     paddingHorizontal: 18,
@@ -247,24 +255,38 @@ const styles = StyleSheet.create({
     paddingBottom: 52,
   },
 
-  // ── Section Cards ──
+  // ── Section Cards (Liquid Glass & Silver) ──
   sectionCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
-    backgroundColor: "#161922",
-    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.07)",
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    borderColor: "rgba(255, 255, 255, 0.18)",
     padding: 16,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
   },
   sectionIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "rgba(167,139,250,0.1)",
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.22)",
     alignItems: "center",
     justifyContent: "center",
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
   },
   sectionBody: { flex: 1, gap: 3 },
   sectionTitle: {
@@ -275,55 +297,62 @@ const styles = StyleSheet.create({
   sectionDetail: {
     fontFamily: "Nunito-Regular",
     fontSize: 12,
-    color: "#64748B",
+    color: "#94A3B8",
     lineHeight: 17,
   },
 
-  // ── Contact Card ──
+  // ── Contact Card (Liquid Glass & Silver) ──
   contactCard: {
-    backgroundColor: "#161922",
-    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(56,189,248,0.15)",
-    padding: 16,
-    gap: 10,
+    borderColor: "rgba(255, 255, 255, 0.16)",
+    padding: 18,
+    gap: 12,
     marginTop: 6,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
   },
   contactHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
+    gap: 8,
     marginBottom: 2,
   },
   contactTitle: {
     fontFamily: "Nunito-Bold",
     fontSize: 13,
-    color: "#38BDF8",
-    letterSpacing: 0.3,
+    color: "#E2E8F0",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
   contactRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
+    borderBottomColor: "rgba(255, 255, 255, 0.08)",
   },
   contactLabel: {
     fontFamily: "Nunito-SemiBold",
     fontSize: 12,
-    color: "#64748B",
+    color: "#94A3B8",
   },
   contactValue: {
     fontFamily: "Nunito-Regular",
     fontSize: 12,
-    color: "#94A3B8",
+    color: "#CBD5E1",
   },
 
   footerNote: {
     fontFamily: "Nunito-Regular",
     fontSize: 11.5,
-    color: "#3F3F46",
+    color: "#64748B",
     textAlign: "center",
     marginTop: 8,
   },
@@ -339,20 +368,20 @@ const styles = StyleSheet.create({
   legalDate: {
     fontFamily: "Nunito-Regular",
     fontSize: 11,
-    color: "#4B5563",
+    color: "#94A3B8",
     letterSpacing: 0.3,
     marginTop: -6,
   },
   legalBody: {
     fontFamily: "Nunito-Regular",
     fontSize: 13,
-    color: "#94A3B8",
+    color: "#CBD5E1",
     lineHeight: 21,
   },
   licenseRow: {
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
+    borderBottomColor: "rgba(255, 255, 255, 0.08)",
     gap: 3,
   },
   licenseName: {
@@ -363,19 +392,25 @@ const styles = StyleSheet.create({
   licenseType: {
     fontFamily: "Nunito-SemiBold",
     fontSize: 10.5,
-    color: "#A78BFA",
+    color: "#CBD5E1",
   },
   licenseCopyright: {
     fontFamily: "Nunito-Regular",
     fontSize: 11,
-    color: "#4B5563",
+    color: "#94A3B8",
   },
   mitBox: {
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-    padding: 14,
-    marginTop: 8,
+    borderColor: "rgba(255, 255, 255, 0.16)",
+    padding: 16,
+    marginTop: 10,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
   },
 });

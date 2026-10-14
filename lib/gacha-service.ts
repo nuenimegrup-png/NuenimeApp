@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { supabase } from "./supabase";
 import {
   GACHA_SETTINGS,
   RARITY_CONFIG,
@@ -11,180 +12,742 @@ import {
   WallpaperRarity,
   GachaTransaction,
 } from "./gacha-data";
+import {
+  getCrystalBalance as getTopUpCrystalBalance,
+  setCrystalBalance as setTopUpCrystalBalance,
+  deductCrystalBalance as deductTopUpCrystalBalance,
+} from "./topup-service";
+import type { AdminUser } from "./admin-service";
+import { logAdminAction } from "./admin-service";
+
+// ─── CONFIGURATION TYPES & CONSTANTS ───
+export interface DynamicGachaConfig {
+  costSingle: number;
+  costMulti: number;
+  rates: {
+    mythic: number;
+    legends: number;
+    epic: number;
+    rare: number;
+    normal: number;
+  };
+  bannerTitle: string;
+  bannerDesc: string;
+}
+
+export const SUPABASE_CONFIG_GACHA_KEY = "gacha_config";
+export const STORAGE_GACHA_CONFIG_KEY = "nuenime.admin.gacha_config";
+
+export const DEFAULT_GACHA_CONFIG: DynamicGachaConfig = {
+  costSingle: 1000,
+  costMulti: 9000,
+  rates: {
+    mythic: 2.0,
+    legends: 8.0,
+    epic: 20.0,
+    rare: 30.0,
+    normal: 40.0,
+  },
+  bannerTitle: "Bintang Istana Malam",
+  bannerDesc: "Wallpaper edisi terbatas & bingkai mistis malam purnama.",
+};
+
+// ─── STORAGE KEY HELPERS (ACCOUNT ISOLATION) ───
+export function getOwnedWallpapersStorageKey(userId?: string | null): string {
+  if (userId && userId.trim().length > 0 && userId !== "guest") {
+    return `nuenime.owned.wallpapers.${userId.trim()}`;
+  }
+  return STORAGE_OWNED_WALLPAPERS;
+}
+
+export function getActiveWallpaperStorageKey(userId?: string | null): string {
+  if (userId && userId.trim().length > 0 && userId !== "guest") {
+    return `nuenime.active.wallpaper.${userId.trim()}`;
+  }
+  return STORAGE_ACTIVE_WALLPAPER;
+}
+
+export function getGachaHistoryStorageKey(userId?: string | null): string {
+  if (userId && userId.trim().length > 0 && userId !== "guest") {
+    return `nuenime.gacha.history.${userId.trim()}`;
+  }
+  return STORAGE_GACHA_HISTORY;
+}
+
+// ─── 1. CRYSTAL BALANCE INTEGRATION ───
+/**
+ * Mengambil saldo Dylan Crystal akun pengguna dari database utama (user_balances).
+ * Terhubung penuh dengan sistem Top Up dan profil pengguna.
+ */
+export async function getCrystalBalance(userId?: string | null): Promise<number> {
+  return getTopUpCrystalBalance(userId);
+}
 
 /**
- * Get current Daylan Crystal balance.
- * Initializes with GACHA_SETTINGS.defaultInitialBalance (e.g. 1500) if user has never top up / drawn yet.
+ * Menetapkan saldo Crystal akun pengguna (sinkron ke Supabase & AsyncStorage).
  */
-export async function getCrystalBalance(): Promise<number> {
+export async function setCrystalBalance(
+  userId: string | null | undefined,
+  amount: number
+): Promise<number> {
+  return setTopUpCrystalBalance(userId, amount);
+}
+
+// ─── 2. DYNAMIC GACHA CONFIG (PRICING & RATES) ───
+/**
+ * Mengambil konfigurasi harga dan probabilitas gacha dari Supabase system_configs.
+ * Fallback ke AsyncStorage dan nilai default.
+ */
+export async function getGachaConfig(): Promise<DynamicGachaConfig> {
+  // 1. Coba ambil dari Supabase system_configs
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_CRYSTAL_BALANCE);
-    if (raw === null) {
-      // Set initial starting balance for first run
-      await AsyncStorage.setItem(STORAGE_CRYSTAL_BALANCE, String(GACHA_SETTINGS.defaultInitialBalance));
-      return GACHA_SETTINGS.defaultInitialBalance;
+    const { data, error } = await supabase
+      .from("system_configs")
+      .select("value")
+      .eq("key", SUPABASE_CONFIG_GACHA_KEY)
+      .maybeSingle();
+
+    if (!error && data?.value && typeof data.value === "object") {
+      const val = data.value as any;
+      const merged: DynamicGachaConfig = {
+        costSingle: typeof val.cost_single === "number" ? val.cost_single : (val.costSingle ?? DEFAULT_GACHA_CONFIG.costSingle),
+        costMulti: typeof val.cost_multi === "number" ? val.cost_multi : (val.costMulti ?? DEFAULT_GACHA_CONFIG.costMulti),
+        rates: {
+          mythic: typeof val.rates?.mythic === "number" ? val.rates.mythic : DEFAULT_GACHA_CONFIG.rates.mythic,
+          legends: typeof val.rates?.legends === "number" ? val.rates.legends : DEFAULT_GACHA_CONFIG.rates.legends,
+          epic: typeof val.rates?.epic === "number" ? val.rates.epic : DEFAULT_GACHA_CONFIG.rates.epic,
+          rare: typeof val.rates?.rare === "number" ? val.rates.rare : DEFAULT_GACHA_CONFIG.rates.rare,
+          normal: typeof val.rates?.normal === "number" ? val.rates.normal : DEFAULT_GACHA_CONFIG.rates.normal,
+        },
+        bannerTitle: typeof val.banner_title === "string" ? val.banner_title : (val.bannerTitle ?? DEFAULT_GACHA_CONFIG.bannerTitle),
+        bannerDesc: typeof val.banner_desc === "string" ? val.banner_desc : (val.bannerDesc ?? DEFAULT_GACHA_CONFIG.bannerDesc),
+      };
+
+      await AsyncStorage.setItem(STORAGE_GACHA_CONFIG_KEY, JSON.stringify(merged));
+      return merged;
     }
-    const val = parseInt(raw, 10);
-    return isNaN(val) ? 0 : Math.max(0, val);
-  } catch {
-    return 0;
+  } catch (err) {
+    console.warn("[gacha-service] Supabase query system_configs failed:", err);
+  }
+
+  // 2. Fallback AsyncStorage
+  try {
+    const local = await AsyncStorage.getItem(STORAGE_GACHA_CONFIG_KEY);
+    if (local) {
+      const parsed = JSON.parse(local);
+      if (parsed && typeof parsed === "object") {
+        return { ...DEFAULT_GACHA_CONFIG, ...parsed };
+      }
+    }
+  } catch {}
+
+  return DEFAULT_GACHA_CONFIG;
+}
+
+/**
+ * Menyimpan konfigurasi harga gacha dan drop rate ke Supabase & AsyncStorage oleh Admin.
+ */
+export async function saveGachaConfig(
+  config: DynamicGachaConfig,
+  admin?: AdminUser
+): Promise<void> {
+  // Simpan ke AsyncStorage lokal
+  await AsyncStorage.setItem(STORAGE_GACHA_CONFIG_KEY, JSON.stringify(config));
+
+  // Simpan ke Supabase system_configs
+  try {
+    await supabase.from("system_configs").upsert({
+      key: SUPABASE_CONFIG_GACHA_KEY,
+      value: {
+        cost_single: config.costSingle,
+        cost_multi: config.costMulti,
+        rates: config.rates,
+        banner_title: config.bannerTitle,
+        banner_desc: config.bannerDesc,
+      },
+      updated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn("[gacha-service] Failed to persist system_configs:", err);
+  }
+
+  // Audit log jika dijalankan admin
+  if (admin) {
+    await logAdminAction({
+      admin,
+      action: "UPDATE_GACHA_CONFIG",
+      targetType: "gacha",
+      targetId: "pricing_and_rates",
+      details: config,
+    });
   }
 }
 
+// ─── 3. GACHA BANNERS CRUD (DATABASE POOL) ───
+const STORAGE_CACHED_BANNERS = "nuenime.cached.gacha_banners";
+
 /**
- * Update Daylan Crystal balance.
+ * Mengambil seluruh koleksi banner dari database Supabase (gacha_banners).
+ * Jika tabel belum ada atau offline, menggabungkan dengan katalog awal WALLPAPER_CATALOG.
  */
-export async function setCrystalBalance(balance: number): Promise<number> {
-  const safe = Math.max(0, Math.floor(balance));
-  await AsyncStorage.setItem(STORAGE_CRYSTAL_BALANCE, String(safe));
-  return safe;
+export async function getAllGachaBanners(): Promise<WallpaperItem[]> {
+  try {
+    const { data, error } = await supabase
+      .from("gacha_banners")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!error && Array.isArray(data) && data.length > 0) {
+      const mapped: WallpaperItem[] = data.map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        anime: row.anime || "",
+        rarity: (row.rarity as WallpaperRarity) || "Normal",
+        category: (row.category as any) || RARITY_CONFIG[row.rarity as WallpaperRarity]?.category || "Standard",
+        expBonus: typeof row.exp_bonus === "number" ? row.exp_bonus : (RARITY_CONFIG[row.rarity as WallpaperRarity]?.expBonus || 5),
+        image: row.image,
+        color: row.color || RARITY_CONFIG[row.rarity as WallpaperRarity]?.color || "#94A3B8",
+        isActive: row.is_active !== false,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }));
+
+      await AsyncStorage.setItem(STORAGE_CACHED_BANNERS, JSON.stringify(mapped));
+      return mapped;
+    }
+  } catch (err) {
+    console.warn("[gacha-service] Supabase query gacha_banners failed:", err);
+  }
+
+  // Fallback cache AsyncStorage
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_CACHED_BANNERS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {}
+
+  return WALLPAPER_CATALOG.map((item) => ({ ...item, isActive: true }));
 }
 
 /**
- * Get IDs of wallpapers owned by user.
+ * Mengambil daftar banner aktif yang saat ini masuk ke pool hadiah Gacha.
  */
-export async function getOwnedWallpaperIds(): Promise<string[]> {
+export async function getActiveGachaBanners(): Promise<WallpaperItem[]> {
+  const all = await getAllGachaBanners();
+  const active = all.filter((item) => item.isActive !== false);
+  return active.length > 0 ? active : all;
+}
+
+/**
+ * Menambahkan banner baru oleh Admin ke Supabase gacha_banners.
+ */
+export async function addGachaBanner(
+  item: {
+    id?: string;
+    name: string;
+    anime?: string;
+    rarity: WallpaperRarity;
+    image: string;
+    isActive?: boolean;
+  },
+  admin?: AdminUser
+): Promise<{ success: boolean; data?: WallpaperItem; error?: string }> {
+  const rarity = item.rarity || "Normal";
+  const rarityMeta = RARITY_CONFIG[rarity];
+
+  const bannerId =
+    (item.id && item.id.trim().length > 0)
+      ? item.id.trim().toLowerCase().replace(/\s+/g, "_")
+      : `banner_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+  const newBanner: WallpaperItem = {
+    id: bannerId,
+    name: item.name.trim(),
+    anime: (item.anime || "").trim(),
+    rarity,
+    category: rarityMeta.category,
+    expBonus: rarityMeta.expBonus,
+    image: item.image.trim(),
+    color: rarityMeta.color,
+    isActive: item.isActive !== false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_OWNED_WALLPAPERS);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+    const { error } = await supabase.from("gacha_banners").insert({
+      id: newBanner.id,
+      name: newBanner.name,
+      anime: newBanner.anime,
+      rarity: newBanner.rarity,
+      category: newBanner.category,
+      exp_bonus: newBanner.expBonus,
+      image: newBanner.image,
+      color: newBanner.color,
+      is_active: newBanner.isActive,
+      created_at: newBanner.createdAt,
+      updated_at: newBanner.updatedAt,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+  } catch (err: any) {
+    console.warn("[gacha-service] Supabase insert failed, caching locally:", err);
+  }
+
+  // Update local cache
+  try {
+    const current = await getAllGachaBanners();
+    const next = [newBanner, ...current.filter((b) => b.id !== newBanner.id)];
+    await AsyncStorage.setItem(STORAGE_CACHED_BANNERS, JSON.stringify(next));
+  } catch {}
+
+  if (admin) {
+    await logAdminAction({
+      admin,
+      action: "ADD_GACHA_BANNER",
+      targetType: "gacha_banner",
+      targetId: newBanner.id,
+      details: newBanner,
+    });
+  }
+
+  return { success: true, data: newBanner };
+}
+
+/**
+ * Mengubah data banner profil oleh Admin.
+ */
+export async function updateGachaBanner(
+  item: WallpaperItem,
+  admin?: AdminUser
+): Promise<{ success: boolean; error?: string }> {
+  const rarityMeta = RARITY_CONFIG[item.rarity] || RARITY_CONFIG.Normal;
+  const updatedItem: WallpaperItem = {
+    ...item,
+    category: rarityMeta.category,
+    expBonus: rarityMeta.expBonus,
+    color: rarityMeta.color,
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    const { error } = await supabase
+      .from("gacha_banners")
+      .update({
+        name: updatedItem.name,
+        anime: updatedItem.anime,
+        rarity: updatedItem.rarity,
+        category: updatedItem.category,
+        exp_bonus: updatedItem.expBonus,
+        image: updatedItem.image,
+        color: updatedItem.color,
+        is_active: updatedItem.isActive,
+        updated_at: updatedItem.updatedAt,
+      })
+      .eq("id", updatedItem.id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+  } catch (err: any) {
+    console.warn("[gacha-service] Supabase update failed, updating locally:", err);
+  }
+
+  // Update local cache
+  try {
+    const current = await getAllGachaBanners();
+    const next = current.map((b) => (b.id === updatedItem.id ? updatedItem : b));
+    await AsyncStorage.setItem(STORAGE_CACHED_BANNERS, JSON.stringify(next));
+  } catch {}
+
+  if (admin) {
+    await logAdminAction({
+      admin,
+      action: "UPDATE_GACHA_BANNER",
+      targetType: "gacha_banner",
+      targetId: updatedItem.id,
+      details: updatedItem,
+    });
+  }
+
+  return { success: true };
+}
+
+/**
+ * Menghapus banner dari database oleh Admin.
+ */
+export async function deleteGachaBanner(
+  id: string,
+  admin?: AdminUser
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.from("gacha_banners").delete().eq("id", id);
+    if (error) {
+      return { success: false, error: error.message };
+    }
+  } catch (err: any) {
+    console.warn("[gacha-service] Supabase delete banner error:", err);
+  }
+
+  // Update local cache
+  try {
+    const current = await getAllGachaBanners();
+    const next = current.filter((b) => b.id !== id);
+    await AsyncStorage.setItem(STORAGE_CACHED_BANNERS, JSON.stringify(next));
+  } catch {}
+
+  if (admin) {
+    await logAdminAction({
+      admin,
+      action: "DELETE_GACHA_BANNER",
+      targetType: "gacha_banner",
+      targetId: id,
+      details: { id },
+    });
+  }
+
+  return { success: true };
+}
+
+/**
+ * Mengubah status aktif / nonaktif banner dari pool gacha oleh Admin.
+ */
+export async function toggleGachaBannerActive(
+  id: string,
+  isActive: boolean,
+  admin?: AdminUser
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from("gacha_banners")
+      .update({ is_active: isActive, updated_at: new Date().toISOString() })
+      .eq("id", id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+  } catch (err: any) {
+    console.warn("[gacha-service] Supabase toggle active error:", err);
+  }
+
+  try {
+    const current = await getAllGachaBanners();
+    const next = current.map((b) => (b.id === id ? { ...b, isActive } : b));
+    await AsyncStorage.setItem(STORAGE_CACHED_BANNERS, JSON.stringify(next));
+  } catch {}
+
+  if (admin) {
+    await logAdminAction({
+      admin,
+      action: isActive ? "ACTIVATE_GACHA_BANNER" : "DEACTIVATE_GACHA_BANNER",
+      targetType: "gacha_banner",
+      targetId: id,
+      details: { id, isActive },
+    });
+  }
+
+  return { success: true };
+}
+
+// ─── 4. USER BANNER INVENTORY & OWNERSHIP (PER AKUN) ───
+/**
+ * Mengambil daftar ID banner yang dimiliki akun pengguna.
+ * Prioritas: Supabase user_banner_inventory → AsyncStorage cache per user.
+ */
+export async function getOwnedWallpaperIds(userId?: string | null): Promise<string[]> {
+  // 1. Coba dari Supabase jika user logged-in
+  if (userId && userId.trim().length > 0 && userId !== "guest") {
+    try {
+      const { data, error } = await supabase
+        .from("user_banner_inventory")
+        .select("banner_id")
+        .eq("user_id", userId);
+
+      if (!error && Array.isArray(data)) {
+        const ids = data.map((r: any) => r.banner_id as string);
+        const key = getOwnedWallpapersStorageKey(userId);
+        await AsyncStorage.setItem(key, JSON.stringify(ids));
+        return ids;
+      }
+    } catch (err) {
+      console.warn("[gacha-service] Supabase query user_banner_inventory failed:", err);
+    }
+  }
+
+  // 2. Fallback AsyncStorage per user
+  try {
+    const key = getOwnedWallpapersStorageKey(userId);
+    const raw = await AsyncStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+
+  // 3. Jika pengguna tamu (guest), berikan starter gratis default
+  if (!userId || userId === "guest") {
+    return ["naruto_ramen"];
+  }
+
+  return [];
+}
+
+/**
+ * Menyimpan kepemilikan banner baru ke Supabase user_banner_inventory & AsyncStorage.
+ */
+export async function recordBannerOwnership(
+  userId: string | null | undefined,
+  bannerIds: string[]
+): Promise<void> {
+  if (!bannerIds || bannerIds.length === 0) return;
+
+  // 1. Simpan ke local cache AsyncStorage
+  const current = await getOwnedWallpaperIds(userId);
+  const nextSet = new Set([...current, ...bannerIds]);
+  const nextArray = Array.from(nextSet);
+  const key = getOwnedWallpapersStorageKey(userId);
+  await AsyncStorage.setItem(key, JSON.stringify(nextArray));
+
+  // 2. Simpan ke Supabase jika user valid
+  if (userId && userId.trim().length > 0 && userId !== "guest") {
+    try {
+      const rows = bannerIds.map((bid) => ({
+        user_id: userId,
+        banner_id: bid,
+        obtained_at: new Date().toISOString(),
+      }));
+
+      await supabase
+        .from("user_banner_inventory")
+        .upsert(rows, { onConflict: "user_id,banner_id", ignoreDuplicates: true });
+    } catch (err) {
+      console.warn("[gacha-service] Supabase upsert user_banner_inventory failed:", err);
+    }
   }
 }
 
-/**
- * Get currently equipped wallpaper ID.
- */
-export async function getActiveWallpaperId(): Promise<string | null> {
+// ─── 5. ACTIVE / EQUIPPED BANNER PER USER ───
+export async function getActiveWallpaperId(userId?: string | null): Promise<string | null> {
   try {
-    return await AsyncStorage.getItem(STORAGE_ACTIVE_WALLPAPER);
+    const key = getActiveWallpaperStorageKey(userId);
+    return await AsyncStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-/**
- * Set active equipped wallpaper.
- */
-export async function setActiveWallpaperId(id: string | null): Promise<void> {
+export async function setActiveWallpaperId(
+  userId: string | null | undefined,
+  id: string | null
+): Promise<void> {
+  const key = getActiveWallpaperStorageKey(userId);
   if (id) {
-    await AsyncStorage.setItem(STORAGE_ACTIVE_WALLPAPER, id);
+    await AsyncStorage.setItem(key, id);
   } else {
-    await AsyncStorage.removeItem(STORAGE_ACTIVE_WALLPAPER);
+    await AsyncStorage.removeItem(key);
   }
 }
 
+// ─── 6. RANDOM ROLL ALGORITHM ───
 /**
- * Weighted Gacha Roll Algorithm based on RARITY_CONFIG rates
+ * Memilih item gacha secara acak berdasarkan konfigurasi probabilitas drop rate terkini.
  */
-function rollSingleItem(): WallpaperItem {
-  const rand = Math.random() * 100; // 0 to 100
+function rollSingleItemFromPool(
+  pool: WallpaperItem[],
+  rates: { mythic: number; legends: number; epic: number; rare: number; normal: number }
+): WallpaperItem {
+  if (!pool || pool.length === 0) {
+    return WALLPAPER_CATALOG[0];
+  }
+
+  const rand = Math.random() * 100;
   let chosenRarity: WallpaperRarity = "Normal";
 
-  if (rand < 2) {
-    chosenRarity = "Mythic"; // 2%
-  } else if (rand < 10) {
-    chosenRarity = "Legendary"; // 8% (2..10)
-  } else if (rand < 30) {
-    chosenRarity = "Epic"; // 20% (10..30)
-  } else if (rand < 60) {
-    chosenRarity = "Rare"; // 30% (30..60)
+  const tMythic = rates.mythic;
+  const tLegends = tMythic + rates.legends;
+  const tEpic = tLegends + rates.epic;
+  const tRare = tEpic + rates.rare;
+
+  if (rand < tMythic) {
+    chosenRarity = "Mythic";
+  } else if (rand < tLegends) {
+    chosenRarity = "Legendary";
+  } else if (rand < tEpic) {
+    chosenRarity = "Epic";
+  } else if (rand < tRare) {
+    chosenRarity = "Rare";
   } else {
-    chosenRarity = "Normal"; // 40% (60..100)
+    chosenRarity = "Normal";
   }
 
-  // Filter pool by chosen rarity
-  const pool = WALLPAPER_CATALOG.filter((w) => w.rarity === chosenRarity);
-  if (pool.length === 0) {
-    // Fallback to random any item
-    return WALLPAPER_CATALOG[Math.floor(Math.random() * WALLPAPER_CATALOG.length)];
+  // Ambil item dari pool aktif yang memiliki rarity terpilih
+  const matched = pool.filter((w) => w.rarity === chosenRarity);
+  if (matched.length > 0) {
+    const idx = Math.floor(Math.random() * matched.length);
+    return matched[idx];
   }
 
-  const selectedIndex = Math.floor(Math.random() * pool.length);
-  return pool[selectedIndex];
+  // Fallback acak dari seluruh pool aktif
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// ─── 7. GACHA SUMMON EXECUTION (SECURE & ATOMIC) ───
+export function generateGachaTransactionId(): string {
+  const now = new Date();
+  const year = String(now.getFullYear()).slice(-2);
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `NUE-GC-${year}${month}${day}-${rand}`;
 }
 
 /**
- * Perform Summon 1x or Summon 10x with balance validation, atomic deduction,
- * and saving owned wallpapers & transaction history.
+ * Melakukan proses Gacha Summon (1x atau 10x) dengan transaksi database yang aman:
+ * 1. Menggunakan saldo Dylan Crystal utama pengguna.
+ * 2. Menolak proses jika Crystal tidak mencukupi.
+ * 3. Mengurangi Crystal dan memasukkan banner yang didapat ke inventory.
+ * 4. Mencatat riwayat transaksi dengan ID unik.
  */
-export async function executeGachaSummon(count: 1 | 10): Promise<{
+export async function executeGachaSummon(
+  userId: string | null | undefined,
+  count: 1 | 10,
+  configOverride?: DynamicGachaConfig
+): Promise<{
   success: boolean;
   results: WallpaperItem[];
   newBalance: number;
   newOwnedCount: number;
+  txId?: string;
   error?: string;
 }> {
-  const cost = count === 1 ? GACHA_SETTINGS.cost1x : GACHA_SETTINGS.cost10x;
-  const currentBalance = await getCrystalBalance();
+  // 1. Ambil konfigurasi harga & drop rate dinamis
+  const config = configOverride || (await getGachaConfig());
+  const cost = count === 1 ? config.costSingle : config.costMulti;
 
+  // 2. Ambil pool banner aktif
+  const activePool = await getActiveGachaBanners();
+  if (activePool.length === 0) {
+    return {
+      success: false,
+      results: [],
+      newBalance: await getCrystalBalance(userId),
+      newOwnedCount: 0,
+      error: "Pool hadiah Gacha sedang kosong. Silakan hubungi admin.",
+    };
+  }
+
+  // 3. Validasi saldo akun saat ini
+  const currentBalance = await getCrystalBalance(userId);
   if (currentBalance < cost) {
     return {
       success: false,
       results: [],
       newBalance: currentBalance,
       newOwnedCount: 0,
-      error: `Daylan Crystal tidak mencukupi! Anda memiliki ${currentBalance.toLocaleString()} Crystal, dibutuhkan ${cost.toLocaleString()} Crystal.`,
+      error: `Daylan Crystal tidak mencukupi! Anda memiliki ${currentBalance.toLocaleString("id-ID")} Crystal, dibutuhkan ${cost.toLocaleString("id-ID")} Crystal.`,
     };
   }
 
-  // Generate results
+  // 4. Undi hadiah banner
   const results: WallpaperItem[] = [];
   for (let i = 0; i < count; i++) {
-    results.push(rollSingleItem());
+    results.push(rollSingleItemFromPool(activePool, config.rates));
   }
+  const bannerIds = results.map((r) => r.id);
+  const txId = generateGachaTransactionId();
 
-  // Deduct balance securely
-  const newBalance = currentBalance - cost;
-  await setCrystalBalance(newBalance);
+  // 5. Eksekusi transaksi ke Supabase (jika user authenticated)
+  let finalBalance = currentBalance - cost;
+  if (userId && userId.trim().length > 0 && userId !== "guest") {
+    try {
+      // Coba panggil RPC atomik execute_gacha_pull
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("execute_gacha_pull", {
+        p_user_id: userId,
+        p_type: count === 1 ? "single" : "multi",
+        p_cost: cost,
+        p_banner_ids: bannerIds,
+        p_results: results,
+        p_tx_id: txId,
+      });
 
-  // Update owned wallpapers
-  const currentOwned = await getOwnedWallpaperIds();
-  const ownedSet = new Set(currentOwned);
-  let newlyAdded = 0;
+      if (!rpcErr && rpcRes && typeof rpcRes === "object") {
+        if (rpcRes.success === false) {
+          return {
+            success: false,
+            results: [],
+            newBalance: typeof rpcRes.current_balance === "number" ? rpcRes.current_balance : currentBalance,
+            newOwnedCount: 0,
+            error: "Saldo Crystal tidak mencukupi untuk melakukan gacha.",
+          };
+        }
+        if (typeof rpcRes.new_balance === "number") {
+          finalBalance = rpcRes.new_balance;
+        }
+      } else {
+        // Fallback jika RPC function belum dimigrasi di server: potong via service & catat manual
+        finalBalance = await deductTopUpCrystalBalance(userId, cost);
+        await recordBannerOwnership(userId, bannerIds);
 
-  for (const item of results) {
-    if (!ownedSet.has(item.id)) {
-      ownedSet.add(item.id);
-      newlyAdded++;
+        await supabase.from("gacha_transactions").insert({
+          id: txId,
+          user_id: userId,
+          summon_type: count === 1 ? "single" : "multi",
+          cost,
+          results,
+          status: "success",
+          created_at: new Date().toISOString(),
+        });
+      }
+    } catch (err: any) {
+      console.warn("[gacha-service] Supabase transaction failed, applying local fallback:", err);
+      finalBalance = await deductTopUpCrystalBalance(userId, cost);
+      await recordBannerOwnership(userId, bannerIds);
     }
+  } else {
+    // Akun guest / offline mode
+    finalBalance = await deductTopUpCrystalBalance(userId, cost);
+    await recordBannerOwnership(userId, bannerIds);
   }
 
-  const nextOwned = Array.from(ownedSet);
-  await AsyncStorage.setItem(STORAGE_OWNED_WALLPAPERS, JSON.stringify(nextOwned));
-
-  // Record transaction log
+  // 6. Update cache lokal AsyncStorage & riwayat
+  const updatedOwned = await getOwnedWallpaperIds(userId);
   try {
-    const tx: GachaTransaction = {
-      id: `tx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    const txLog: GachaTransaction = {
+      id: txId,
       timestamp: Date.now(),
       type: count === 1 ? "single" : "multi",
       cost,
       results,
     };
-    const prevHistoryRaw = await AsyncStorage.getItem(STORAGE_GACHA_HISTORY);
+    const histKey = getGachaHistoryStorageKey(userId);
+    const prevHistoryRaw = await AsyncStorage.getItem(histKey);
     const history: GachaTransaction[] = prevHistoryRaw ? JSON.parse(prevHistoryRaw) : [];
-    history.unshift(tx);
-    // Keep last 50 transactions
-    await AsyncStorage.setItem(STORAGE_GACHA_HISTORY, JSON.stringify(history.slice(0, 50)));
+    history.unshift(txLog);
+    await AsyncStorage.setItem(histKey, JSON.stringify(history.slice(0, 50)));
   } catch {}
 
   return {
     success: true,
     results,
-    newBalance,
-    newOwnedCount: nextOwned.length,
+    newBalance: finalBalance,
+    newOwnedCount: updatedOwned.length,
+    txId,
   };
 }
 
 /**
- * Calculate active EXP bonus from currently equipped wallpaper
+ * Menghitung bonus EXP dari wallpaper yang sedang aktif dipasang
  */
-export async function getEquippedExpBonus(): Promise<number> {
-  const activeId = await getActiveWallpaperId();
+export async function getEquippedExpBonus(userId?: string | null): Promise<number> {
+  const activeId = await getActiveWallpaperId(userId);
   if (!activeId) return 0;
-  const wallpaper = WALLPAPER_CATALOG.find((w) => w.id === activeId);
+  const all = await getAllGachaBanners();
+  const wallpaper = all.find((w) => w.id === activeId);
   return wallpaper ? wallpaper.expBonus : 0;
 }

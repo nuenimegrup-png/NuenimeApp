@@ -99,6 +99,11 @@ export default function ProfileScreen() {
 
   // Floating Toast State for Coming Soon features
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [bannerLoadError, setBannerLoadError] = useState(false);
+
+  useEffect(() => {
+    setBannerLoadError(false);
+  }, [auth.profile?.banner_url]);
 
   // ─── Avatar Change & Cooldown State ───
   const [showAvatarModal, setShowAvatarModal] = useState(false);
@@ -505,11 +510,12 @@ export default function ProfileScreen() {
         {/* ─── 1. BANNER & TOP NAV BAR ─── */}
         <View style={styles.bannerWrapper}>
           <Image
-            source={{ uri: auth.profile?.banner_url || DEFAULT_BANNER }}
+            source={{ uri: !bannerLoadError && auth.profile?.banner_url ? auth.profile.banner_url : DEFAULT_BANNER }}
             style={styles.bannerImage}
             contentFit="cover"
             transition={200}
             cachePolicy="memory-disk"
+            onError={() => setBannerLoadError(true)}
           />
           <LinearGradient
             colors={[
