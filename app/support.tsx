@@ -1,154 +1,441 @@
-import { useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+﻿import { useState } from "react";
+import {
+  Alert,
+  Image,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { router } from "expo-router";
 import * as Clipboard from "expo-clipboard";
-import * as WebBrowser from "expo-web-browser";
 
 import { AppIcon } from "@/components/app-icon";
-import { DotLabel, nothing, Signal } from "@/components/nothing-ui";
+import { nothing } from "@/components/nothing-ui";
 import { NativeScreen } from "@/components/screen";
-import { PATREON_URL, SUPPORT_FUNDING_COPY } from "@/lib/support";
 
-const BINANCE_UID = "1098400042";
-const binanceIcon = require("../assets/images/binance-icon.png");
-const patreonIcon = require("../assets/images/patreon-icon.png");
+const SAWERIA_URL = "https://saweria.co/Nuenime";
+
+// GIF URLs
+const ANIME_GIF_URI = "https://media1.giphy.com/media/v1.Y2lkPTZjMDliOTUyNjlyNmhqaWgzaHBvYXA0cXEzZ3BuaDV4cTFxdHl0dTRod3JzMTcxdSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/Al9XitEIwGgLU9yMfS/giphy.gif";
+const THANKYOU_GIF_URI = "https://media2.giphy.com/media/v1.Y2lkPTZjMDliOTUydG11ZWV3OXNkdzYzdjV6bXdmNTk2ZWNmcW9ydjRjczZ5dDNrOGF2YiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/UJuLfuG78YTDslaBcK/giphy.gif";
 
 export default function SupportScreen() {
-  const [message, setMessage] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  const openPatreon = async () => {
-    setMessage(null);
+  const openSaweria = async () => {
     try {
-      await WebBrowser.openBrowserAsync(PATREON_URL, { toolbarColor: nothing.black, controlsColor: nothing.white, showTitle: false });
+      await Linking.openURL(SAWERIA_URL);
     } catch {
-      setMessage("PATREON COULD NOT OPEN.");
+      Alert.alert("Error", "Tidak bisa membuka Saweria. Silakan buka manual di saweria.co/Nuenime");
     }
   };
 
-  const copyBinanceUID = async () => {
+  const copySaweriaLink = async () => {
     try {
-      await Clipboard.setStringAsync(BINANCE_UID);
-      setMessage("BINANCE UID COPIED.");
+      await Clipboard.setStringAsync(SAWERIA_URL);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
     } catch {
-      setMessage("COPY FAILED.");
+      Alert.alert("Error", "Gagal menyalin link.");
     }
   };
 
-  const copyPatreonLink = async () => {
-    try {
-      await Clipboard.setStringAsync(PATREON_URL);
-      setMessage("PATREON LINK COPIED.");
-    } catch {
-      setMessage("COPY FAILED.");
-    }
-  };
-
-  return <NativeScreen>
-    <View style={styles.top}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={({ pressed }) => [styles.close, pressed && styles.pressed]}>
-        <AppIcon name="arrow-left" size={21} color={nothing.white} />
-      </Pressable>
-      <View style={styles.titleBlock}>
-        <DotLabel tone="signal">COMMUNITY</DotLabel>
-        <Text style={styles.title}>Support</Text>
-      </View>
-    </View>
-
-    {/* Hero */}
-    <View style={styles.hero}>
-      <Text style={styles.heroTitle}>Keep Aniraku alive.</Text>
-      <Text style={styles.heroCopy}>{SUPPORT_FUNDING_COPY}</Text>
-    </View>
-
-    {/* Patreon */}
-    <View style={styles.methodCard}>
-      <View style={styles.methodHeader}>
-        <View style={styles.methodIcon}>
-          <Image source={patreonIcon} style={styles.patreonIconImage} />
-        </View>
-        <View style={styles.methodInfo}>
-          <Text style={styles.methodTitle}>Patreon</Text>
-          <Text style={styles.methodMeta}>Monthly support · Early access</Text>
-        </View>
-        <Signal label="RECURRING" tone="live" />
-      </View>
-      <View style={styles.methodActions}>
-        <Pressable accessibilityRole="link" onPress={() => void openPatreon()} style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}>
-          <Text style={styles.primaryBtnText}>OPEN PATREON</Text>
-          <AppIcon name="open-in-new" size={14} color={nothing.black} />
+  return (
+    <NativeScreen scroll={false}>
+      {/* ── Sticky Header ── */}
+      <View style={styles.header}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Kembali"
+          onPress={() => router.back()}
+          style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.6 }]}
+        >
+          <AppIcon name="arrow-left" size={21} color={nothing.white} />
         </Pressable>
-        <Pressable accessibilityRole="button" onPress={() => void copyPatreonLink()} style={styles.secondaryBtn}>
-          <Text style={styles.secondaryBtnText}>COPY LINK</Text>
-        </Pressable>
-      </View>
-    </View>
-
-    {/* Binance */}
-    <View style={styles.methodCard}>
-      <View style={styles.methodHeader}>
-        <View style={styles.methodIcon}>
-          <Image source={binanceIcon} style={styles.binanceIconImage} />
-        </View>
-        <View style={styles.methodInfo}>
-          <Text style={styles.methodTitle}>Binance Pay</Text>
-          <Text style={styles.methodMeta}>One-time · USDT / any crypto</Text>
+        <View style={styles.headerTitle}>
+          <Text style={styles.headerEyebrow}>NUENIME · DUKUNGAN</Text>
+          <Text style={styles.headerText}>Support</Text>
         </View>
       </View>
-      <View style={styles.uidBox}>
-        <Text style={styles.uidLabel}>BINANCE UID</Text>
-        <View style={styles.uidRow}>
-          <Text style={styles.uidValue}>{BINANCE_UID}</Text>
-          <Pressable accessibilityRole="button" onPress={() => void copyBinanceUID()} style={styles.copyBtn}>
-            <AppIcon name="content-copy" size={14} color={nothing.white} />
-            <Text style={styles.copyBtnText}>COPY</Text>
-          </Pressable>
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Anime GIF Hero ── */}
+        <View style={styles.gifHeroWrap}>
+          <Image
+            source={{ uri: ANIME_GIF_URI }}
+            style={styles.gifHero}
+            resizeMode="cover"
+          />
+          <View style={styles.gifOverlay} />
+          <View style={styles.gifTextOverlay}>
+            <Text style={styles.gifBadge}>🎌 NUENIME</Text>
+            <Text style={styles.gifTitle}>Jaga Nuenime Tetap Hidup</Text>
+            <Text style={styles.gifSub}>
+              Setiap dukungan kamu sangat berarti untuk kami terus berkembang!
+            </Text>
+          </View>
         </View>
-      </View>
-      <Text style={styles.uidHint}>Open Binance → Pay → send to UID · Any token accepted</Text>
-    </View>
 
-    {message ? <View style={styles.toast}><Text style={styles.toastText}>{message}</Text></View> : null}
+        {/* ── Saweria Card ── */}
+        <View style={styles.card}>
+          {/* Card header */}
+          <View style={styles.cardTopRow}>
+            <View style={styles.saweriaBadge}>
+              <Text style={styles.saweriaEmoji}>☕</Text>
+              <Text style={styles.saweriaTitle}>Saweria</Text>
+            </View>
+            <View style={styles.livePill}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>AKTIF</Text>
+            </View>
+          </View>
 
-    <Text style={styles.footnote}>Support is voluntary and does not change access to any Aniraku features.</Text>
-  </NativeScreen>;
+          <Text style={styles.cardDesc}>
+            Dukung Nuenime lewat Saweria — sekali bayar, nominal bebas, tidak perlu akun premium.
+          </Text>
+
+          {/* URL display */}
+          <View style={styles.urlBox}>
+            <AppIcon name="earth" size={14} color="#94A3B8" />
+            <Text style={styles.urlText} numberOfLines={1}>saweria.co/Nuenime</Text>
+          </View>
+
+          {/* Action buttons */}
+          <View style={styles.actionRow}>
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => void openSaweria()}
+              style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.8 }]}
+            >
+              <Text style={styles.primaryBtnText}>☕ Dukung Sekarang</Text>
+              <AppIcon name="open-in-new" size={14} color="#0B0E17" />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void copySaweriaLink()}
+              style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.7 }]}
+            >
+              <AppIcon name="content-copy" size={15} color={copied ? "#10B981" : "#94A3B8"} />
+            </Pressable>
+          </View>
+
+          {copied && (
+            <View style={styles.copiedToast}>
+              <AppIcon name="check-circle" size={13} color="#10B981" />
+              <Text style={styles.copiedText}>Link disalin!</Text>
+            </View>
+          )}
+        </View>
+
+        {/* ── Perks ── */}
+        <View style={styles.perksCard}>
+          <Text style={styles.perksTitle}>Apa yang kamu dukung?</Text>
+          {[
+            { icon: "play-circle", text: "Server & hosting aplikasi Nuenime" },
+            { icon: "bell", text: "Update konten & fitur baru" },
+            { icon: "account-group", text: "Komunitas anime Indonesia" },
+            { icon: "heart", text: "Semangat tim pengembang" },
+          ].map((p) => (
+            <View key={p.text} style={styles.perkRow}>
+              <View style={styles.perkIconWrap}>
+                <AppIcon name={p.icon} size={15} color="#A78BFA" />
+              </View>
+              <Text style={styles.perkText}>{p.text}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* ── Thank you GIF ── */}
+        <View style={styles.thankyouSection}>
+          <Image
+            source={{ uri: THANKYOU_GIF_URI }}
+            style={styles.thankyouGif}
+            resizeMode="contain"
+          />
+          <Text style={styles.thankyouText}>
+            Arigatou gozaimasu! 🙏{"\n"}Dukunganmu sangat berarti untuk Nuenime.
+          </Text>
+        </View>
+
+        <Text style={styles.footnote}>
+          Dukungan bersifat sukarela dan tidak mempengaruhi akses ke fitur Nuenime.
+        </Text>
+      </ScrollView>
+    </NativeScreen>
+  );
 }
 
+const ACCENT = "#A78BFA";
+
 const styles = StyleSheet.create({
-  top: { minHeight: 82, flexDirection: "row", alignItems: "center", gap: 11 },
-  close: { width: 42, height: 42, alignItems: "center", justifyContent: "center", borderRadius: 14, borderWidth: 1, borderColor: nothing.line, backgroundColor: nothing.raised },
-  pressed: nothing.pressedSubtle,
-  titleBlock: { gap: 2 },
-  title: { color: nothing.white, fontFamily: "SpaceGrotesk-SemiBold", fontSize: 25, fontWeight: "900", letterSpacing: -0.65 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingHorizontal: 18,
+    paddingTop: 6,
+    paddingBottom: 14,
+    backgroundColor: "#0B0E17",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.05)",
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.07)",
+  },
+  headerTitle: { gap: 1 },
+  headerEyebrow: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 10,
+    color: "#64748B",
+    letterSpacing: 1,
+  },
+  headerText: {
+    fontFamily: "Nunito-ExtraBold",
+    fontSize: 20,
+    color: "#FFFFFF",
+    letterSpacing: -0.3,
+  },
 
-  hero: { gap: 10, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: nothing.line },
-  heroTitle: { color: nothing.white, fontSize: 22, fontWeight: "900", letterSpacing: -0.5 },
-  heroCopy: { color: nothing.muted, fontSize: 13, lineHeight: 19 },
+  scrollContent: {
+    paddingBottom: 52,
+    gap: 16,
+  },
 
-  methodCard: { gap: 14, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: nothing.line },
-  methodHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
-  methodIcon: { width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: nothing.raised, borderWidth: 1, borderColor: nothing.line, overflow: "hidden" },
-  patreonIconImage: { width: 28, height: 28 },
-  binanceIconImage: { width: 28, height: 28 },
-  methodInfo: { flex: 1 },
-  methodTitle: { color: nothing.white, fontFamily: "SpaceGrotesk-SemiBold", fontSize: 15, fontWeight: "800" },
-  methodMeta: { color: nothing.muted, fontFamily: "SpaceGrotesk-Regular", fontSize: 11, marginTop: 2 },
+  // ── GIF Hero ──
+  gifHeroWrap: {
+    height: 200,
+    position: "relative",
+    overflow: "hidden",
+  },
+  gifHero: {
+    width: "100%",
+    height: "100%",
+  },
+  gifOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(11,14,23,0.55)",
+  },
+  gifTextOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 18,
+    gap: 4,
+  },
+  gifBadge: {
+    fontFamily: "Nunito-ExtraBold",
+    fontSize: 10.5,
+    color: ACCENT,
+    letterSpacing: 1.2,
+  },
+  gifTitle: {
+    fontFamily: "Nunito-ExtraBold",
+    fontSize: 22,
+    color: "#FFFFFF",
+    letterSpacing: -0.4,
+  },
+  gifSub: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 12.5,
+    color: "rgba(255,255,255,0.75)",
+    lineHeight: 18,
+  },
 
-  methodActions: { flexDirection: "row", gap: 10 },
-  primaryBtn: { flex: 1, minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: nothing.white, borderRadius: 8 },
-  primaryBtnText: { color: nothing.black, fontFamily: "SpaceGrotesk-SemiBold", fontSize: 11, fontWeight: "800", letterSpacing: 0.3 },
-  secondaryBtn: { minWidth: 90, minHeight: 44, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: nothing.line, borderRadius: 8 },
-  secondaryBtnText: { color: nothing.muted, fontFamily: "SpaceGrotesk-Medium", fontSize: 11, fontWeight: "700", letterSpacing: 0.3 },
+  // ── Saweria Card ──
+  card: {
+    marginHorizontal: 16,
+    backgroundColor: "#161922",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(167,139,250,0.2)",
+    padding: 18,
+    gap: 14,
+  },
+  cardTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  saweriaBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  saweriaEmoji: { fontSize: 28 },
+  saweriaTitle: {
+    fontFamily: "Nunito-ExtraBold",
+    fontSize: 22,
+    color: "#FFFFFF",
+    letterSpacing: -0.3,
+  },
+  livePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: "rgba(16,185,129,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(16,185,129,0.3)",
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#10B981",
+  },
+  liveText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 10,
+    color: "#10B981",
+    letterSpacing: 0.5,
+  },
+  cardDesc: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 13.5,
+    color: "#94A3B8",
+    lineHeight: 20,
+  },
+  urlBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  urlText: {
+    fontFamily: "Nunito-SemiBold",
+    fontSize: 13,
+    color: "#CBD5E1",
+    flex: 1,
+  },
+  actionRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  primaryBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: ACCENT,
+    borderRadius: 12,
+    paddingVertical: 13,
+  },
+  primaryBtnText: {
+    fontFamily: "Nunito-ExtraBold",
+    fontSize: 14,
+    color: "#0B0E17",
+  },
+  secondaryBtn: {
+    width: 48,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  copiedToast: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "center",
+  },
+  copiedText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12,
+    color: "#10B981",
+  },
 
-  uidBox: { width: "100%", padding: 12, borderRadius: 8, backgroundColor: nothing.black, borderWidth: 1, borderColor: nothing.line },
-  uidLabel: { color: nothing.dim, fontFamily: "SpaceGrotesk-Medium", fontSize: 10, fontWeight: "800", letterSpacing: 0.8, marginBottom: 6 },
-  uidRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  uidValue: { color: nothing.white, fontFamily: "SpaceGrotesk-SemiBold", fontSize: 20, fontWeight: "900", letterSpacing: 1 },
-  copyBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, backgroundColor: nothing.red },
-  copyBtnText: { color: nothing.black, fontFamily: "SpaceGrotesk-SemiBold", fontSize: 10, fontWeight: "800", letterSpacing: 0.3 },
-  uidHint: { color: nothing.dim, fontFamily: "SpaceGrotesk-Regular", fontSize: 11, lineHeight: 16 },
+  // ── Perks ──
+  perksCard: {
+    marginHorizontal: 16,
+    backgroundColor: "#161922",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    padding: 18,
+    gap: 12,
+  },
+  perksTitle: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 14,
+    color: "#64748B",
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+  },
+  perkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  perkIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "rgba(167,139,250,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  perkText: {
+    fontFamily: "Nunito-SemiBold",
+    fontSize: 13.5,
+    color: "#CBD5E1",
+    flex: 1,
+  },
 
-  toast: { alignSelf: "center", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: nothing.surface, borderWidth: 1, borderColor: nothing.line },
-  toastText: { color: nothing.white, fontFamily: "SpaceGrotesk-Medium", fontSize: 11, fontWeight: "700", letterSpacing: 0.3 },
+  // ── Thank you ──
+  thankyouSection: {
+    marginHorizontal: 16,
+    backgroundColor: "#161922",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    overflow: "hidden",
+    alignItems: "center",
+    gap: 14,
+    paddingBottom: 18,
+  },
+  thankyouGif: {
+    width: "100%",
+    height: 160,
+  },
+  thankyouText: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 14,
+    color: "#94A3B8",
+    textAlign: "center",
+    lineHeight: 22,
+    paddingHorizontal: 16,
+  },
 
-  footnote: { color: nothing.dim, fontFamily: "SpaceGrotesk-Regular", fontSize: 11, lineHeight: 16, marginTop: 4 },
+  footnote: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 11.5,
+    color: "#3F3F46",
+    textAlign: "center",
+    paddingHorizontal: 16,
+    lineHeight: 17,
+  },
 });
