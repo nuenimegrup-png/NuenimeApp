@@ -1057,13 +1057,20 @@ export default function SettingsScreen() {
             </Pressable>
 
             {/* Developer */}
-            <View style={styles.rowItem}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push("/developer" as never)}
+              style={({ pressed }) => [styles.rowItem, pressed && { opacity: 0.7 }]}
+            >
               <View style={styles.rowTextCol}>
                 <Text style={styles.rowLabel}>Developer</Text>
                 <Text style={styles.rowSubLabel}>Tim Pengembang</Text>
               </View>
-              <Text style={styles.rowRightText}>Team Nuenime & noreasone</Text>
-            </View>
+              <View style={styles.rowRightWrap}>
+                <Text style={styles.rowRightText}>Team Nuenime</Text>
+                <AppIcon name="chevron-right" size={16} color="#64748B" />
+              </View>
+            </Pressable>
           </View>
         </View>
 
