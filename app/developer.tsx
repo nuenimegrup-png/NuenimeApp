@@ -9,7 +9,6 @@ import {
   Text,
   View,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { AppIcon } from "@/components/app-icon";
 import { NativeScreen } from "@/components/screen";
@@ -65,7 +64,7 @@ const developers: Developer[] = [
   },
 ];
 
-// ─── Social Button ───────────────────────────────────────────────────
+// ─── Social Button (icon only) ────────────────────────────────────────
 function SocialButton({
   icon,
   label,
@@ -84,9 +83,6 @@ function SocialButton({
     }
   };
 
-  const borderColor = accentColor + "60";
-  const bgColor = accentColor + "18";
-
   return (
     <Pressable
       onPress={() => void handlePress()}
@@ -94,12 +90,14 @@ function SocialButton({
       accessibilityLabel={`Buka ${label}`}
       style={({ pressed }) => [
         styles.socialBtn,
-        { backgroundColor: bgColor, borderColor: borderColor },
-        pressed && { opacity: 0.6 },
+        {
+          backgroundColor: accentColor + "18",
+          borderColor: accentColor + "50",
+        },
+        pressed && { opacity: 0.55, transform: [{ scale: 0.92 }] },
       ]}
     >
-      <AppIcon name={icon} size={15} color={accentColor} />
-      <Text style={[styles.socialBtnText, { color: accentColor }]}>{label}</Text>
+      <AppIcon name={icon} size={20} color={accentColor} />
     </Pressable>
   );
 }
@@ -111,31 +109,21 @@ function DevCard({ dev }: { dev: Developer }) {
 
   return (
     <View style={styles.card}>
-      {/* Gradient header */}
-      <LinearGradient
-        colors={[dev.accentColor + "22", "transparent"]}
-        style={styles.cardGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-
       {/* Avatar */}
-      <View style={styles.avatarOuterRing}>
-        <View style={[styles.avatarRing, { borderColor: dev.accentColor + "80" }]}>
-          {dev.avatarUri && !imgError ? (
-            <Image
-              source={{ uri: dev.avatarUri }}
-              style={styles.avatarImage}
-              onError={() => setImgError(true)}
-            />
-          ) : (
-            <View style={[styles.avatarFallback, { backgroundColor: dev.accentColor + "33" }]}>
-              <Text style={[styles.avatarInitial, { color: dev.accentColor }]}>
-                {initials}
-              </Text>
-            </View>
-          )}
-        </View>
+      <View style={[styles.avatarRing, { borderColor: dev.accentColor + "90" }]}>
+        {dev.avatarUri && !imgError ? (
+          <Image
+            source={{ uri: dev.avatarUri }}
+            style={styles.avatarImage}
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <View style={[styles.avatarFallback, { backgroundColor: dev.accentColor + "28" }]}>
+            <Text style={[styles.avatarInitial, { color: dev.accentColor }]}>
+              {initials}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Name */}
@@ -151,19 +139,19 @@ function DevCard({ dev }: { dev: Developer }) {
       <View style={styles.divider} />
 
       {/* Role / Jabatan */}
-      <View style={styles.roleRow}>
-        <AppIcon name="cog-outline" size={14} color="#64748B" />
-        <Text style={styles.roleLabel}>Jabatan</Text>
+      <View style={styles.sectionHeader}>
+        <AppIcon name="cog-outline" size={13} color="#64748B" />
+        <Text style={styles.sectionLabel}>JABATAN</Text>
       </View>
       <Text style={styles.roleText}>{dev.role}</Text>
 
       {/* Divider */}
       <View style={styles.divider} />
 
-      {/* Social Media */}
-      <View style={styles.roleRow}>
-        <AppIcon name="earth" size={14} color="#64748B" />
-        <Text style={styles.roleLabel}>Sosial Media</Text>
+      {/* Social Media — icons only, centered */}
+      <View style={styles.sectionHeader}>
+        <AppIcon name="earth" size={13} color="#64748B" />
+        <Text style={styles.sectionLabel}>SOSIAL MEDIA</Text>
       </View>
       <View style={styles.socialRow}>
         {dev.social.map((s) => (
@@ -177,8 +165,10 @@ function DevCard({ dev }: { dev: Developer }) {
 // ─── Main Screen ─────────────────────────────────────────────────────
 export default function DeveloperScreen() {
   return (
-    <NativeScreen>
-      {/* Header */}
+    // scroll=false so NativeScreen is just a SafeAreaView flex container,
+    // allowing us to have a sticky header + independent ScrollView below.
+    <NativeScreen scroll={false}>
+      {/* ── Sticky Header (tidak ikut scroll) ── */}
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
@@ -194,19 +184,20 @@ export default function DeveloperScreen() {
         </View>
       </View>
 
+      {/* ── Scrollable Content ── */}
       <ScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero badge */}
+        {/* Hero */}
         <View style={styles.heroBadge}>
-          <AppIcon name="users" size={14} color="#A78BFA" />
+          <AppIcon name="users" size={13} color="#A78BFA" />
           <Text style={styles.heroBadgeText}>TEAM NUENIME</Text>
         </View>
-
         <Text style={styles.heroHeadline}>Orang di Balik Nuenime</Text>
         <Text style={styles.heroSub}>
-          Nuenime dibangun dengan penuh dedikasi oleh tim kecil namun bersemangat.
+          Dibangun dengan penuh dedikasi oleh tim kecil namun bersemangat.
         </Text>
 
         {/* Developer Cards */}
@@ -215,9 +206,9 @@ export default function DeveloperScreen() {
         ))}
 
         {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Dibuat dengan sepenuh hati untuk komunitas anime Indonesia</Text>
-        </View>
+        <Text style={styles.footerText}>
+          ❤️ Dibuat untuk komunitas anime Indonesia
+        </Text>
       </ScrollView>
     </NativeScreen>
   );
@@ -225,13 +216,17 @@ export default function DeveloperScreen() {
 
 // ─── Styles ──────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  // Header — sticky, tidak ikut scroll
   header: {
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
     paddingHorizontal: 18,
-    paddingTop: 8,
-    paddingBottom: 18,
+    paddingTop: 6,
+    paddingBottom: 14,
+    backgroundColor: "#0B0E17",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.05)",
   },
   backBtn: {
     width: 40,
@@ -243,26 +238,29 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
   titleText: {
     fontFamily: "Nunito-Bold",
-    fontSize: 20,
+    fontSize: 19,
     color: "#FFFFFF",
     letterSpacing: -0.3,
   },
   subtitleText: {
     fontFamily: "Nunito-Regular",
-    fontSize: 12.5,
+    fontSize: 12,
     color: "#64748B",
   },
 
+  // Scroll area
   scrollContent: {
     paddingHorizontal: 18,
-    paddingBottom: 48,
-    gap: 18,
+    paddingTop: 20,
+    paddingBottom: 52,
+    gap: 16,
   },
 
+  // Hero section
   heroBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -271,60 +269,54 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: "rgba(167, 139, 250, 0.12)",
+    backgroundColor: "rgba(167, 139, 250, 0.1)",
     borderWidth: 1,
-    borderColor: "rgba(167, 139, 250, 0.3)",
+    borderColor: "rgba(167, 139, 250, 0.28)",
   },
   heroBadgeText: {
     fontFamily: "Nunito-ExtraBold",
     fontSize: 11,
     color: "#A78BFA",
-    letterSpacing: 1,
+    letterSpacing: 1.2,
   },
   heroHeadline: {
     fontFamily: "Nunito-ExtraBold",
-    fontSize: 24,
+    fontSize: 23,
     color: "#FFFFFF",
-    letterSpacing: -0.5,
-    lineHeight: 30,
+    letterSpacing: -0.4,
+    lineHeight: 29,
+    marginTop: -4,
   },
   heroSub: {
     fontFamily: "Nunito-Regular",
-    fontSize: 13.5,
+    fontSize: 13,
     color: "#71717A",
-    lineHeight: 20,
+    lineHeight: 19,
+    marginTop: -4,
   },
 
-  // ─── Card ───
+  // ─── Card (no gradient, no overflow needed) ───
   card: {
     backgroundColor: "#161922",
-    borderRadius: 22,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
-    padding: 22,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
     alignItems: "center",
-    gap: 14,
-    overflow: "hidden",
-  },
-  cardGradient: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 22,
+    gap: 12,
   },
 
   // ─── Avatar ───
-  avatarOuterRing: {
-    padding: 3,
-    borderRadius: 60,
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
   avatarRing: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     borderWidth: 2.5,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 2,
   },
   avatarImage: {
     width: "100%",
@@ -339,7 +331,7 @@ const styles = StyleSheet.create({
   },
   avatarInitial: {
     fontFamily: "Nunito-ExtraBold",
-    fontSize: 36,
+    fontSize: 38,
   },
 
   devName: {
@@ -347,6 +339,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: "#FFFFFF",
     letterSpacing: -0.3,
+    textAlign: "center",
   },
 
   tagBadge: {
@@ -359,69 +352,60 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   tagText: {
-    fontFamily: "Nunito-Bold",
-    fontSize: 12.5,
+    fontFamily: "Nunito-SemiBold",
+    fontSize: 12,
+    textAlign: "center",
   },
 
   divider: {
     width: "100%",
     height: 1,
     backgroundColor: "rgba(255,255,255,0.06)",
+    marginVertical: 2,
   },
 
-  roleRow: {
+  sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    alignSelf: "flex-start",
+    gap: 5,
+    alignSelf: "center",
   },
-  roleLabel: {
+  sectionLabel: {
     fontFamily: "Nunito-Bold",
-    fontSize: 11.5,
-    color: "#64748B",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
+    fontSize: 10.5,
+    color: "#4B5563",
+    letterSpacing: 0.8,
   },
   roleText: {
     fontFamily: "Nunito-Regular",
     fontSize: 13.5,
     color: "#CBD5E1",
     lineHeight: 20,
-    alignSelf: "flex-start",
-    textAlign: "left",
+    textAlign: "center",
   },
 
+  // Social — icons only, centered row
   socialRow: {
     flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-    alignSelf: "flex-start",
+    gap: 12,
+    justifyContent: "center",
+    alignItems: "center",
   },
   socialBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     borderWidth: 1,
-  },
-  socialBtnText: {
-    fontFamily: "Nunito-Bold",
-    fontSize: 12.5,
-  },
-
-  // ─── Footer ───
-  footer: {
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 8,
-    paddingVertical: 12,
   },
+
+  // Footer
   footerText: {
     fontFamily: "Nunito-Regular",
     fontSize: 12.5,
-    color: "#52525B",
+    color: "#3F3F46",
     textAlign: "center",
+    paddingVertical: 8,
   },
 });
