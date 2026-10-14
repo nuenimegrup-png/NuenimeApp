@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
+  Alert,
   Modal,
   Platform,
   Pressable,
@@ -12,12 +13,23 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
-import { router } from "expo-router";
+import { router, useNavigation } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { AppIcon } from "@/components/app-icon";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { avatarUrl } from "@/lib/aniraku-avatars";
-import { hapticLight, hapticSuccess } from "@/lib/haptics";
+import { hapticLight, hapticSuccess, hapticWarning } from "@/lib/haptics";
+import { supabase } from "@/lib/supabase";
+import { getCrystalBalance, deductCrystalBalance } from "@/lib/topup-service";
+import {
+  BorderAvatar
+} from "@/components/border-avatar";
+import {
+  AVATAR_BORDERS,
+  RARITY_THEME,
+  getEquippedBorderId,
+  setEquippedBorderId,
+} from "@/lib/avatar-borders";
 
 // ─── 5 ASET GAMBAR RESMI DARI USER ───
 const INVENTORY_BG = require("@/assets/images/inventory/inventory-bg.jpg");
@@ -95,20 +107,62 @@ export default function InventoryScreen() {
   };
 
   // Selected customization states (default null agar avatar asli dari login terlihat bersih)
-  const [selectedBorder, setSelectedBorder] = useState<"white_mage" | "magic_book" | null>(null);
+  const navigation = useNavigation();
+  const [selectedBorder, setSelectedBorder] = useState<string | null>(null);
   const [selectedEffect, setSelectedEffect] = useState<"crystal_star" | null>(null);
   const [gachaFeedback, setGachaFeedback] = useState<string | null>(null);
+  const [crystalBalance, setCrystalBalance] = useState<number>(0);
 
-  // Sync equipped border from Avatar Decorations
+  // Sync equipped border from Avatar Decorations (per-user account)
   useEffect(() => {
-    AsyncStorage.getItem("nuenime.equipped.border").then((v: string | null) => {
-      if (v === "white_mage" || v === "magic_book") {
-        setSelectedBorder(v);
-      } else if (!v) {
-        setSelectedBorder(null);
-      }
+    getEquippedBorderId(auth.user?.id).then((v: string | null) => {
+      setSelectedBorder(v);
     });
-  }, []);
+  }, [auth.user?.id]);
+
+  // Sync crystal balance from Supabase & AsyncStorage
+  const syncBalance = useCallback(async () => {
+    try {
+      const bal = await getCrystalBalance(auth.user?.id);
+      setCrystalBalance(bal);
+    } catch {}
+  }, [auth.user?.id]);
+
+  useEffect(() => {
+    syncBalance();
+    const unsubscribe = navigation.addListener("focus" as any, syncBalance);
+    return unsubscribe;
+  }, [navigation, syncBalance]);
+
+  // Real-time synchronization dengan Supabase jika balance di-update via admin / topup
+  useEffect(() => {
+    if (!auth.user?.id || auth.user.id === "guest") return;
+
+    const channel = supabase
+      .channel(`inventory-crystal-${auth.user.id}-${Date.now()}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "user_balances",
+          filter: `user_id=eq.${auth.user.id}`,
+        },
+        (payload) => {
+          const newRow = payload.new as any;
+          if (newRow && typeof newRow.crystal_balance === "number") {
+            setCrystalBalance(newRow.crystal_balance);
+          } else {
+            syncBalance();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [auth.user?.id, syncBalance]);
 
   // User details directly from authenticated login session
   const username =
@@ -170,9 +224,11 @@ export default function InventoryScreen() {
     setActiveModal(id);
   };
 
-  const handleEquipBorder = (id: "white_mage" | "magic_book") => {
+  const handleEquipBorder = async (id: string) => {
     hapticSuccess();
-    setSelectedBorder((prev) => (prev === id ? null : id));
+    const next = selectedBorder === id ? null : id;
+    setSelectedBorder(next);
+    await setEquippedBorderId(auth.user?.id, next);
   };
 
   const handleEquipEffect = (id: "crystal_star") => {
@@ -180,10 +236,41 @@ export default function InventoryScreen() {
     setSelectedEffect((prev) => (prev === id ? null : id));
   };
 
-  const handleSpinGacha = (count: number) => {
+  const handleSpinGacha = async (count: number) => {
+    const cost = count === 1 ? 100 : 900;
+    if (crystalBalance < cost) {
+      hapticWarning();
+      Alert.alert(
+        "Crystal Tidak Mencukupi",
+        `Saldo Crystal Anda (${crystalBalance.toLocaleString(
+          "id-ID"
+        )}) tidak mencukupi untuk melakukan spin ini (${cost.toLocaleString(
+          "id-ID"
+        )} Crystal). Silakan lakukan Top Up Crystal terlebih dahulu.`,
+        [
+          { text: "Batal", style: "cancel" },
+          {
+            text: "Top Up Sekarang",
+            onPress: () => {
+              setActiveModal(null);
+              router.push("/topup" as never);
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    hapticLight();
+    const newBal = await deductCrystalBalance(auth.user?.id, cost);
+    setCrystalBalance(newBal);
     hapticSuccess();
-    setGachaFeedback(`Berhasil melakukan Spin ${count}x! Item baru ditambahkan ke inventory.`);
-    setTimeout(() => setGachaFeedback(null), 3000);
+    setGachaFeedback(
+      `Berhasil melakukan Spin ${count}x! -${cost.toLocaleString(
+        "id-ID"
+      )} Dylan Crystal. Sisa saldo: ${newBal.toLocaleString("id-ID")} Crystal.`
+    );
+    setTimeout(() => setGachaFeedback(null), 4000);
   };
 
   return (
@@ -247,29 +334,12 @@ export default function InventoryScreen() {
           {/* ─── 2. TOP ACCOUNT CARD (SESUAI LOGIN USER: AVATAR ASLI, NAMA LOGIN, SALDO 0) ─── */}
           <View style={styles.accountCard}>
             <View style={styles.avatarWrap}>
-              {avatar ? (
-                <Image source={{ uri: avatar }} style={styles.avatarImg} contentFit="cover" />
-              ) : (
-                <View style={styles.avatarInitialWrap}>
-                  <Text style={styles.avatarInitialText}>{initialLetter}</Text>
-                </View>
-              )}
-
-              {/* Live Preview Bingkai Terpasang HANYA jika dipasang */}
-              {selectedBorder === "white_mage" && (
-                <Image
-                  source={BORDER_WHITE_MAGE}
-                  style={styles.avatarBorderOverlay}
-                  contentFit="contain"
-                />
-              )}
-              {selectedBorder === "magic_book" && (
-                <Image
-                  source={GACHA_BOOK}
-                  style={styles.avatarBorderOverlay}
-                  contentFit="contain"
-                />
-              )}
+              <BorderAvatar
+                avatarUrl={avatar}
+                fallbackText={initialLetter}
+                borderId={selectedBorder}
+                avatarSize={48}
+              />
 
               {/* Live Preview Efek Bintang Kosmik Terpasang HANYA jika dipasang */}
               {selectedEffect === "crystal_star" && (
@@ -288,7 +358,7 @@ export default function InventoryScreen() {
               <Text style={styles.accountSubtitleText}>Selamat datang!</Text>
             </View>
 
-            {/* Saldo Dylan Crystal di-set ke 0 (Klik untuk Top Up Crystal) */}
+            {/* Saldo Dylan Crystal Akun Pengguna (Klik untuk Top Up Crystal) */}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Top Up Crystal"
@@ -303,7 +373,7 @@ export default function InventoryScreen() {
                 style={styles.crystalPillIcon}
                 contentFit="contain"
               />
-              <Text style={styles.crystalPillText}>0</Text>
+              <Text style={styles.crystalPillText}>{crystalBalance.toLocaleString("id-ID")}</Text>
               <AppIcon name="plus" size={11} color="#38BDF8" style={{ marginLeft: 2 }} />
             </Pressable>
           </View>
@@ -566,6 +636,31 @@ export default function InventoryScreen() {
                       Wallpaper edisi terbatas & bingkai mistis malam purnama.
                     </Text>
                   </View>
+                </View>
+
+                {/* Info Saldo Crystal Tersinkronisasi */}
+                <View style={styles.gachaBalanceRow}>
+                  <Text style={styles.gachaBalanceLabel}>Saldo Crystal Anda:</Text>
+                  <View style={styles.gachaBalancePill}>
+                    <Image
+                      source={require("@/assets/images/topup/topup-crystal.png")}
+                      style={styles.gachaBalanceIcon}
+                      contentFit="contain"
+                    />
+                    <Text style={styles.gachaBalanceVal}>
+                      {crystalBalance.toLocaleString("id-ID")}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => {
+                      hapticLight();
+                      setActiveModal(null);
+                      router.push("/topup" as never);
+                    }}
+                    style={styles.gachaTopUpLink}
+                  >
+                    <Text style={styles.gachaTopUpLinkText}>+ Top Up</Text>
+                  </Pressable>
                 </View>
 
                 {gachaFeedback ? (
@@ -1161,6 +1256,48 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: "#E2E8F0",
     marginTop: 2,
+  },
+  gachaBalanceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    marginBottom: 12,
+  },
+  gachaBalanceLabel: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12,
+    color: "#94A3B8",
+  },
+  gachaBalancePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  gachaBalanceIcon: {
+    width: 15,
+    height: 15,
+  },
+  gachaBalanceVal: {
+    fontFamily: "Nunito-Black",
+    fontSize: 13,
+    color: "#38BDF8",
+  },
+  gachaTopUpLink: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    backgroundColor: "rgba(56, 189, 248, 0.15)",
+  },
+  gachaTopUpLinkText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
+    color: "#38BDF8",
   },
   feedbackAlert: {
     padding: 10,

@@ -38,6 +38,8 @@ import {
   validateImageUrl,
   extractDirectImageUrl,
 } from "@/lib/profile-cooldown";
+import { BorderAvatar } from "@/components/border-avatar";
+import { getEquippedBorderId } from "@/lib/avatar-borders";
 
 const DEFAULT_BANNER =
   "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1200";
@@ -193,12 +195,15 @@ export default function ProfileScreen() {
   }, [navigation]);
 
   useEffect(() => {
-    AsyncStorage.getItem("nuenime.equipped.border")
-      .then((id) => {
-        if (id) setEquippedBorderId(id);
-      })
-      .catch(() => { });
-  }, []);
+    const syncBorder = () => {
+      getEquippedBorderId(auth.user?.id)
+        .then((id) => setEquippedBorderId(id))
+        .catch(() => {});
+    };
+    syncBorder();
+    const unsubscribe = navigation.addListener("focus" as any, syncBorder);
+    return unsubscribe;
+  }, [navigation, auth.user?.id]);
 
   const showToast = (message: string) => {
     hapticLight();
@@ -339,21 +344,12 @@ export default function ProfileScreen() {
               ]}
               hitSlop={10}
             >
-              {avatar ? (
-                <Image
-                  source={{ uri: avatar }}
-                  style={[styles.socialAvatarImg, { pointerEvents: "none" } as any]}
-                  contentFit="cover"
-                  transition={150}
-                  cachePolicy="memory-disk"
-                />
-              ) : (
-                <View style={[styles.socialAvatarFallback, { pointerEvents: "none" } as any]}>
-                  <Text style={[styles.socialAvatarInitial, { pointerEvents: "none" } as any]}>
-                    {initialLetter}
-                  </Text>
-                </View>
-              )}
+              <BorderAvatar
+                avatarUrl={avatar}
+                fallbackText={initialLetter}
+                borderId={equippedBorderId}
+                avatarSize={46}
+              />
             </Pressable>
 
             {/* Kolom sebelah kanan Avatar */}
@@ -599,9 +595,11 @@ export default function ProfileScreen() {
         <View style={styles.profileHeaderBox}>
           {/* Avatar with Equipped Border if active */}
           <View style={styles.avatarWrapper}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Ganti Avatar Profil"
+            <BorderAvatar
+              avatarUrl={avatar}
+              fallbackText={initialLetter}
+              borderId={equippedBorderId}
+              avatarSize={80}
               onPress={() => {
                 hapticLight();
                 setShowAvatarModal(true);
@@ -610,59 +608,35 @@ export default function ProfileScreen() {
                 setAvatarError(null);
                 setAvatarPreviewFailed(false);
               }}
-              style={styles.avatarInner}
             >
-              {avatar ? (
-                <Image
-                  source={{ uri: avatar }}
-                  style={styles.avatarImage}
-                  contentFit="cover"
-                  transition={150}
-                  cachePolicy="memory-disk"
+              {/* Camera / Edit Badge Button */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Ubah Foto Avatar"
+                onPress={() => {
+                  hapticLight();
+                  setShowAvatarModal(true);
+                  setAvatarMode("choice");
+                  setAvatarUrlInput("");
+                  setAvatarError(null);
+                  setAvatarPreviewFailed(false);
+                }}
+                style={({ pressed }) => [
+                  styles.avatarEditBadge,
+                  pressed && styles.btnPressed,
+                  !avatarCooldown.canChange && { backgroundColor: "rgba(245, 158, 11, 0.9)" },
+                ]}
+                hitSlop={8}
+              >
+                <AppIcon
+                  name={!avatarCooldown.canChange ? "clock-outline" : "camera"}
+                  size={14}
+                  color="#FFFFFF"
                 />
-              ) : (
-                <View style={styles.avatarFallback}>
-                  <Text style={styles.avatarInitial}>{initialLetter}</Text>
-                </View>
-              )}
-            </Pressable>
-
-            {/* Equipped Border Frame Overlay */}
-            {equippedBorderId && BORDER_IMAGES[equippedBorderId] ? (
-              <Image
-                source={BORDER_IMAGES[equippedBorderId]}
-                style={styles.equippedBorderImage}
-                contentFit="contain"
-                pointerEvents="none"
-              />
-            ) : null}
-
-            {/* Camera / Edit Badge Button */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Ubah Foto Avatar"
-              onPress={() => {
-                hapticLight();
-                setShowAvatarModal(true);
-                setAvatarMode("choice");
-                setAvatarUrlInput("");
-                setAvatarError(null);
-                setAvatarPreviewFailed(false);
-              }}
-              style={({ pressed }) => [
-                styles.avatarEditBadge,
-                pressed && styles.btnPressed,
-                !avatarCooldown.canChange && { backgroundColor: "rgba(245, 158, 11, 0.9)" },
-              ]}
-              hitSlop={8}
-            >
-              <AppIcon
-                name={!avatarCooldown.canChange ? "clock-outline" : "camera"}
-                size={14}
-                color="#FFFFFF"
-              />
-            </Pressable>
+              </Pressable>
+            </BorderAvatar>
           </View>
+
 
           {/* User Name, Tag & Verified Badge */}
           <View style={styles.nameBlock}>
@@ -1239,36 +1213,12 @@ export default function ProfileScreen() {
 
                   {/* Live Avatar Circular Preview */}
                   <View style={styles.avatarPreviewCenter}>
-                    <View style={styles.avatarModalPreviewOuter}>
-                      <View style={styles.avatarModalPreviewInner}>
-                        {avatarUrlInput.trim().length > 0 && !avatarPreviewFailed ? (
-                          <Image
-                            source={{ uri: avatarUrlInput.trim() }}
-                            style={styles.avatarModalPreviewImage}
-                            contentFit="cover"
-                            transition={150}
-                            onError={() => setAvatarPreviewFailed(true)}
-                            onLoad={() => setAvatarPreviewFailed(false)}
-                          />
-                        ) : (
-                          <View style={styles.avatarModalPreviewPlaceholder}>
-                            <AppIcon
-                              name={avatarPreviewFailed ? "alert-circle" : "account"}
-                              size={32}
-                              color={avatarPreviewFailed ? "#EF4444" : "#64748B"}
-                            />
-                          </View>
-                        )}
-                      </View>
-                      {equippedBorderId && BORDER_IMAGES[equippedBorderId] ? (
-                        <Image
-                          source={BORDER_IMAGES[equippedBorderId]}
-                          style={styles.avatarModalPreviewBorder}
-                          contentFit="contain"
-                          pointerEvents="none"
-                        />
-                      ) : null}
-                    </View>
+                    <BorderAvatar
+                      avatarUrl={avatarUrlInput.trim().length > 0 && !avatarPreviewFailed ? avatarUrlInput.trim() : null}
+                      fallbackText={initialLetter}
+                      borderId={equippedBorderId}
+                      avatarSize={76}
+                    />
                     <Text style={[styles.avatarPreviewHint, avatarPreviewFailed && { color: "#EF4444" }]}>
                       {avatarPreviewFailed
                         ? "Gambar tidak dapat dimuat atau bukan link langsung"
@@ -1370,36 +1320,12 @@ export default function ProfileScreen() {
 
                   {/* Live Avatar Circular Preview */}
                   <View style={styles.avatarPreviewCenter}>
-                    <View style={styles.avatarModalPreviewOuter}>
-                      <View style={styles.avatarModalPreviewInner}>
-                        {avatarUrlInput.trim().length > 0 && !avatarPreviewFailed ? (
-                          <Image
-                            source={{ uri: avatarUrlInput.trim() }}
-                            style={styles.avatarModalPreviewImage}
-                            contentFit="cover"
-                            transition={150}
-                            onError={() => setAvatarPreviewFailed(true)}
-                            onLoad={() => setAvatarPreviewFailed(false)}
-                          />
-                        ) : (
-                          <View style={styles.avatarModalPreviewPlaceholder}>
-                            <AppIcon
-                              name={avatarPreviewFailed ? "alert-circle" : "account"}
-                              size={32}
-                              color={avatarPreviewFailed ? "#EF4444" : "#64748B"}
-                            />
-                          </View>
-                        )}
-                      </View>
-                      {equippedBorderId && BORDER_IMAGES[equippedBorderId] ? (
-                        <Image
-                          source={BORDER_IMAGES[equippedBorderId]}
-                          style={styles.avatarModalPreviewBorder}
-                          contentFit="contain"
-                          pointerEvents="none"
-                        />
-                      ) : null}
-                    </View>
+                    <BorderAvatar
+                      avatarUrl={avatarUrlInput.trim().length > 0 && !avatarPreviewFailed ? avatarUrlInput.trim() : null}
+                      fallbackText={initialLetter}
+                      borderId={equippedBorderId}
+                      avatarSize={76}
+                    />
                     <Text style={[styles.avatarPreviewHint, avatarPreviewFailed && { color: "#EF4444" }]}>
                       {avatarPreviewFailed
                         ? "Gambar tidak dapat dimuat atau format tidak didukung"
@@ -1535,8 +1461,8 @@ const styles = StyleSheet.create({
   socialAvatarWrap: {
     width: 46,
     height: 46,
-    borderRadius: 23,
-    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
   },
   socialAvatarImg: {
     width: "100%",

@@ -20,6 +20,8 @@ import { useComments, type SharedComment } from "@/hooks/use-comments";
 import { avatarUrl } from "@/lib/aniraku-avatars";
 import { canSubmitSharedComment, commentAuthorLabel } from "@/lib/comment-content";
 import { useAnirakuAuth } from "@/providers/auth-provider";
+import { BorderAvatar } from "@/components/border-avatar";
+import { getEquippedBorderId } from "@/lib/avatar-borders";
 
 function authorName(comment: SharedComment) {
   return commentAuthorLabel(comment.author);
@@ -36,11 +38,26 @@ function elapsedTime(iso: string) {
 }
 
 function CommentAuthor({ comment }: { comment: SharedComment }) {
+  const auth = useAnirakuAuth();
   const avatar = avatarUrl(comment.author?.avatar_url);
   const name = authorName(comment);
+  const isMe = Boolean(auth.user?.id && comment.user_id === auth.user.id);
+  const [myBorderId, setMyBorderId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isMe) {
+      getEquippedBorderId(auth.user?.id).then(setMyBorderId);
+    }
+  }, [isMe, auth.user?.id]);
+
   return (
     <View style={styles.commentAuthor}>
-      <AvatarImage uri={avatar} name={name} size={30} rounded />
+      <BorderAvatar
+        avatarUrl={avatar}
+        fallbackText={name}
+        borderId={isMe ? myBorderId : null}
+        avatarSize={30}
+      />
       <View style={styles.authorCopy}>
         <Text style={styles.authorName} numberOfLines={1}>
           {name}

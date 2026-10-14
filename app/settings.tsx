@@ -26,6 +26,8 @@ import { useWatchHistory } from "@/hooks/use-watch-history";
 import { readNotificationPrefs, emitNotificationPrefsChanged } from "@/providers/notifications-provider";
 import { avatarUrl, isDefaultAvatar } from "@/lib/aniraku-avatars";
 import { AppIcon } from "@/components/app-icon";
+import { BorderAvatar } from "@/components/border-avatar";
+import { getEquippedBorderId } from "@/lib/avatar-borders";
 import {
   BANNER_COOLDOWN_SECONDS,
   NAME_COOLDOWN_SECONDS,
@@ -483,6 +485,11 @@ export default function SettingsScreen() {
 
   const avatar = rawAvatar ? avatarUrl(rawAvatar) : null;
   const initialLetter = (displayName || username).trim().charAt(0).toUpperCase() || "N";
+  const [equippedBorderId, setEquippedBorderId] = useState<string | null>(null);
+
+  useEffect(() => {
+    getEquippedBorderId(auth.user?.id).then((id) => setEquippedBorderId(id));
+  }, [auth.user?.id]);
 
   // ─── Real Individual XP & Level from Database ───
   const userExp = Math.max(0, Number(auth.profile?.exp || 0));
@@ -532,13 +539,12 @@ export default function SettingsScreen() {
         {/* ─── 1. USER PROFILE CARD (TOP CARD) ─── */}
         <View style={styles.profileCard}>
           <View style={styles.avatarWrap}>
-            {avatar ? (
-              <Image source={{ uri: avatar }} style={styles.avatarImage} contentFit="cover" />
-            ) : (
-              <View style={styles.avatarFallback}>
-                <Text style={styles.avatarInitial}>{initialLetter}</Text>
-              </View>
-            )}
+            <BorderAvatar
+              avatarUrl={avatar}
+              fallbackText={initialLetter}
+              borderId={equippedBorderId}
+              avatarSize={50}
+            />
           </View>
           <View style={styles.profileTextWrap}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -1606,8 +1612,8 @@ const styles = StyleSheet.create({
   avatarWrap: {
     width: 50,
     height: 50,
-    borderRadius: 25,
-    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
   },
   avatarImage: {
     width: "100%",
