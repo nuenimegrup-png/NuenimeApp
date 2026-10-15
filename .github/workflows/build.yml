@@ -96,7 +96,7 @@ jobs:
           EXPO_PUBLIC_ANILIST_GRAPHQL_URL: "https://graphql.anilist.co"
           EXPO_PUBLIC_API_BASE_URL: ${{ secrets.EXPO_PUBLIC_API_BASE_URL }}
           EXPO_PUBLIC_MAL_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_MAL_CLIENT_ID }}
-          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '444728416290-ohgsfpd6bon745bdh5kshvth16rn8eh6.apps.googleusercontent.com' }}
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '444728416290-rtacl8l6hofjhm0uauid82vppsda4e1i.apps.googleusercontent.com' }}
 
       - name: Decode Keystore
         env:
@@ -129,7 +129,7 @@ jobs:
           EXPO_PUBLIC_ANILIST_GRAPHQL_URL: "https://graphql.aniraku.tech"
           EXPO_PUBLIC_API_BASE_URL: ${{ secrets.EXPO_PUBLIC_API_BASE_URL }}
           EXPO_PUBLIC_MAL_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_MAL_CLIENT_ID }}
-          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '444728416290-ohgsfpd6bon745bdh5kshvth16rn8eh6.apps.googleusercontent.com' }}
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '444728416290-rtacl8l6hofjhm0uauid82vppsda4e1i.apps.googleusercontent.com' }}
 
       - name: Sign APK and Print Fingerprint
         run: |
