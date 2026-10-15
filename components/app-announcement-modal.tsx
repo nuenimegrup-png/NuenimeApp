@@ -16,6 +16,7 @@ import {
   getAppAnnouncementConfig,
   type AppAnnouncementConfig,
 } from "@/lib/admin-service";
+import { showSystemBarNotification } from "@/lib/system-notification";
 
 const STORAGE_DISMISSED_ANNOUNCEMENT = "nuenime.announcement.dismissed_timestamp";
 
@@ -62,6 +63,20 @@ export function AppAnnouncementModal({
 
       setConfig(liveConfig);
       setVisible(true);
+
+      // Munculkan notifikasi di bar status HP
+      const notifiedKey = `nuenime.system_announcement_notified.${liveConfig.updatedAt || liveConfig.versionTag || "default"}`;
+      const alreadyNotified = await AsyncStorage.getItem(notifiedKey);
+      if (!alreadyNotified) {
+        await AsyncStorage.setItem(notifiedKey, "1");
+        void showSystemBarNotification({
+          title: liveConfig.title,
+          body: liveConfig.content,
+          data: { actionUrl: liveConfig.buttonUrl },
+          channelId: "nuenime_announcement",
+          channelName: "Pengumuman Nuenime",
+        });
+      }
     } catch {
       setVisible(false);
     }

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { DeviceEventEmitter, Platform } from "react-native";
+import { DeviceEventEmitter, Platform, Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
@@ -121,6 +121,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       const data = response.notification.request.content.data;
       if (data?.animeId) {
         router.push({ pathname: "/anime/[id]", params: { id: String(data.animeId) } } as never);
+      } else if (data?.actionUrl) {
+        const url = String(data.actionUrl).trim();
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+          void Linking.openURL(url).catch(() => {});
+        } else if (url.startsWith("/")) {
+          router.push(url as never);
+        }
       }
     });
 

@@ -17,6 +17,7 @@ import {
   getAdminMaintenanceConfig,
   type MaintenanceModeConfig,
 } from "@/lib/admin-service";
+import { showSystemBarNotification } from "@/lib/system-notification";
 import { supabase } from "@/lib/supabase";
 
 export function MaintenanceGate() {
@@ -57,8 +58,9 @@ export function MaintenanceGate() {
         (payload: any) => {
           if (payload.new && payload.new.value) {
             const val = typeof payload.new.value === "string" ? JSON.parse(payload.new.value) : payload.new.value;
+            const isActive = Boolean(val.is_active ?? val.isActive);
             setConfig({
-              isActive: Boolean(val.is_active ?? val.isActive),
+              isActive,
               message: val.message || "Server sedang dalam pemeliharaan berkala.",
               endsAt: val.ends_at ?? val.endsAt ?? null,
               iconUrl: val.icon_url ?? val.iconUrl ?? undefined,
@@ -66,6 +68,15 @@ export function MaintenanceGate() {
               secondaryButtonText: val.secondary_button_text ?? val.secondaryButtonText ?? undefined,
               secondaryButtonUrl: val.secondary_button_url ?? val.secondaryButtonUrl ?? undefined,
             });
+
+            if (isActive) {
+              void showSystemBarNotification({
+                title: "Pemeliharaan Sistem Nuenime",
+                body: val.message || "Server sedang dalam pemeliharaan berkala untuk peningkatan performa.",
+                channelId: "nuenime_maintenance",
+                channelName: "Status Pemeliharaan Sistem",
+              });
+            }
           }
         }
       )

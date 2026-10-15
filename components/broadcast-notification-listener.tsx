@@ -17,6 +17,7 @@ import {
   getLatestBroadcastNotification,
   type BroadcastNotification,
 } from "@/lib/admin-service";
+import { showSystemBarNotification } from "@/lib/system-notification";
 import { supabase } from "@/lib/supabase";
 
 export function BroadcastNotificationListener() {
@@ -89,6 +90,17 @@ export function BroadcastNotificationListener() {
       setBroadcast(latest);
       setVisible(true);
       animateIn();
+
+      // Picu notifikasi murni di Status Bar HP jika belum pernah dimunculkan untuk broadcast ini
+      const notified = await AsyncStorage.getItem(`nuenime.system_notified.${latest.id}`);
+      if (!notified) {
+        await AsyncStorage.setItem(`nuenime.system_notified.${latest.id}`, "1");
+        void showSystemBarNotification({
+          title: latest.title,
+          body: latest.message,
+          data: { actionUrl: latest.actionUrl, type: latest.type },
+        });
+      }
     } catch {}
   }, [auth.loading, auth.user, animateIn]);
 
@@ -126,6 +138,13 @@ export function BroadcastNotificationListener() {
               setBroadcast(val);
               setVisible(true);
               animateIn();
+
+              // Langsung munculkan notifikasi status bar HP detik ini juga
+              void showSystemBarNotification({
+                title: val.title,
+                body: val.message,
+                data: { actionUrl: val.actionUrl, type: val.type },
+              });
             }
           } else if (payload.new && !payload.new.value) {
             // Admin menghapus siaran
