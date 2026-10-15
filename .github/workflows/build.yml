@@ -99,9 +99,15 @@ jobs:
           EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '444728416290-ohgsfpd6bon745bdh5kshvth16rn8eh6.apps.googleusercontent.com' }}
 
       - name: Decode Keystore
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "$GITHUB_WORKSPACE/nuenime-release.keystore"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$GITHUB_WORKSPACE/nuenime-release.keystore"
+            echo "Keystore decoded successfully."
+          else
+            echo "Warning: KEYSTORE_BASE64 secret is empty or not set."
+          fi
 
       - name: Build APK (${{ matrix.label }})
         run: |
