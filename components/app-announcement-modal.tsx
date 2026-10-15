@@ -82,14 +82,23 @@ export function AppAnnouncementModal({
 
     if (config.buttonUrl) {
       try {
-        const canOpen = await Linking.canOpenURL(config.buttonUrl);
-        if (canOpen) {
-          await Linking.openURL(config.buttonUrl);
-        } else {
-          await Linking.openURL(config.buttonUrl);
-        }
+        await Linking.openURL(config.buttonUrl);
       } catch (err) {
         console.warn("Gagal membuka tautan pengumuman:", err);
+      }
+    }
+  };
+
+  const handleSecondaryAction = async () => {
+    if (!config) return;
+    handleDismiss();
+
+    const secUrl = config.secondaryButtonUrl?.trim();
+    if (secUrl && secUrl !== "#close") {
+      try {
+        await Linking.openURL(secUrl);
+      } catch (err) {
+        console.warn("Gagal membuka tautan tombol sekunder:", err);
       }
     }
   };
@@ -163,18 +172,34 @@ export function AppAnnouncementModal({
             </View>
           )}
 
-          {/* Action CTA Button */}
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel={config.buttonText || "JOIN DISCORD"}
-            onPress={handleAction}
-            style={styles.actionBtn}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.actionBtnText}>
-              {config.buttonText || "JOIN DISCORD"}
-            </Text>
-          </TouchableOpacity>
+          {/* DUAL LIQUID GLASS BUTTONS (HOME BANNER THEME) */}
+          <View style={styles.glassActionsRow}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={config.buttonText || "Tonton Sekarang"}
+              onPress={handleAction}
+              style={styles.glassBtnPrimary}
+              activeOpacity={0.78}
+            >
+              <AppIcon name="play" size={14} color="#FFFFFF" />
+              <Text style={styles.glassBtnTextPrimary} numberOfLines={1}>
+                {config.buttonText || "Tonton Sekarang"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={config.secondaryButtonText || "Detail"}
+              onPress={handleSecondaryAction}
+              style={styles.glassBtnSecondary}
+              activeOpacity={0.78}
+            >
+              <AppIcon name="information" size={15} color="#E2E8F0" />
+              <Text style={styles.glassBtnTextSecondary} numberOfLines={1}>
+                {config.secondaryButtonText || "Detail"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
@@ -277,24 +302,76 @@ const styles = StyleSheet.create({
     color: "#38BDF8",
     letterSpacing: 0.3,
   },
-  actionBtn: {
-    backgroundColor: "#38BDF8",
-    paddingVertical: 13,
-    paddingHorizontal: 24,
-    borderRadius: 24,
+  glassActionsRow: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#38BDF8",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
+    gap: 10,
+    width: "100%",
+    marginTop: 6,
   },
-  actionBtnText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#0F172A",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
+  glassBtnPrimary: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    backgroundColor: "rgba(255, 255, 255, 0.13)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.24)",
+    borderRadius: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 3,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        cursor: "pointer",
+      } as any)
+      : {}),
+  },
+  glassBtnSecondary: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    borderRadius: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 2,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        cursor: "pointer",
+      } as any)
+      : {}),
+  },
+  glassBtnTextPrimary: {
+    fontFamily: Platform.select({ ios: "System", android: "Roboto" }),
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
+  },
+  glassBtnTextSecondary: {
+    fontFamily: Platform.select({ ios: "System", android: "Roboto" }),
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#E2E8F0",
+    letterSpacing: 0.3,
   },
 });

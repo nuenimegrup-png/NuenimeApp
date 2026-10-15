@@ -44,12 +44,16 @@ VALUES (
     "content": "Gabung ke komunitas AnibiPlay di Discord! ✨\n\n• Ngobrol bareng komunitas\n• Dapatkan info & update terbaru\n• Laporkan bug atau masalah\n• Berikan saran untuk AnibiPlay\n\nJangan sampai ketinggalan info terbaru!\nTekan tombol di bawah untuk bergabung. 👇",
     "button_text": "JOIN DISCORD",
     "button_url": "https://discord.gg/nuenime",
+    "secondary_button_text": "DETAIL INFO",
+    "secondary_button_url": "",
     "version_tag": "Versi terbaru: 1.4.9",
     "dismissible": true
   }'::jsonb,
   NOW()
 )
-ON CONFLICT (key) DO NOTHING;
+ON CONFLICT (key) DO UPDATE
+SET value = EXCLUDED.value
+WHERE (system_configs.value->>'secondary_button_text') IS NULL;
 
 -- 4. Inisialisasi default konfig: Maintenance Mode jika belum ada
 INSERT INTO public.system_configs (key, value, updated_at)

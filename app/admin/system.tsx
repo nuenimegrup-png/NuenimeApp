@@ -503,31 +503,73 @@ export default function AdminSystemScreen() {
                   </Text>
                 </View>
 
-                <View style={styles.row}>
-                  <View style={[styles.formGroup, { flex: 1, marginRight: 16 }]}>
-                    <Text style={styles.label}>Teks Tombol Aksi</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={announcementConfig.buttonText || ""}
-                      onChangeText={(val) =>
-                        setAnnouncementConfig({ ...announcementConfig, buttonText: val })
-                      }
-                      placeholder="JOIN DISCORD"
-                      placeholderTextColor="#64748B"
-                    />
+                {/* TOMBOL 1 (LIQUID GLASS UTAMA) */}
+                <View style={styles.buttonConfigSection}>
+                  <View style={styles.buttonSectionHeader}>
+                    <AppIcon name="play" size={16} color="#38BDF8" />
+                    <Text style={styles.buttonSectionTitle}>Tombol 1 (Liquid Glass Utama - Play Icon)</Text>
                   </View>
+                  <View style={styles.row}>
+                    <View style={[styles.formGroup, { flex: 1, marginRight: 16 }]}>
+                      <Text style={styles.label}>Teks Tombol 1</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={announcementConfig.buttonText || ""}
+                        onChangeText={(val) =>
+                          setAnnouncementConfig({ ...announcementConfig, buttonText: val })
+                        }
+                        placeholder="Contoh: Tonton Sekarang / JOIN DISCORD"
+                        placeholderTextColor="#64748B"
+                      />
+                    </View>
 
-                  <View style={[styles.formGroup, { flex: 1 }]}>
-                    <Text style={styles.label}>Tautan URL Tombol</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={announcementConfig.buttonUrl || ""}
-                      onChangeText={(val) =>
-                        setAnnouncementConfig({ ...announcementConfig, buttonUrl: val })
-                      }
-                      placeholder="https://discord.gg/nuenime"
-                      placeholderTextColor="#64748B"
-                    />
+                    <View style={[styles.formGroup, { flex: 1 }]}>
+                      <Text style={styles.label}>Tautan URL Tombol 1</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={announcementConfig.buttonUrl || ""}
+                        onChangeText={(val) =>
+                          setAnnouncementConfig({ ...announcementConfig, buttonUrl: val })
+                        }
+                        placeholder="https://discord.gg/nuenime atau /anime/..."
+                        placeholderTextColor="#64748B"
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                {/* TOMBOL 2 (LIQUID GLASS SEKUNDER) */}
+                <View style={styles.buttonConfigSection}>
+                  <View style={styles.buttonSectionHeader}>
+                    <AppIcon name="information" size={16} color="#CBD5E1" />
+                    <Text style={styles.buttonSectionTitle}>Tombol 2 (Liquid Glass Sekunder - Info Icon)</Text>
+                  </View>
+                  <View style={styles.row}>
+                    <View style={[styles.formGroup, { flex: 1, marginRight: 16 }]}>
+                      <Text style={styles.label}>Teks Tombol 2</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={announcementConfig.secondaryButtonText || ""}
+                        onChangeText={(val) =>
+                          setAnnouncementConfig({ ...announcementConfig, secondaryButtonText: val })
+                        }
+                        placeholder="Contoh: Detail / Tutup"
+                        placeholderTextColor="#64748B"
+                      />
+                    </View>
+
+                    <View style={[styles.formGroup, { flex: 1 }]}>
+                      <Text style={styles.label}>Tautan URL Tombol 2 (Opsional)</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={announcementConfig.secondaryButtonUrl || ""}
+                        onChangeText={(val) =>
+                          setAnnouncementConfig({ ...announcementConfig, secondaryButtonUrl: val })
+                        }
+                        placeholder="Kosongkan jika hanya untuk tombol Tutup"
+                        placeholderTextColor="#64748B"
+                      />
+                    </View>
                   </View>
                 </View>
 
@@ -1137,5 +1179,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#94A3B8",
     lineHeight: 18,
+  },
+  buttonConfigSection: {
+    backgroundColor: "#161325",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 16,
+  },
+  buttonSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  buttonSectionTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#E2E8F0",
   },
 });

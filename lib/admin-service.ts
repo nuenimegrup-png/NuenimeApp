@@ -1316,6 +1316,8 @@ export interface AppAnnouncementConfig {
   content: string;
   buttonText: string;
   buttonUrl: string;
+  secondaryButtonText?: string;
+  secondaryButtonUrl?: string;
   versionTag: string;
   dismissible: boolean;
   updatedAt?: string;
@@ -1335,6 +1337,8 @@ Jangan sampai ketinggalan info terbaru!
 Tekan tombol di bawah untuk bergabung. 👇`,
   buttonText: "JOIN DISCORD",
   buttonUrl: "https://discord.gg/nuenime",
+  secondaryButtonText: "DETAIL INFO",
+  secondaryButtonUrl: "",
   versionTag: "Versi terbaru: 1.4.9",
   dismissible: true,
 };
@@ -1355,6 +1359,10 @@ export async function getAppAnnouncementConfig(): Promise<AppAnnouncementConfig>
         content: parsed.content ?? DEFAULT_ANNOUNCEMENT_CONFIG.content,
         buttonText: parsed.button_text ?? parsed.buttonText ?? DEFAULT_ANNOUNCEMENT_CONFIG.buttonText,
         buttonUrl: parsed.button_url ?? parsed.buttonUrl ?? DEFAULT_ANNOUNCEMENT_CONFIG.buttonUrl,
+        secondaryButtonText:
+          parsed.secondary_button_text ?? parsed.secondaryButtonText ?? DEFAULT_ANNOUNCEMENT_CONFIG.secondaryButtonText,
+        secondaryButtonUrl:
+          parsed.secondary_button_url ?? parsed.secondaryButtonUrl ?? DEFAULT_ANNOUNCEMENT_CONFIG.secondaryButtonUrl,
         versionTag: parsed.version_tag ?? parsed.versionTag ?? DEFAULT_ANNOUNCEMENT_CONFIG.versionTag,
         dismissible: parsed.dismissible ?? true,
         updatedAt: data.updated_at || new Date().toISOString(),
@@ -1382,6 +1390,8 @@ export async function saveAppAnnouncementConfig(
     content: config.content,
     button_text: config.buttonText,
     button_url: config.buttonUrl,
+    secondary_button_text: config.secondaryButtonText ?? "",
+    secondary_button_url: config.secondaryButtonUrl ?? "",
     version_tag: config.versionTag,
     dismissible: config.dismissible !== false,
   };
