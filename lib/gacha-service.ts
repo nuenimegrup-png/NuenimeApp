@@ -614,6 +614,194 @@ export function generateGachaTransactionId(): string {
  * 3. Mengurangi Crystal dan memasukkan banner yang didapat ke inventory.
  * 4. Mencatat riwayat transaksi dengan ID unik.
  */
+// ─── XP REWARD PER RARITY (flat XP per item yang didapat) ───
+export const GACHA_XP_REWARD: Record<WallpaperRarity, number> = {
+  Normal:    10,
+  Rare:      20,
+  Epic:      40,
+  Legendary: 80,
+  Mythic:    150,
+};
+
+/**
+ * Memberikan XP ke profil pengguna berdasarkan hasil pull gacha.
+ * Update langsung ke Supabase profiles (kolom exp) dan kembalikan
+ * nilai exp + level baru agar UI bisa tampilkan animasi level-up.
+ */
+export async function awardGachaXp(
+  userId: string,
+  results: WallpaperItem[]
+): Promise<{ totalXpAwarded: number; newExp: number; newLevel: number; oldLevel: number; levelUp: boolean }> {
+  const totalXpAwarded = results.reduce(
+    (sum, item) => sum + (GACHA_XP_REWARD[item.rarity] ?? 10),
+    0
+  );
+  if (totalXpAwarded === 0) return { totalXpAwarded: 0, newExp: 0, newLevel: 1, oldLevel: 1, levelUp: false };
+
+  try {
+    const { data: profile, error: fetchErr } = await supabase
+      .from("profiles")
+      .select("exp, level")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const oldExp = profile?.exp ?? 0;
+    const oldLevel = profile?.level ?? 1;
+    const newExp = oldExp + totalXpAwarded;
+
+    let level = 1;
+    let xpAcc = 0;
+    while (true) {
+      const needed = 50 + (level - 1) * 15;
+      if (newExp < xpAcc + needed) break;
+      xpAcc += needed;
+      level++;
+      if (level >= 200000) break;
+    }
+    const levelUp = level > oldLevel;
+
+    await supabase
+      .from("profiles")
+      .update({ exp: newExp, level })
+      .eq("id", userId);
+
+    try {
+      await supabase.from("user_xp_transactions").insert({
+        user_id: userId,
+        activity_type: "gacha_summon",
+        target_id: `gacha_pull_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        base_xp: totalXpAwarded,
+        bonus_xp: 0,
+        total_xp: totalXpAwarded,
+        multiplier: 1.0,
+        description: `Hadiah Gacha Summon (${results.length} item didapat)`,
+        metadata: {
+          results_count: results.length,
+          rarities: results.map((r) => r.rarity),
+        },
+      });
+    } catch {}
+
+    return { totalXpAwarded, newExp, newLevel: level, oldLevel, levelUp };
+  } catch (err) {
+    console.warn("[gacha-service] awardGachaXp failed:", err);
+    return { totalXpAwarded, newExp: totalXpAwarded, newLevel: 1, oldLevel: 1, levelUp: false };
+  }
+}
+
+/**
+ * Memberikan atau mensimulasikan penambahan EXP langsung ke akun pengguna.
+ * Menghitung base XP + bonus XP berdasarkan wallpaper/border yang dipakai,
+ * memperbarui tabel `profiles` di Supabase, dan mencatat transaksi ke `user_xp_transactions`.
+ */
+export async function awardDirectUserXp(
+  userId: string,
+  baseXp: number,
+  bonusPercent: number,
+  description: string,
+  activityType: string = "simulation"
+): Promise<{
+  success: boolean;
+  baseXp: number;
+  bonusXp: number;
+  totalXp: number;
+  newExp: number;
+  newLevel: number;
+  oldLevel: number;
+  levelUp: boolean;
+  message?: string;
+}> {
+  if (!userId || userId === "guest") {
+    return {
+      success: false,
+      baseXp,
+      bonusXp: 0,
+      totalXp: baseXp,
+      newExp: 0,
+      newLevel: 1,
+      oldLevel: 1,
+      levelUp: false,
+      message: "Masuk/login terlebih dahulu untuk menyimpan EXP ke akun Anda.",
+    };
+  }
+
+  const bonusXp = Math.round((baseXp * bonusPercent) / 100);
+  const totalXp = baseXp + bonusXp;
+
+  try {
+    const { data: profile, error: fetchErr } = await supabase
+      .from("profiles")
+      .select("exp, level")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (fetchErr) {
+      console.warn("[gacha-service] awardDirectUserXp fetch error:", fetchErr);
+    }
+
+    const oldExp = profile?.exp ?? 0;
+    const oldLevel = profile?.level ?? 1;
+    const newExp = oldExp + totalXp;
+
+    let level = 1;
+    let xpAcc = 0;
+    while (true) {
+      const needed = 50 + (level - 1) * 15;
+      if (newExp < xpAcc + needed) break;
+      xpAcc += needed;
+      level++;
+      if (level >= 200000) break;
+    }
+    const levelUp = level > oldLevel;
+
+    await supabase
+      .from("profiles")
+      .update({ exp: newExp, level })
+      .eq("id", userId);
+
+    try {
+      await supabase.from("user_xp_transactions").insert({
+        user_id: userId,
+        activity_type: activityType,
+        target_id: `${activityType}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        base_xp: baseXp,
+        bonus_xp: bonusXp,
+        total_xp: totalXp,
+        multiplier: 1.0 + bonusPercent / 100,
+        description,
+        metadata: {
+          bonus_percent: bonusPercent,
+          source: "gacha_simulation",
+        },
+      });
+    } catch {}
+
+    return {
+      success: true,
+      baseXp,
+      bonusXp,
+      totalXp,
+      newExp,
+      newLevel: level,
+      oldLevel,
+      levelUp,
+    };
+  } catch (err: any) {
+    console.warn("[gacha-service] awardDirectUserXp error:", err);
+    return {
+      success: false,
+      baseXp,
+      bonusXp,
+      totalXp,
+      newExp: 0,
+      newLevel: 1,
+      oldLevel: 1,
+      levelUp: false,
+      message: err?.message || "Gagal menyimpan EXP",
+    };
+  }
+}
+
 export async function executeGachaSummon(
   userId: string | null | undefined,
   count: 1 | 10,
@@ -623,6 +811,9 @@ export async function executeGachaSummon(
   results: WallpaperItem[];
   newBalance: number;
   newOwnedCount: number;
+  xpAwarded?: number;
+  newExp?: number;
+  newLevel?: number;
   txId?: string;
   error?: string;
 }> {
@@ -732,11 +923,29 @@ export async function executeGachaSummon(
     await AsyncStorage.setItem(histKey, JSON.stringify(history.slice(0, 50)));
   } catch {}
 
+  // 7. Award XP berdasarkan rarity item yang didapat
+  let xpAwarded = 0;
+  let newExp = 0;
+  let newLevel = 1;
+  if (userId && userId.trim().length > 0 && userId !== "guest") {
+    try {
+      const xpResult = await awardGachaXp(userId, results);
+      xpAwarded = xpResult.totalXpAwarded;
+      newExp = xpResult.newExp;
+      newLevel = xpResult.newLevel;
+    } catch (err) {
+      console.warn("[gacha-service] XP award failed (non-critical):", err);
+    }
+  }
+
   return {
     success: true,
     results,
     newBalance: finalBalance,
     newOwnedCount: updatedOwned.length,
+    xpAwarded,
+    newExp,
+    newLevel,
     txId,
   };
 }

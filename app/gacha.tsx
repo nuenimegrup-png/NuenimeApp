@@ -39,12 +39,32 @@ import {
   setActiveWallpaperId,
   getGachaConfig,
   getAllGachaBanners,
+  getEquippedExpBonus,
+  awardDirectUserXp,
+  GACHA_XP_REWARD,
   type DynamicGachaConfig,
 } from "@/lib/gacha-service";
+import { useExp } from "@/providers/exp-toast-provider";
 import { supabase } from "@/lib/supabase";
+
+// ─── DAFTAR PRESET AKTIVITAS UNTUK SIMULASI BONUS EXP ───
+export const SIMULATION_ACTIVITIES = [
+  { key: "COMPLETE_EPISODE", label: "Selesai Nonton 1 Episode", baseXp: 15, icon: "play-circle" },
+  { key: "WATCH_5MIN", label: "Nonton Anime 5 Menit", baseXp: 5, icon: "time" },
+  { key: "COMPLETE_MOVIE", label: "Selesai 1 Film Anime", baseXp: 25, icon: "film" },
+  { key: "DAILY_MISSION", label: "Klaim Misi Harian", baseXp: 20, icon: "checkmark-circle" },
+  { key: "WEEKLY_MISSION", label: "Klaim Misi Mingguan", baseXp: 75, icon: "trophy" },
+  { key: "GACHA_MYTHIC", label: "Dapat Wallpaper Mythic", baseXp: 150, icon: "sparkles" },
+  { key: "GACHA_LEGENDARY", label: "Dapat Wallpaper Legendary", baseXp: 80, icon: "star" },
+  { key: "GACHA_EPIC", label: "Dapat Wallpaper Epic", baseXp: 40, icon: "flash" },
+  { key: "GACHA_RARE", label: "Dapat Wallpaper Rare", baseXp: 20, icon: "diamond" },
+  { key: "BORDER_MYTHIC", label: "Dapat/Beli Border Mythic", baseXp: 200, icon: "shield-checkmark" },
+  { key: "BORDER_LEGENDS", label: "Dapat/Beli Border Legends", baseXp: 120, icon: "ribbon" },
+];
 
 export default function GachaScreen() {
   const auth = useAnirakuAuth();
+  const { showExpToast } = useExp();
   const { width: windowWidth } = useWindowDimensions();
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -56,6 +76,14 @@ export default function GachaScreen() {
   const [showLocked, setShowLocked] = useState(true);
   const [allBanners, setAllBanners] = useState<WallpaperItem[]>(WALLPAPER_CATALOG);
   const [gachaConfigState, setGachaConfigState] = useState<DynamicGachaConfig | null>(null);
+
+  // ─── EXP & BONUS SIMULATION STATES ───
+  const [lastXpAwarded, setLastXpAwarded] = useState<number>(0);
+  const [equippedBonusPercent, setEquippedBonusPercent] = useState<number>(0);
+  const [showExpSimModal, setShowExpSimModal] = useState<boolean>(false);
+  const [simActivityKey, setSimActivityKey] = useState<string>("COMPLETE_EPISODE");
+  const [simRarityOverride, setSimRarityOverride] = useState<WallpaperRarity | null>(null);
+  const [isClaimingSimXp, setIsClaimingSimXp] = useState<boolean>(false);
 
   // ─── TRANSACTION & ANIMATION STATES ───
   const [isSummoning, setIsSummoning] = useState(false);
@@ -117,16 +145,21 @@ export default function GachaScreen() {
 
       // Sync active equipped wallpaper (either from profile.banner_url or storage)
       const localActive = await getActiveWallpaperId(auth.user?.id);
+      let activeItem: WallpaperItem | undefined;
       if (auth.profile?.banner_url) {
         const matching = bannerList.find((w) => w.image === auth.profile?.banner_url);
         if (matching) {
           setActiveWallpaperIdState(matching.id);
+          activeItem = matching;
         } else if (localActive) {
           setActiveWallpaperIdState(localActive);
+          activeItem = bannerList.find((w) => w.id === localActive);
         }
       } else if (localActive) {
         setActiveWallpaperIdState(localActive);
+        activeItem = bannerList.find((w) => w.id === localActive);
       }
+      setEquippedBonusPercent(activeItem?.expBonus ?? 0);
     } catch {}
   }, [auth.user?.id, auth.profile?.banner_url]);
 
@@ -198,6 +231,10 @@ export default function GachaScreen() {
       // Update state data immediately in memory
       setCrystalBalance(result.newBalance);
       setGachaResults(result.results);
+      setLastXpAwarded(result.xpAwarded ?? 0);
+      if (typeof result.newExp === "number" && typeof result.newLevel === "number") {
+        auth.updateProfileExpAndLevel(result.newExp, result.newLevel);
+      }
       const updatedOwned = await getOwnedWallpaperIds(auth.user?.id);
       setOwnedIds(updatedOwned);
 
@@ -212,6 +249,19 @@ export default function GachaScreen() {
         setIsSummoning(false);
         hapticSuccess();
         setShowResultModal(true);
+
+        if ((result.xpAwarded ?? 0) > 0) {
+          showExpToast({
+            totalXp: result.xpAwarded!,
+            baseXp: result.xpAwarded!,
+            bonusXp: 0,
+            description: `Hadiah Summon Gacha (${count}x)`,
+            level: result.newLevel ?? auth.profile?.level ?? 1,
+            levelUp: Boolean(result.newLevel && auth.profile?.level && result.newLevel > auth.profile.level),
+            newTotalXp: result.newExp ?? ((auth.profile?.exp ?? 0) + result.xpAwarded!),
+            isVip: Boolean(auth.profile?.is_vip),
+          });
+        }
       }, GACHA_SETTINGS.gifDurationMs);
     } catch (err: any) {
       if (gifTimerRef.current) clearTimeout(gifTimerRef.current);
@@ -236,6 +286,7 @@ export default function GachaScreen() {
       // 1. Persist to active wallpaper per user
       await setActiveWallpaperId(auth.user?.id, previewItem.id);
       setActiveWallpaperIdState(previewItem.id);
+      setEquippedBonusPercent(previewItem.expBonus);
 
       // 2. Persist to Supabase user profile banner_url
       if (auth.user) {
@@ -250,6 +301,57 @@ export default function GachaScreen() {
       Alert.alert("Gagal Menerapkan", err?.message || "Terjadi kesalahan saat menyimpan banner profil.");
     } finally {
       setIsApplyingBanner(false);
+    }
+  };
+
+  // ─── CLAIM SIMULATED EXP ───
+  const handleClaimSimulatedXp = async () => {
+    if (!auth.user?.id || auth.user.id === "guest") {
+      Alert.alert("Perlu Login", "Silakan login terlebih dahulu untuk menyimpan EXP ke profil Anda.");
+      return;
+    }
+
+    const selectedAct = SIMULATION_ACTIVITIES.find((a) => a.key === simActivityKey) || SIMULATION_ACTIVITIES[0];
+    const effectiveBonus =
+      simRarityOverride !== null
+        ? RARITY_CONFIG[simRarityOverride].expBonus
+        : equippedBonusPercent;
+
+    setIsClaimingSimXp(true);
+    try {
+      const res = await awardDirectUserXp(
+        auth.user.id,
+        selectedAct.baseXp,
+        effectiveBonus,
+        `Simulasi EXP: ${selectedAct.label} (+${effectiveBonus}% bonus)`,
+        "simulation_test"
+      );
+
+      if (!res.success) {
+        Alert.alert("Gagal", res.message || "Gagal menambahkan EXP simulasi.");
+        return;
+      }
+
+      auth.updateProfileExpAndLevel(res.newExp, res.newLevel);
+      showExpToast({
+        totalXp: res.totalXp,
+        baseXp: res.baseXp,
+        bonusXp: res.bonusXp,
+        description: `Simulasi EXP: ${selectedAct.label}`,
+        level: res.newLevel,
+        oldLevel: res.oldLevel,
+        levelUp: res.levelUp,
+        newTotalXp: res.newExp,
+        isVip: Boolean(auth.profile?.is_vip),
+      });
+
+      hapticSuccess();
+      setShowExpSimModal(false);
+      showToast(`Berhasil menambahkan +${res.totalXp} EXP ke profil kamu! (Total: ${res.newExp.toLocaleString()} EXP)`, "success");
+    } catch (err: any) {
+      Alert.alert("Error", err?.message || "Terjadi kesalahan saat memproses simulasi EXP.");
+    } finally {
+      setIsClaimingSimXp(false);
     }
   };
 
@@ -395,10 +497,55 @@ export default function GachaScreen() {
 
           {/* ─── 5. BONUS EXP WALLPAPER CARD (SESUAI SCREENSHOT) ─── */}
           <View style={styles.expBonusCard}>
-            <Text style={styles.expBonusTitle}>Bonus EXP Wallpaper</Text>
-            <Text style={styles.expBonusSubtitle}>
-              Hanya wallpaper yang sedang dipakai yang memberi bonus.
-            </Text>
+            <View style={styles.expBonusHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.expBonusTitle}>Bonus EXP Wallpaper</Text>
+                <Text style={styles.expBonusSubtitle}>
+                  Hanya wallpaper yang sedang dipakai yang memberi bonus.
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Buka Simulasi Bonus EXP"
+                onPress={() => {
+                  hapticLight();
+                  setShowExpSimModal(true);
+                }}
+                style={({ pressed }) => [styles.simulasiExpBtn, pressed && styles.btnPressed]}
+              >
+                <AppIcon name="flash" size={13} color="#F59E0B" />
+                <Text style={styles.simulasiExpBtnText}>Simulasi EXP</Text>
+              </Pressable>
+            </View>
+
+            {/* Status Wallpaper Aktif & Bonus Saat Ini */}
+            <View style={styles.activeWallpaperBonusBanner}>
+              <AppIcon
+                name={equippedBonusPercent > 0 ? "shield-checkmark" : "information-circle-outline"}
+                size={14}
+                color={equippedBonusPercent > 0 ? "#10B981" : "#94A3B8"}
+              />
+              <Text style={styles.activeWallpaperBonusText} numberOfLines={1}>
+                {equippedBonusPercent > 0 ? (
+                  <>
+                    Aktif:{" "}
+                    <Text style={{ color: "#38BDF8", fontWeight: "700" }}>
+                      {allBanners.find((b) => b.id === activeWallpaperId)?.name || "Wallpaper Pilihan"}
+                    </Text>{" "}
+                    (
+                    <Text style={{ color: "#10B981", fontWeight: "700" }}>
+                      +{equippedBonusPercent}% EXP
+                    </Text>
+                    )
+                  </>
+                ) : (
+                  <>
+                    Belum ada wallpaper terpasang (
+                    <Text style={{ color: "#94A3B8" }}>Default: +0% EXP</Text>)
+                  </>
+                )}
+              </Text>
+            </View>
 
             {/* Row 1: Mythic */}
             <View style={styles.expPillRow}>
@@ -451,6 +598,20 @@ export default function GachaScreen() {
                 <Text style={styles.expPercentText}>+5%</Text>
               </View>
             </View>
+
+            {/* Quick Action Button to Open Simulator */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Simulasikan Tambah EXP ke Akun"
+              onPress={() => {
+                hapticLight();
+                setShowExpSimModal(true);
+              }}
+              style={({ pressed }) => [styles.openSimModalCardBtn, pressed && styles.btnPressed]}
+            >
+              <AppIcon name="sparkles" size={14} color="#38BDF8" />
+              <Text style={styles.openSimModalCardBtnText}>Simulasikan & Klaim Tambah EXP</Text>
+            </Pressable>
           </View>
 
           {/* ─── 6. KOLEKSI SECTION HEADER & TOGGLE TERKUNCI (SESUAI SCREENSHOT) ─── */}
@@ -700,6 +861,13 @@ export default function GachaScreen() {
                         </Text>
                       </View>
 
+                      {lastXpAwarded > 0 && (
+                        <View style={styles.resultXpGainBadge}>
+                          <AppIcon name="sparkles" size={13} color="#F59E0B" />
+                          <Text style={styles.resultXpGainText}>+{lastXpAwarded} EXP Ditambahkan ke Akun!</Text>
+                        </View>
+                      )}
+
                       {/* Action buttons */}
                       <View style={styles.singleActionRow}>
                         <Pressable
@@ -728,11 +896,18 @@ export default function GachaScreen() {
               </View>
             ) : (
               /* 10x Multi Results Grid */
-              <ScrollView
-                style={styles.multiResultScroll}
-                contentContainerStyle={styles.multiResultGrid}
-                showsVerticalScrollIndicator={false}
-              >
+              <>
+                {lastXpAwarded > 0 && (
+                  <View style={styles.resultXpGainBadgeMulti}>
+                    <AppIcon name="sparkles" size={14} color="#F59E0B" />
+                    <Text style={styles.resultXpGainText}>+{lastXpAwarded} EXP Total Didapatkan & Masuk Akun!</Text>
+                  </View>
+                )}
+                <ScrollView
+                  style={styles.multiResultScroll}
+                  contentContainerStyle={styles.multiResultGrid}
+                  showsVerticalScrollIndicator={false}
+                >
                 {gachaResults.map((item, idx) => {
                   const cfg = RARITY_CONFIG[item.rarity];
                   return (
@@ -766,7 +941,8 @@ export default function GachaScreen() {
                   );
                 })}
               </ScrollView>
-            )}
+            </>
+          )}
 
             {lastSummonType === 10 && (
               <Pressable
@@ -956,6 +1132,203 @@ export default function GachaScreen() {
                 <Text style={styles.insufficientTopupText} numberOfLines={1}>
                   Top Up Sekarang
                 </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── 15. SIMULASI BONUS EXP MODAL ─── */}
+      <Modal visible={showExpSimModal} transparent animationType="slide">
+        <View style={styles.simModalBackdrop}>
+          <View style={styles.simModalBox}>
+            {/* Modal Header */}
+            <View style={styles.simModalHeader}>
+              <View style={styles.simModalHeaderLeft}>
+                <View style={styles.simHeaderIconBadge}>
+                  <AppIcon name="flash" size={18} color="#F59E0B" />
+                </View>
+                <View>
+                  <Text style={styles.simModalTitle}>Simulasi Bonus EXP</Text>
+                  <Text style={styles.simModalSubtitle}>Uji & tambahkan EXP ke akun profil Anda</Text>
+                </View>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Tutup modal simulasi"
+                onPress={() => setShowExpSimModal(false)}
+                style={({ pressed }) => [styles.simCloseIconBtn, pressed && styles.btnPressed]}
+              >
+                <AppIcon name="close" size={20} color="#94A3B8" />
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.simModalScroll} showsVerticalScrollIndicator={false}>
+              {/* Status Bonus Kosmetik Aktif */}
+              <View style={styles.simActiveBonusCard}>
+                <View style={styles.simActiveBonusHeader}>
+                  <Text style={styles.simActiveBonusLabel}>Bonus Kosmetik Aktif</Text>
+                  <View style={[styles.rarityPill, { borderColor: "#10B981" }]}>
+                    <Text style={[styles.rarityPillText, { color: "#10B981" }]}>
+                      +{equippedBonusPercent}% EXP
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.simActiveBonusSub}>
+                  {equippedBonusPercent > 0
+                    ? `Wallpaper: ${allBanners.find((b) => b.id === activeWallpaperId)?.name || "Koleksi Terpasang"}`
+                    : "Belum ada wallpaper terpasang (pilih modifier rarity di bawah untuk mencoba)"}
+                </Text>
+              </View>
+
+              {/* Rarity Modifier Switcher */}
+              <Text style={styles.simSectionLabel}>Pilih Simulasi Bonus Rarity:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.simRarityRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setSimRarityOverride(null)}
+                  style={[
+                    styles.simRarityPillBtn,
+                    simRarityOverride === null && styles.simRarityPillBtnActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.simRarityPillBtnText,
+                      simRarityOverride === null && styles.simRarityPillBtnTextActive,
+                    ]}
+                  >
+                    Ikuti Aktif (+{equippedBonusPercent}%)
+                  </Text>
+                </Pressable>
+
+                {(["Mythic", "Legendary", "Epic", "Rare", "Normal"] as WallpaperRarity[]).map((r) => {
+                  const cfg = RARITY_CONFIG[r];
+                  const isSelected = simRarityOverride === r;
+                  return (
+                    <Pressable
+                      key={r}
+                      accessibilityRole="button"
+                      onPress={() => setSimRarityOverride(r)}
+                      style={[
+                        styles.simRarityPillBtn,
+                        isSelected && { borderColor: cfg.borderColor, backgroundColor: "rgba(56, 189, 248, 0.15)" },
+                      ]}
+                    >
+                      <Text style={[styles.simRarityPillBtnText, isSelected && { color: cfg.color, fontWeight: "700" }]}>
+                        {r} (+{cfg.expBonus}%)
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Pilih Aktivitas / Ketentuan EXP */}
+              <Text style={styles.simSectionLabel}>Pilih Aktivitas untuk Disimulasikan:</Text>
+              <View style={styles.simActivitiesGrid}>
+                {SIMULATION_ACTIVITIES.map((act) => {
+                  const isSelected = simActivityKey === act.key;
+                  return (
+                    <Pressable
+                      key={act.key}
+                      accessibilityRole="button"
+                      onPress={() => {
+                        hapticLight();
+                        setSimActivityKey(act.key);
+                      }}
+                      style={[
+                        styles.simActivityCard,
+                        isSelected && styles.simActivityCardSelected,
+                      ]}
+                    >
+                      <View style={styles.simActivityCardLeft}>
+                        <View style={[styles.simActivityIconBadge, isSelected && styles.simActivityIconBadgeSelected]}>
+                          <AppIcon name={act.icon as any} size={15} color={isSelected ? "#38BDF8" : "#94A3B8"} />
+                        </View>
+                        <Text style={[styles.simActivityName, isSelected && styles.simActivityNameSelected]}>
+                          {act.label}
+                        </Text>
+                      </View>
+                      <View style={styles.simActivityBaseXpPill}>
+                        <Text style={styles.simActivityBaseXpText}>+{act.baseXp} XP</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {/* Kalkulasi Transparan */}
+              {(() => {
+                const selectedAct = SIMULATION_ACTIVITIES.find((a) => a.key === simActivityKey) || SIMULATION_ACTIVITIES[0];
+                const effectiveBonus =
+                  simRarityOverride !== null
+                    ? RARITY_CONFIG[simRarityOverride].expBonus
+                    : equippedBonusPercent;
+                const bonusXp = Math.round((selectedAct.baseXp * effectiveBonus) / 100);
+                const totalXp = selectedAct.baseXp + bonusXp;
+
+                return (
+                  <View style={styles.simCalcBox}>
+                    <Text style={styles.simCalcTitle}>Rincian Perhitungan EXP</Text>
+                    <View style={styles.simCalcRow}>
+                      <Text style={styles.simCalcLabel}>Base EXP Aktivitas:</Text>
+                      <Text style={styles.simCalcValue}>+{selectedAct.baseXp} XP</Text>
+                    </View>
+                    <View style={styles.simCalcRow}>
+                      <Text style={styles.simCalcLabel}>
+                        Bonus Kosmetik (+{effectiveBonus}%):
+                      </Text>
+                      <Text style={[styles.simCalcValue, { color: "#10B981" }]}>
+                        +{bonusXp} XP
+                      </Text>
+                    </View>
+                    <View style={styles.simCalcDivider} />
+                    <View style={styles.simCalcRow}>
+                      <Text style={styles.simCalcTotalLabel}>Total EXP Didapat:</Text>
+                      <Text style={styles.simCalcTotalValue}>+{totalXp} EXP</Text>
+                    </View>
+
+                    {/* Akun target info */}
+                    <View style={styles.simTargetUserBanner}>
+                      <AppIcon name="person" size={13} color="#94A3B8" />
+                      <Text style={styles.simTargetUserText} numberOfLines={1}>
+                        Target Akun:{" "}
+                        <Text style={{ color: "#E2E8F0", fontWeight: "700" }}>
+                          {auth.profile?.display_name || auth.user?.email || "Akun Saya"}
+                        </Text>{" "}
+                        (Level {auth.profile?.level || 1} • {(auth.profile?.exp || 0).toLocaleString()} XP)
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })()}
+            </ScrollView>
+
+            {/* Action Buttons */}
+            <View style={styles.simBtnRow}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isClaimingSimXp}
+                onPress={() => setShowExpSimModal(false)}
+                style={[styles.simBtn, styles.simCancelBtn]}
+              >
+                <Text style={styles.simCancelBtnText}>Batal</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                disabled={isClaimingSimXp}
+                onPress={handleClaimSimulatedXp}
+                style={[styles.simBtn, styles.simClaimBtn]}
+              >
+                {isClaimingSimXp ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <AppIcon name="flash" size={16} color="#FFFFFF" />
+                    <Text style={styles.simClaimBtnText}>Klaim & Tambah ke Akun</Text>
+                  </>
+                )}
               </Pressable>
             </View>
           </View>
@@ -1791,6 +2164,369 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     textAlign: "center",
     ...(Platform.OS === "web" ? ({ whiteSpace: "nowrap" } as any) : {}),
+  },
+
+  // ─── EXP BONUS CARD HEADER & ACTIVE BANNER ───
+  expBonusHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+    gap: 8,
+  },
+  simulasiExpBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.35)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  simulasiExpBtnText: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#F59E0B",
+  },
+  activeWallpaperBonusBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#0B0F17",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#1E2738",
+    marginBottom: 12,
+  },
+  activeWallpaperBonusText: {
+    fontSize: 11.5,
+    color: "#CBD5E1",
+    flex: 1,
+  },
+  openSimModalCardBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#162032",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.3)",
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 6,
+  },
+  openSimModalCardBtnText: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#38BDF8",
+  },
+
+  // ─── GACHA RESULT EXP BADGES ───
+  resultXpGainBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.4)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  resultXpGainBadgeMulti: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.4)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  resultXpGainText: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#F59E0B",
+  },
+
+  // ─── EXP SIMULATION MODAL ───
+  simModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  simModalBox: {
+    width: "100%",
+    maxWidth: 480,
+    maxHeight: "90%",
+    backgroundColor: "#121722",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#1E2738",
+    padding: 18,
+    flexDirection: "column",
+  },
+  simModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1B2233",
+    marginBottom: 12,
+  },
+  simModalHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  simHeaderIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  simModalTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  simModalSubtitle: {
+    fontSize: 11.5,
+    color: "#94A3B8",
+  },
+  simCloseIconBtn: {
+    padding: 4,
+  },
+  simModalScroll: {
+    flexGrow: 0,
+    marginBottom: 14,
+  },
+  simActiveBonusCard: {
+    backgroundColor: "#0B0F17",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#1B2233",
+    padding: 12,
+    marginBottom: 14,
+  },
+  simActiveBonusHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  simActiveBonusLabel: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  simActiveBonusSub: {
+    fontSize: 11.5,
+    color: "#94A3B8",
+  },
+  simSectionLabel: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#E2E8F0",
+    marginBottom: 8,
+  },
+  simRarityRow: {
+    marginBottom: 14,
+    flexDirection: "row",
+  },
+  simRarityPillBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#222D42",
+    backgroundColor: "#0F1420",
+    marginRight: 6,
+  },
+  simRarityPillBtnActive: {
+    borderColor: "#10B981",
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+  },
+  simRarityPillBtnText: {
+    fontSize: 11.5,
+    fontWeight: "600",
+    color: "#94A3B8",
+  },
+  simRarityPillBtnTextActive: {
+    color: "#10B981",
+    fontWeight: "700",
+  },
+  simActivitiesGrid: {
+    gap: 6,
+    marginBottom: 14,
+  },
+  simActivityCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#0D121B",
+    borderWidth: 1,
+    borderColor: "#1A2232",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  simActivityCardSelected: {
+    borderColor: "#38BDF8",
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
+  },
+  simActivityCardLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+  },
+  simActivityIconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    backgroundColor: "#161D2A",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  simActivityIconBadgeSelected: {
+    backgroundColor: "rgba(56, 189, 248, 0.2)",
+  },
+  simActivityName: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#CBD5E1",
+    flex: 1,
+  },
+  simActivityNameSelected: {
+    color: "#38BDF8",
+    fontWeight: "700",
+  },
+  simActivityBaseXpPill: {
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  simActivityBaseXpText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#94A3B8",
+  },
+  simCalcBox: {
+    backgroundColor: "#0A0D14",
+    borderWidth: 1,
+    borderColor: "#1E2738",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 6,
+  },
+  simCalcTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#94A3B8",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  simCalcRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 5,
+  },
+  simCalcLabel: {
+    fontSize: 12,
+    color: "#94A3B8",
+  },
+  simCalcValue: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  simCalcDivider: {
+    height: 1,
+    backgroundColor: "#1B2233",
+    marginVertical: 6,
+  },
+  simCalcTotalLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  simCalcTotalValue: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#38BDF8",
+  },
+  simTargetUserBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#151C28",
+  },
+  simTargetUserText: {
+    fontSize: 11,
+    color: "#94A3B8",
+    flex: 1,
+  },
+  simBtnRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 4,
+  },
+  simBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
+  simCancelBtn: {
+    backgroundColor: "#161D2A",
+    borderWidth: 1,
+    borderColor: "#222D42",
+  },
+  simCancelBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#94A3B8",
+  },
+  simClaimBtn: {
+    backgroundColor: "#0284C7",
+    shadowColor: "#0284C7",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  simClaimBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
 
   // ─── UTILS ───

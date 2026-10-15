@@ -36,6 +36,8 @@ import {
   getCrystalBalance,
   deductCrystalBalance,
 } from "@/lib/topup-service";
+import { useExp } from "@/providers/exp-toast-provider";
+import { awardDirectUserXp } from "@/lib/gacha-service";
 import { supabase } from "@/lib/supabase";
 
 const TOPUP_CRYSTAL_ICON = require("@/assets/images/topup/topup-crystal.png");
@@ -53,6 +55,7 @@ export const BORDER_RARITY_PRICES: Record<BorderRarity, number> = {
 
 export default function AvatarDecorationsScreen() {
   const auth = useAnirakuAuth();
+  const { showExpToast } = useExp();
   const { width: windowWidth } = useWindowDimensions();
 
   // ─── Tabs & Filters ───
@@ -283,6 +286,41 @@ export default function AvatarDecorationsScreen() {
       // 6. Simpan ke cache lokal
       await setOwnedBorderIds(userId, nextOwned);
       await setEquippedBorderId(userId, checkoutBorder.id);
+
+      // 7. Berikan EXP reward pembelian border sesuai ketentuan rarity
+      const borderXpMap: Record<BorderRarity, number> = {
+        Mythic: 200,
+        Legends: 120,
+        Epic: 80,
+        Rare: 40,
+        Normal: 20,
+      };
+      const borderXp = borderXpMap[checkoutBorder.rarity] || 20;
+      try {
+        const xpRes = await awardDirectUserXp(
+          userId,
+          borderXp,
+          0,
+          `Membuka Border Avatar: ${checkoutBorder.name} (${checkoutBorder.rarity})`,
+          "border_purchase"
+        );
+        if (xpRes.success) {
+          auth.updateProfileExpAndLevel(xpRes.newExp, xpRes.newLevel);
+          showExpToast({
+            totalXp: xpRes.totalXp,
+            baseXp: xpRes.baseXp,
+            bonusXp: 0,
+            description: `Border Baru: ${checkoutBorder.name}`,
+            level: xpRes.newLevel,
+            oldLevel: xpRes.oldLevel,
+            levelUp: xpRes.levelUp,
+            newTotalXp: xpRes.newExp,
+            isVip: Boolean(auth.profile?.is_vip),
+          });
+        }
+      } catch (errXp) {
+        console.warn("Gagal memberikan bonus XP border:", errXp);
+      }
 
       hapticSuccess();
       setCheckoutState("success");
