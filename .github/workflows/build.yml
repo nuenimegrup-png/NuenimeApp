@@ -98,12 +98,23 @@ jobs:
           EXPO_PUBLIC_MAL_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_MAL_CLIENT_ID }}
           EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '444728416290-ohgsfpd6bon745bdh5kshvth16rn8eh6.apps.googleusercontent.com' }}
 
+      - name: Decode Keystore
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "$GITHUB_WORKSPACE/nuenime-release.keystore"
+
       - name: Build APK (${{ matrix.label }})
         run: |
           cd android
+          SIGNING_ARGS=""
+          if [ -f "$GITHUB_WORKSPACE/nuenime-release.keystore" ]; then
+            echo "Keystore detected. Applying injected signing config..."
+            SIGNING_ARGS="-Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/nuenime-release.keystore -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} -Pandroid.injected.signing.key.alias=${{ secrets.KEYSTORE_KEY_ALIAS }} -Pandroid.injected.signing.key.password=${{ secrets.KEYSTORE_KEY_PASSWORD }}"
+          fi
           ./gradlew assembleRelease \
             -PreactNativeArchitectures=${{ matrix.arch }} \
             -PnewArchEnabled=false \
+            $SIGNING_ARGS \
             --no-daemon
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
@@ -114,13 +125,32 @@ jobs:
           EXPO_PUBLIC_MAL_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_MAL_CLIENT_ID }}
           EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '444728416290-ohgsfpd6bon745bdh5kshvth16rn8eh6.apps.googleusercontent.com' }}
 
-      - name: Rename and Print APK Fingerprint
+      - name: Sign APK and Print Fingerprint
         run: |
           APK=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
-          cp "$APK" "aniraku-${RELEASE_TAG}-${{ matrix.label }}.apk"
-          echo "Built: aniraku-${RELEASE_TAG}-${{ matrix.label }}.apk"
+          echo "Found APK: $APK"
+          if [ -f "$GITHUB_WORKSPACE/nuenime-release.keystore" ]; then
+            APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -1)
+            echo "apksigner path: $APKSIGNER"
+            if ! "$APKSIGNER" verify "$APK" >/dev/null 2>&1; then
+              echo "APK not signed yet, signing via apksigner..."
+              "$APKSIGNER" sign \
+                --ks "$GITHUB_WORKSPACE/nuenime-release.keystore" \
+                --ks-key-alias "${{ secrets.KEYSTORE_KEY_ALIAS }}" \
+                --ks-pass "pass:${{ secrets.KEYSTORE_PASSWORD }}" \
+                --key-pass "pass:${{ secrets.KEYSTORE_KEY_PASSWORD }}" \
+                --v1-signing-enabled true \
+                --v2-signing-enabled true \
+                "$APK"
+            fi
+            echo "Verifying signature with apksigner:"
+            "$APKSIGNER" verify --verbose --print-certs "$APK"
+          fi
+          TARGET_APK="aniraku-${RELEASE_TAG}-${{ matrix.label }}.apk"
+          cp "$APK" "$TARGET_APK"
+          echo "Built: $TARGET_APK"
           echo "================ APK CERTIFICATE FINGERPRINTS ================"
-          keytool -printcert -jarfile "$APK" | grep -iE "SHA1|SHA256" || keytool -printcert -jarfile "$APK"
+          keytool -printcert -jarfile "$TARGET_APK" | grep -iE "SHA1|SHA256" || keytool -printcert -jarfile "$TARGET_APK"
           echo "=============================================================="
 
       - uses: actions/upload-artifact@v4
