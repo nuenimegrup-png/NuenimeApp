@@ -3,7 +3,6 @@ import type { Session, User } from "@supabase/supabase-js";
 import { AppState, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
 import { supabase } from "@/lib/supabase";
 import { serverUserCanStartSession, sessionIsVerified } from "@/lib/auth-session";
 import { ANIRAKU_AUTH_REDIRECT_URL } from "@/lib/auth-redirect";
@@ -271,6 +270,7 @@ function getGoogleSignin() {
     setLoading(true);
     try {
       if (Platform.OS === "web") {
+        // Web: pakai OAuth redirect biasa
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
           options: {
@@ -278,83 +278,49 @@ function getGoogleSignin() {
           },
         });
         if (error) throw error;
-      } else {
-        const gModule = getGoogleSignin();
-        let nativeSuccess = false;
-        const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+        return;
+      }
 
-        if (gModule && webClientId) {
-          try {
-            gModule.GoogleSignin.configure({
-              webClientId,
-              scopes: ["profile", "email"],
-            });
-            await gModule.GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-            const response = await gModule.GoogleSignin.signIn();
-            const idToken = response.data?.idToken ?? (response as any)?.idToken;
-            if (idToken) {
-              const { data: sessionData, error: sessionError } = await supabase.auth.signInWithIdToken({
-                provider: "google",
-                token: idToken,
-              });
-              if (sessionError) throw sessionError;
-              if (sessionData?.session) {
-                setSession(sessionData.session);
-                nativeSuccess = true;
-              }
-            }
-          } catch (nativeErr: any) {
-            const isCancelled =
-              nativeErr?.code === gModule.statusCodes?.SIGN_IN_CANCELLED ||
-              nativeErr?.message?.toLowerCase().includes("cancel");
-            if (isCancelled) {
-              return;
-            }
-            console.warn("Native Google Sign-In fallback to browser:", nativeErr?.message);
-          }
-        }
+      // ── Android / iOS: native Google Sign-In ONLY ──
+      // Tidak ada fallback ke web browser. Kalau native gagal, lempar error
+      // ke UI agar user mendapat pesan yang jelas, bukan diarahkan ke Chrome.
+      const gModule = getGoogleSignin();
+      const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
-        if (!nativeSuccess) {
-          const redirectUrl = Linking.createURL("auth");
-          const { data, error } = await supabase.auth.signInWithOAuth({
-            provider: "google",
-            options: {
-              redirectTo: redirectUrl,
-              skipBrowserRedirect: true,
-            },
-          });
-          if (error) throw error;
-          if (!data?.url) throw new Error("Gagal memulai sesi login Google.");
+      if (!gModule || !webClientId) {
+        throw new Error("Login Google belum dikonfigurasi untuk perangkat ini.");
+      }
 
-          const res = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-          if (res.type === "success" && res.url) {
-            const parsed = Linking.parse(res.url);
-            if (parsed.queryParams?.code) {
-              const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(
-                String(parsed.queryParams.code)
-              );
-              if (exchangeError) throw exchangeError;
-              if (sessionData?.session) {
-                setSession(sessionData.session);
-              }
-            } else if (res.url.includes("#")) {
-              const fragment = res.url.split("#")[1];
-              const params = new URLSearchParams(fragment);
-              const access_token = params.get("access_token");
-              const refresh_token = params.get("refresh_token");
-              if (access_token && refresh_token) {
-                const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-                  access_token,
-                  refresh_token,
-                });
-                if (sessionError) throw sessionError;
-                if (sessionData?.session) {
-                  setSession(sessionData.session);
-                }
-              }
-            }
-          }
-        }
+      gModule.GoogleSignin.configure({
+        webClientId,
+        scopes: ["profile", "email"],
+      });
+
+      await gModule.GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response = await gModule.GoogleSignin.signIn();
+      const idToken = response.data?.idToken ?? (response as any)?.idToken;
+
+      if (!idToken) {
+        throw new Error("Tidak dapat mengambil token Google. Silakan coba lagi.");
+      }
+
+      const { data: sessionData, error: sessionError } = await supabase.auth.signInWithIdToken({
+        provider: "google",
+        token: idToken,
+      });
+      if (sessionError) throw sessionError;
+      if (sessionData?.session) {
+        setSession(sessionData.session);
+      }
+    } catch (err: any) {
+      const gModule = getGoogleSignin();
+      // Abaikan pembatalan user — jangan tampilkan error
+      const isCancelled =
+        err?.code === gModule?.statusCodes?.SIGN_IN_CANCELLED ||
+        err?.message?.toLowerCase().includes("cancel");
+      if (!isCancelled) {
+        // Re-throw supaya komponen pemanggil bisa menampilkan pesan error
+        throw err;
       }
     } finally {
       setLoading(false);
