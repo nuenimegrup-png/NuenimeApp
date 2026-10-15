@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   StatusBar,
   Linking,
+  Platform,
 } from "react-native";
 import { usePathname } from "expo-router";
 import { AppIcon } from "@/components/app-icon";
@@ -108,13 +109,13 @@ export function MaintenanceGate() {
             style={styles.refreshBtn}
             onPress={checkMaintenance}
             disabled={isChecking}
-            activeOpacity={0.8}
+            activeOpacity={0.78}
           >
             {isChecking ? (
-              <ActivityIndicator size="small" color="#0B0E14" />
+              <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
               <>
-                <AppIcon name="refresh" size={16} color="#0B0E14" />
+                <AppIcon name="refresh" size={16} color="#FFFFFF" />
                 <Text style={styles.refreshBtnText}>Cek Status Server</Text>
               </>
             )}
@@ -123,9 +124,9 @@ export function MaintenanceGate() {
           <TouchableOpacity
             style={styles.discordBtn}
             onPress={() => Linking.openURL("https://discord.gg/nuenime").catch(() => {})}
-            activeOpacity={0.8}
+            activeOpacity={0.78}
           >
-            <AppIcon name="logo-discord" size={16} color="#38BDF8" />
+            <AppIcon name="logo-discord" size={16} color="#E2E8F0" />
             <Text style={styles.discordBtnText}>Komunitas Discord</Text>
           </TouchableOpacity>
         </View>
@@ -212,39 +213,60 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   refreshBtn: {
-    backgroundColor: "#F59E0B",
+    backgroundColor: "rgba(255, 255, 255, 0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.32)",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
     paddingVertical: 13,
-    borderRadius: 14,
-    shadowColor: "#F59E0B",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    paddingHorizontal: 20,
+    borderRadius: 24,
+    shadowColor: "#FFFFFF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 3,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        cursor: "pointer",
+        transition: "all 0.2s ease",
+      } as any)
+      : {}),
   },
   refreshBtnText: {
     fontSize: 13.5,
-    fontWeight: "800",
-    color: "#0B0E14",
+    fontWeight: "700",
+    color: "#FFFFFF",
     letterSpacing: 0.3,
   },
   discordBtn: {
-    backgroundColor: "rgba(56, 189, 248, 0.1)",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(56, 189, 248, 0.25)",
+    borderColor: "rgba(226, 232, 240, 0.22)",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    paddingVertical: 12,
-    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
+    borderRadius: 24,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        cursor: "pointer",
+        transition: "all 0.2s ease",
+      } as any)
+      : {}),
   },
   discordBtnText: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#38BDF8",
+    color: "#E2E8F0",
+    letterSpacing: 0.2,
   },
 });
