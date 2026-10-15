@@ -16,6 +16,9 @@ import { AniListDownBanner } from "@/components/anilist-down-banner";
 import { FirstRunOnboarding } from "@/components/first-run-onboarding";
 import { useStartupPrefetch } from "@/hooks/use-startup-prefetch";
 import { AiringReminderScheduler } from "@/hooks/use-airing-reminders";
+import { AppAnnouncementModal } from "@/components/app-announcement-modal";
+import { MaintenanceGate } from "@/components/maintenance-gate";
+import { BroadcastNotificationListener } from "@/components/broadcast-notification-listener";
 
 const APP_BG_COLOR = "#0E0E11";
 
@@ -114,6 +117,9 @@ export default function RootLayout() {
           <SupportPrompt />
           <AniListDownBanner />
           <FirstRunOnboarding onComplete={() => {}} />
+          <MaintenanceGate />
+          <BroadcastNotificationListener />
+          <AppAnnouncementModal />
         </AppProviders>
       </SafeAreaProvider>
     </GestureHandlerRootView>

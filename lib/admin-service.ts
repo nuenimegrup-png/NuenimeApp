@@ -1063,12 +1063,152 @@ export interface MaintenanceModeConfig {
 
 const STORAGE_APP_RELEASE = "nuenime.admin.app_release";
 const STORAGE_MAINTENANCE = "nuenime.admin.maintenance";
+const STORAGE_APP_ANNOUNCEMENT = "nuenime.admin.app_announcement";
+
+// ─── GITHUB RELEASE AUTO-SYNC HELPER ───
+export interface GitHubReleaseSyncResult {
+  success: boolean;
+  version: string;
+  apkUrl: string;
+  changelog: string;
+  assetName?: string;
+  assetSize?: number;
+  assetSizeFormatted?: string;
+  publishedAt?: string;
+  releaseTitle?: string;
+  error?: string;
+}
+
+export async function fetchGitHubReleaseInfo(inputUrl: string): Promise<GitHubReleaseSyncResult> {
+  const clean = inputUrl.trim();
+  if (!clean) {
+    return { success: false, version: "", apkUrl: "", changelog: "", error: "Tautan GitHub tidak boleh kosong" };
+  }
+
+  try {
+    let owner = "nuenimegrup-png";
+    let repo = "NuenimeApp";
+    let tag = "";
+
+    const matchTag = clean.match(/github\.com\/([^\/]+)\/([^\/]+)\/releases\/tag\/([^\/\s#?]+)/i);
+    const matchRepo = clean.match(/github\.com\/([^\/]+)\/([^\/\s#?]+)/i);
+    const matchShort = clean.match(/^([a-zA-Z0-9_\-\.]+)\/([a-zA-Z0-9_\-\.]+)$/);
+
+    if (matchTag) {
+      owner = matchTag[1];
+      repo = matchTag[2].replace(/\.git$/i, "");
+      tag = matchTag[3];
+    } else if (matchRepo) {
+      owner = matchRepo[1];
+      repo = matchRepo[2].replace(/\.git$/i, "");
+    } else if (matchShort) {
+      owner = matchShort[1];
+      repo = matchShort[2];
+    }
+
+    const apiUrl = tag && tag !== "latest"
+      ? `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`
+      : `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
+
+    const res = await fetch(apiUrl, {
+      headers: {
+        Accept: "application/vnd.github+json",
+      },
+    });
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        return {
+          success: false,
+          version: "",
+          apkUrl: "",
+          changelog: "",
+          error: `Release tidak ditemukan di GitHub repository ${owner}/${repo}. Pastikan tag rilis publik sudah dibuat.`,
+        };
+      }
+      return {
+        success: false,
+        version: "",
+        apkUrl: "",
+        changelog: "",
+        error: `Gagal mengambil data dari GitHub API (HTTP ${res.status}).`,
+      };
+    }
+
+    const data = await res.json();
+    const tagName = String(data.tag_name || "").trim();
+    const version = tagName.replace(/^v/i, "") || "1.0.0";
+    const changelog = data.body || data.name || `Pembaruan Nuenime v${version}`;
+
+    let apkDownloadUrl = data.html_url || clean;
+    let assetName = "";
+    let assetSizeFormatted = "";
+    let assetSize: number | undefined;
+
+    if (Array.isArray(data.assets) && data.assets.length > 0) {
+      const apkAsset = data.assets.find(
+        (a: any) => typeof a.name === "string" && a.name.toLowerCase().endsWith(".apk")
+      );
+      if (apkAsset) {
+        apkDownloadUrl = apkAsset.browser_download_url;
+        assetName = apkAsset.name;
+        if (typeof apkAsset.size === "number") {
+          assetSize = apkAsset.size;
+          const mb = (apkAsset.size / (1024 * 1024)).toFixed(1);
+          assetSizeFormatted = `${mb} MB`;
+        }
+      }
+    }
+
+    return {
+      success: true,
+      version,
+      apkUrl: apkDownloadUrl,
+      changelog,
+      assetName,
+      assetSize,
+      assetSizeFormatted,
+      publishedAt: data.published_at,
+      releaseTitle: data.name || `Release ${tagName}`,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      version: "",
+      apkUrl: "",
+      changelog: "",
+      error: err?.message || "Terjadi kesalahan saat menghubungi GitHub.",
+    };
+  }
+}
 
 export async function getAdminAppReleaseConfig(): Promise<AppReleaseConfig> {
+  try {
+    const { data, error } = await supabase
+      .from("system_configs")
+      .select("value")
+      .eq("key", "app_release")
+      .maybeSingle();
+
+    if (!error && data?.value) {
+      const parsed = typeof data.value === "string" ? JSON.parse(data.value) : data.value;
+      const config: AppReleaseConfig = {
+        version: parsed.version ?? "0.0.1",
+        apkUrl: parsed.apk_url ?? parsed.apkUrl ?? "https://github.com/nuenimegrup-png/NuenimeApp.git",
+        changelog: parsed.changelog ?? "Pembaruan sistem Nuenime.",
+        forceUpdate: parsed.force_update ?? parsed.forceUpdate ?? false,
+        minVersion: parsed.min_version ?? parsed.minVersion ?? "0.0.1",
+      };
+      await AsyncStorage.setItem(STORAGE_APP_RELEASE, JSON.stringify(config));
+      return config;
+    }
+  } catch {}
+
   try {
     const raw = await AsyncStorage.getItem(STORAGE_APP_RELEASE);
     if (raw) return JSON.parse(raw);
   } catch {}
+
   return {
     version: "0.0.1",
     apkUrl: "https://github.com/nuenimegrup-png/NuenimeApp.git",
@@ -1083,6 +1223,23 @@ export async function saveAdminAppReleaseConfig(
   admin: AdminUser
 ): Promise<void> {
   await AsyncStorage.setItem(STORAGE_APP_RELEASE, JSON.stringify(config));
+
+  try {
+    await supabase.from("system_configs").upsert({
+      key: "app_release",
+      value: {
+        version: config.version,
+        apk_url: config.apkUrl,
+        changelog: config.changelog,
+        force_update: config.forceUpdate,
+        min_version: config.minVersion,
+      },
+      updated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn("Failed saving app_release to Supabase:", err);
+  }
+
   await logAdminAction({
     admin,
     action: "UPDATE_APP_RELEASE",
@@ -1094,9 +1251,29 @@ export async function saveAdminAppReleaseConfig(
 
 export async function getAdminMaintenanceConfig(): Promise<MaintenanceModeConfig> {
   try {
+    const { data, error } = await supabase
+      .from("system_configs")
+      .select("value")
+      .eq("key", "maintenance_mode")
+      .maybeSingle();
+
+    if (!error && data?.value) {
+      const parsed = typeof data.value === "string" ? JSON.parse(data.value) : data.value;
+      const config: MaintenanceModeConfig = {
+        isActive: parsed.is_active ?? parsed.isActive ?? false,
+        message: parsed.message ?? "Server sedang dalam pemeliharaan berkala untuk peningkatan performa.",
+        endsAt: parsed.ends_at ?? parsed.endsAt ?? null,
+      };
+      await AsyncStorage.setItem(STORAGE_MAINTENANCE, JSON.stringify(config));
+      return config;
+    }
+  } catch {}
+
+  try {
     const raw = await AsyncStorage.getItem(STORAGE_MAINTENANCE);
     if (raw) return JSON.parse(raw);
   } catch {}
+
   return {
     isActive: false,
     message: "Server sedang dalam pemeliharaan berkala untuk peningkatan performa.",
@@ -1108,11 +1285,124 @@ export async function saveAdminMaintenanceConfig(
   admin: AdminUser
 ): Promise<void> {
   await AsyncStorage.setItem(STORAGE_MAINTENANCE, JSON.stringify(config));
+
+  try {
+    await supabase.from("system_configs").upsert({
+      key: "maintenance_mode",
+      value: {
+        is_active: config.isActive,
+        message: config.message,
+        ends_at: config.endsAt ?? null,
+      },
+      updated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn("Failed saving maintenance_mode to Supabase:", err);
+  }
+
   await logAdminAction({
     admin,
     action: "UPDATE_MAINTENANCE_MODE",
     targetType: "system",
     targetId: "maintenance",
+    details: config,
+  });
+}
+
+// ─── 7B. POP-UP AWAL (ANNOUNCEMENT MODAL) CONFIG ───
+export interface AppAnnouncementConfig {
+  isActive: boolean;
+  title: string;
+  content: string;
+  buttonText: string;
+  buttonUrl: string;
+  versionTag: string;
+  dismissible: boolean;
+  updatedAt?: string;
+}
+
+export const DEFAULT_ANNOUNCEMENT_CONFIG: AppAnnouncementConfig = {
+  isActive: true,
+  title: "[ INFO ]",
+  content: `Gabung ke komunitas AnibiPlay di Discord! ✨
+
+• Ngobrol bareng komunitas
+• Dapatkan info & update terbaru
+• Laporkan bug atau masalah
+• Berikan saran untuk AnibiPlay
+
+Jangan sampai ketinggalan info terbaru!
+Tekan tombol di bawah untuk bergabung. 👇`,
+  buttonText: "JOIN DISCORD",
+  buttonUrl: "https://discord.gg/nuenime",
+  versionTag: "Versi terbaru: 1.4.9",
+  dismissible: true,
+};
+
+export async function getAppAnnouncementConfig(): Promise<AppAnnouncementConfig> {
+  try {
+    const { data, error } = await supabase
+      .from("system_configs")
+      .select("value, updated_at")
+      .eq("key", "app_announcement")
+      .maybeSingle();
+
+    if (!error && data?.value) {
+      const parsed = typeof data.value === "string" ? JSON.parse(data.value) : data.value;
+      const config: AppAnnouncementConfig = {
+        isActive: parsed.is_active ?? parsed.isActive ?? true,
+        title: parsed.title ?? DEFAULT_ANNOUNCEMENT_CONFIG.title,
+        content: parsed.content ?? DEFAULT_ANNOUNCEMENT_CONFIG.content,
+        buttonText: parsed.button_text ?? parsed.buttonText ?? DEFAULT_ANNOUNCEMENT_CONFIG.buttonText,
+        buttonUrl: parsed.button_url ?? parsed.buttonUrl ?? DEFAULT_ANNOUNCEMENT_CONFIG.buttonUrl,
+        versionTag: parsed.version_tag ?? parsed.versionTag ?? DEFAULT_ANNOUNCEMENT_CONFIG.versionTag,
+        dismissible: parsed.dismissible ?? true,
+        updatedAt: data.updated_at || new Date().toISOString(),
+      };
+      await AsyncStorage.setItem(STORAGE_APP_ANNOUNCEMENT, JSON.stringify(config));
+      return config;
+    }
+  } catch {}
+
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_APP_ANNOUNCEMENT);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+
+  return DEFAULT_ANNOUNCEMENT_CONFIG;
+}
+
+export async function saveAppAnnouncementConfig(
+  config: AppAnnouncementConfig,
+  admin: AdminUser
+): Promise<void> {
+  const payload = {
+    is_active: config.isActive,
+    title: config.title,
+    content: config.content,
+    button_text: config.buttonText,
+    button_url: config.buttonUrl,
+    version_tag: config.versionTag,
+    dismissible: config.dismissible !== false,
+  };
+
+  await AsyncStorage.setItem(STORAGE_APP_ANNOUNCEMENT, JSON.stringify(config));
+
+  try {
+    await supabase.from("system_configs").upsert({
+      key: "app_announcement",
+      value: payload,
+      updated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn("Failed saving app_announcement to Supabase:", err);
+  }
+
+  await logAdminAction({
+    admin,
+    action: "UPDATE_APP_ANNOUNCEMENT",
+    targetType: "system",
+    targetId: "app_announcement",
     details: config,
   });
 }
@@ -1548,10 +1838,69 @@ const STORAGE_BROADCASTS = "nuenime.admin.broadcasts";
 
 export async function getAdminBroadcasts(): Promise<BroadcastNotification[]> {
   try {
+    const { data, error } = await supabase
+      .from("broadcast_notifications")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (!error && Array.isArray(data) && data.length > 0) {
+      const mapped: BroadcastNotification[] = data.map((b: any) => ({
+        id: b.id,
+        title: b.title,
+        message: b.message,
+        actionUrl: b.action_url ?? b.actionUrl,
+        type: b.type || "system",
+        recipientsCount: b.recipients_count ?? b.recipientsCount ?? 0,
+        createdAt: b.created_at || new Date().toISOString(),
+      }));
+      await AsyncStorage.setItem(STORAGE_BROADCASTS, JSON.stringify(mapped));
+      return mapped;
+    }
+  } catch {}
+
+  try {
     const raw = await AsyncStorage.getItem(STORAGE_BROADCASTS);
     if (raw) return JSON.parse(raw);
   } catch {}
   return [];
+}
+
+export async function getLatestBroadcastNotification(): Promise<BroadcastNotification | null> {
+  try {
+    const { data, error } = await supabase
+      .from("system_configs")
+      .select("value")
+      .eq("key", "broadcast_latest")
+      .maybeSingle();
+
+    if (!error && data?.value) {
+      return typeof data.value === "string" ? JSON.parse(data.value) : data.value;
+    }
+  } catch {}
+
+  try {
+    const { data, error } = await supabase
+      .from("broadcast_notifications")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data) {
+      return {
+        id: data.id,
+        title: data.title,
+        message: data.message,
+        actionUrl: data.action_url,
+        type: data.type || "system",
+        recipientsCount: data.recipients_count || 0,
+        createdAt: data.created_at,
+      };
+    }
+  } catch {}
+
+  return null;
 }
 
 export async function sendAdminBroadcast(params: {
@@ -1561,8 +1910,8 @@ export async function sendAdminBroadcast(params: {
   actionUrl?: string;
   admin: AdminUser;
 }): Promise<BroadcastNotification> {
-  const broadcasts = await getAdminBroadcasts();
   const users = await getAdminUsersList();
+  const recipientsCount = Math.max(1, users.length);
 
   const item: BroadcastNotification = {
     id: `BC-${Date.now()}`,
@@ -1570,10 +1919,41 @@ export async function sendAdminBroadcast(params: {
     message: params.message.trim(),
     type: params.type,
     actionUrl: params.actionUrl,
-    recipientsCount: users.length,
+    recipientsCount,
     createdAt: new Date().toISOString(),
   };
 
+  // 1. Simpan ke Supabase broadcast_notifications
+  try {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.admin.id);
+    const adminId = isUuid ? params.admin.id : null;
+
+    await supabase.from("broadcast_notifications").insert({
+      admin_id: adminId,
+      title: item.title,
+      message: item.message,
+      action_url: item.actionUrl || null,
+      type: item.type,
+      recipients_count: item.recipientsCount,
+      created_at: item.createdAt,
+    });
+  } catch (err) {
+    console.warn("Failed saving broadcast to Supabase broadcast_notifications:", err);
+  }
+
+  // 2. Simpan ke system_configs broadcast_latest agar aplikasi langsung tersinkron
+  try {
+    await supabase.from("system_configs").upsert({
+      key: "broadcast_latest",
+      value: item,
+      updated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn("Failed saving broadcast_latest to system_configs:", err);
+  }
+
+  // 3. Simpan ke local cache
+  const broadcasts = await getAdminBroadcasts();
   broadcasts.unshift(item);
   await AsyncStorage.setItem(STORAGE_BROADCASTS, JSON.stringify(broadcasts));
 

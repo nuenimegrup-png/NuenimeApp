@@ -8,7 +8,6 @@ import {
   TextInput,
   Switch,
   ActivityIndicator,
-  Modal,
 } from "react-native";
 import { AdminLayout } from "@/components/admin/admin-layout";
 import {
@@ -16,17 +15,23 @@ import {
   type AppReleaseConfig,
   type MaintenanceModeConfig,
   type BroadcastNotification,
+  type AppAnnouncementConfig,
+  DEFAULT_ANNOUNCEMENT_CONFIG,
   getAdminAppReleaseConfig,
   saveAdminAppReleaseConfig,
   getAdminMaintenanceConfig,
   saveAdminMaintenanceConfig,
   getAdminBroadcasts,
   sendAdminBroadcast,
+  fetchGitHubReleaseInfo,
+  getAppAnnouncementConfig,
+  saveAppAnnouncementConfig,
 } from "@/lib/admin-service";
 import { AppIcon } from "@/components/app-icon";
+import { AppAnnouncementModal } from "@/components/app-announcement-modal";
 
 export default function AdminSystemScreen() {
-  const [activeTab, setActiveTab] = useState<"apk" | "maintenance" | "broadcast">("apk");
+  const [activeTab, setActiveTab] = useState<"apk" | "maintenance" | "broadcast" | "popup">("apk");
   const [releaseConfig, setReleaseConfig] = useState<AppReleaseConfig>({
     version: "0.0.1",
     apkUrl: "https://github.com/nuenimegrup-png/NuenimeApp.git",
@@ -38,9 +43,19 @@ export default function AdminSystemScreen() {
     isActive: false,
     message: "Server sedang dalam pemeliharaan berkala untuk peningkatan performa.",
   });
+  const [announcementConfig, setAnnouncementConfig] = useState<AppAnnouncementConfig>(DEFAULT_ANNOUNCEMENT_CONFIG);
   const [broadcasts, setBroadcasts] = useState<BroadcastNotification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  // GitHub Auto-Sync State
+  const [githubUrlInput, setGithubUrlInput] = useState("");
+  const [isSyncingGithub, setIsSyncingGithub] = useState(false);
+  const [githubSyncFeedback, setGithubSyncFeedback] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Announcement Modal Preview State
+  const [showAnnouncementPreview, setShowAnnouncementPreview] = useState(false);
+  const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
 
   // Broadcast Form State
   const [broadcastTitle, setBroadcastTitle] = useState("");
@@ -59,14 +74,18 @@ export default function AdminSystemScreen() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [rConf, mConf, bList] = await Promise.all([
+      const [rConf, mConf, bList, aConf] = await Promise.all([
         getAdminAppReleaseConfig(),
         getAdminMaintenanceConfig(),
         getAdminBroadcasts(),
+        getAppAnnouncementConfig(),
       ]);
       setReleaseConfig(rConf);
       setMaintenanceConfig(mConf);
       setBroadcasts(bList);
+      if (aConf) {
+        setAnnouncementConfig(aConf);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -78,14 +97,74 @@ export default function AdminSystemScreen() {
 
   const handleSaveApkRelease = async () => {
     await saveAdminAppReleaseConfig(releaseConfig, currentAdmin);
-    setFeedback("Konfigurasi rilis APK berhasil disimpan!");
+    setFeedback("Konfigurasi rilis APK berhasil disimpan & disinkronkan ke cloud!");
     setTimeout(() => setFeedback(null), 3000);
+  };
+
+  const handleSyncFromGithub = async () => {
+    if (!githubUrlInput.trim()) {
+      setGithubSyncFeedback({
+        success: false,
+        message: "Silakan tempel tautan rilis GitHub terlebih dahulu.",
+      });
+      return;
+    }
+
+    setIsSyncingGithub(true);
+    setGithubSyncFeedback(null);
+    try {
+      const info = await fetchGitHubReleaseInfo(githubUrlInput.trim());
+      if (!info) {
+        setGithubSyncFeedback({
+          success: false,
+          message: "Gagal mendeteksi rilis dari tautan GitHub. Pastikan URL valid dan repo/release bersifat publik.",
+        });
+        return;
+      }
+
+      setReleaseConfig((prev) => ({
+        ...prev,
+        version: info.version || prev.version,
+        apkUrl: info.apkUrl || prev.apkUrl,
+        changelog: info.changelog || prev.changelog,
+      }));
+
+      const sizeStr = info.assetSizeFormatted
+        ? ` (${info.assetSizeFormatted})`
+        : info.assetSize
+        ? ` (${(info.assetSize / (1024 * 1024)).toFixed(1)} MB)`
+        : "";
+      setGithubSyncFeedback({
+        success: true,
+        message: `Berhasil tersinkron! Tag: v${info.version}, File APK: ${info.assetName || "APK"}${sizeStr}. Klik "Simpan Konfigurasi APK" untuk menerapkannya.`,
+      });
+    } catch (err: any) {
+      setGithubSyncFeedback({
+        success: false,
+        message: err?.message || "Terjadi kesalahan saat menghubungi GitHub API.",
+      });
+    } finally {
+      setIsSyncingGithub(false);
+    }
   };
 
   const handleSaveMaintenance = async () => {
     await saveAdminMaintenanceConfig(maintenanceConfig, currentAdmin);
-    setFeedback("Status Pemeliharaan Sistem berhasil diperbarui!");
+    setFeedback("Status Pemeliharaan Sistem berhasil diperbarui secara real-time!");
     setTimeout(() => setFeedback(null), 3000);
+  };
+
+  const handleSaveAnnouncement = async () => {
+    setIsSavingAnnouncement(true);
+    try {
+      await saveAppAnnouncementConfig(announcementConfig, currentAdmin);
+      setFeedback("Pop-up Pengumuman Awal berhasil disimpan & disinkronkan ke seluruh pengguna!");
+      setTimeout(() => setFeedback(null), 3000);
+    } catch (err: any) {
+      alert("Gagal menyimpan pop-up: " + (err?.message || "Error"));
+    } finally {
+      setIsSavingAnnouncement(false);
+    }
   };
 
   const handleSendBroadcast = async () => {
@@ -106,7 +185,7 @@ export default function AdminSystemScreen() {
       setBroadcastTitle("");
       setBroadcastMessage("");
       setBroadcastUrl("");
-      setFeedback(`Notifikasi berhasil disiarkan ke ${newBc.recipientsCount} pengguna!`);
+      setFeedback(`Notifikasi berhasil disiarkan secara real-time ke ${newBc.recipientsCount} pengguna!`);
       setTimeout(() => setFeedback(null), 3000);
     } finally {
       setIsSending(false);
@@ -120,7 +199,7 @@ export default function AdminSystemScreen() {
           <View>
             <Text style={styles.title}>System, APK Update & Maintenance</Text>
             <Text style={styles.subtitle}>
-              Pusat kendali rilis aplikasi Android, status server, dan siaran pengumuman massal.
+              Pusat kendali rilis aplikasi Android, status server, pop-up pengumuman, dan siaran massal.
             </Text>
           </View>
 
@@ -136,12 +215,22 @@ export default function AdminSystemScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
+              style={[styles.tabButton, activeTab === "popup" && styles.tabButtonActive]}
+              onPress={() => setActiveTab("popup")}
+            >
+              <AppIcon name="bell-ring-outline" size={16} color={activeTab === "popup" ? "#06B6D4" : "#94A3B8"} />
+              <Text style={[styles.tabText, activeTab === "popup" && { color: "#06B6D4" }]}>
+                Pop-up Awal
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={[styles.tabButton, activeTab === "maintenance" && styles.tabButtonActive]}
               onPress={() => setActiveTab("maintenance")}
             >
               <AppIcon name="shield-alert-outline" size={16} color={activeTab === "maintenance" ? "#EF4444" : "#94A3B8"} />
-              <Text style={[styles.tabText, activeTab === "maintenance" && styles.tabTextActive]}>
-                Maintenance Mode
+              <Text style={[styles.tabText, activeTab === "maintenance" && { color: "#EF4444" }]}>
+                Maintenance
               </Text>
             </TouchableOpacity>
 
@@ -150,8 +239,8 @@ export default function AdminSystemScreen() {
               onPress={() => setActiveTab("broadcast")}
             >
               <AppIcon name="bell" size={16} color={activeTab === "broadcast" ? "#38BDF8" : "#94A3B8"} />
-              <Text style={[styles.tabText, activeTab === "broadcast" && styles.tabTextActive]}>
-                Broadcast Notifikasi
+              <Text style={[styles.tabText, activeTab === "broadcast" && { color: "#38BDF8" }]}>
+                Broadcast
               </Text>
             </TouchableOpacity>
           </View>
@@ -175,12 +264,73 @@ export default function AdminSystemScreen() {
                   <View>
                     <Text style={styles.cardTitle}>Pengaturan Rilis Versi APK Nuenime</Text>
                     <Text style={styles.cardDesc}>
-                      Aplikasi mobile akan memeriksa versi ini saat startup untuk mendeteksi update.
+                      Aplikasi mobile akan memeriksa versi ini saat startup untuk mendeteksi update secara otomatis.
                     </Text>
                   </View>
                   <View style={styles.versionBadge}>
                     <Text style={styles.versionBadgeText}>Current: v{releaseConfig.version}</Text>
                   </View>
+                </View>
+
+                {/* GITHUB RELEASE AUTO-SYNC BOX */}
+                <View style={styles.githubSyncCard}>
+                  <View style={styles.githubSyncHeader}>
+                    <AppIcon name="github" size={20} color="#38BDF8" />
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={styles.githubSyncTitle}>⚡ Auto-Sync dari GitHub Release</Text>
+                      <Text style={styles.githubSyncDesc}>
+                        Tempel tautan release GitHub (tag atau repo). Sistem akan otomatis membaca versi, file .apk, dan catatan changelog.
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.githubInputRow}>
+                    <TextInput
+                      style={[styles.input, { flex: 1 }]}
+                      value={githubUrlInput}
+                      onChangeText={setGithubUrlInput}
+                      placeholder="Contoh: https://github.com/nuenimegrup-png/NuenimeApp/releases/tag/v1.0.1"
+                      placeholderTextColor="#64748B"
+                      autoCapitalize="none"
+                    />
+                    <TouchableOpacity
+                      style={[styles.githubSyncBtn, isSyncingGithub && { opacity: 0.6 }]}
+                      onPress={handleSyncFromGithub}
+                      disabled={isSyncingGithub}
+                    >
+                      {isSyncingGithub ? (
+                        <ActivityIndicator size="small" color="#FFF" />
+                      ) : (
+                        <>
+                          <AppIcon name="sync" size={16} color="#FFF" />
+                          <Text style={styles.githubSyncBtnText}>Tarik Data Release</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                  {githubSyncFeedback && (
+                    <View
+                      style={[
+                        styles.syncFeedbackBox,
+                        githubSyncFeedback.success ? styles.syncSuccess : styles.syncError,
+                      ]}
+                    >
+                      <AppIcon
+                        name={githubSyncFeedback.success ? "check-circle" : "alert-circle"}
+                        size={16}
+                        color={githubSyncFeedback.success ? "#10B981" : "#EF4444"}
+                      />
+                      <Text
+                        style={[
+                          styles.syncFeedbackText,
+                          { color: githubSyncFeedback.success ? "#10B981" : "#EF4444" },
+                        ]}
+                      >
+                        {githubSyncFeedback.message}
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
                 <View style={styles.row}>
@@ -193,7 +343,7 @@ export default function AdminSystemScreen() {
                       placeholder="0.0.1"
                       placeholderTextColor="#64748B"
                     />
-                    <Text style={styles.hint}>Format SemVer: Major.Minor.Patch (misal: 0.0.1)</Text>
+                    <Text style={styles.hint}>Format SemVer: Major.Minor.Patch (misal: 1.4.9)</Text>
                   </View>
 
                   <View style={[styles.formGroup, { flex: 1 }]}>
@@ -215,7 +365,7 @@ export default function AdminSystemScreen() {
                     style={styles.input}
                     value={releaseConfig.apkUrl}
                     onChangeText={(val) => setReleaseConfig({ ...releaseConfig, apkUrl: val })}
-                    placeholder="https://github.com/nuenimegrup-png/NuenimeApp/releases/..."
+                    placeholder="https://github.com/nuenimegrup-png/NuenimeApp/releases/download/..."
                     placeholderTextColor="#64748B"
                   />
                 </View>
@@ -254,14 +404,168 @@ export default function AdminSystemScreen() {
               </View>
             )}
 
-            {/* TAB 2: MAINTENANCE MODE */}
+            {/* TAB 2: POP-UP AWAL (ANNOUNCEMENT MODAL) */}
+            {activeTab === "popup" && (
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <View>
+                    <Text style={styles.cardTitle}>Pengaturan Pop-up Pengumuman Awal</Text>
+                    <Text style={styles.cardDesc}>
+                      Modal informasi yang otomatis muncul di layar saat pengguna membuka aplikasi Nuenime.
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.previewBtn}
+                    onPress={() => setShowAnnouncementPreview(true)}
+                  >
+                    <AppIcon name="eye-outline" size={16} color="#06B6D4" />
+                    <Text style={styles.previewBtnText}>Lihat Preview Modal</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View
+                  style={[
+                    styles.statusAlertCard,
+                    announcementConfig.isActive ? styles.popupActiveBg : styles.maintInactiveBg,
+                  ]}
+                >
+                  <AppIcon
+                    name="bell-ring-outline"
+                    size={24}
+                    color={announcementConfig.isActive ? "#06B6D4" : "#94A3B8"}
+                  />
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.maintStatusTitle}>
+                      {announcementConfig.isActive
+                        ? "POP-UP AWAL AKTIF (DITAMPILKAN KE PENGGUNA)"
+                        : "POP-UP AWAL NONAKTIF (TIDAK DITAMPILKAN)"}
+                    </Text>
+                    <Text style={styles.maintStatusDesc}>
+                      {announcementConfig.isActive
+                        ? "Modal pengumuman akan muncul saat user membuka aplikasi (bisa ditutup dengan tombol ✕)."
+                        : "Pengguna langsung diarahkan ke layar utama tanpa dialog pengumuman pembuka."}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={announcementConfig.isActive}
+                    onValueChange={(val) =>
+                      setAnnouncementConfig({ ...announcementConfig, isActive: val })
+                    }
+                    thumbColor={announcementConfig.isActive ? "#06B6D4" : "#94A3B8"}
+                    trackColor={{ false: "#14121F", true: "rgba(6, 182, 212, 0.4)" }}
+                  />
+                </View>
+
+                <View style={styles.row}>
+                  <View style={[styles.formGroup, { flex: 1, marginRight: 16 }]}>
+                    <Text style={styles.label}>Judul Pengumuman</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={announcementConfig.title}
+                      onChangeText={(val) =>
+                        setAnnouncementConfig({ ...announcementConfig, title: val })
+                      }
+                      placeholder="INFO"
+                      placeholderTextColor="#64748B"
+                    />
+                    <Text style={styles.hint}>Akan ditampilkan di header modal seperti: 🔔 [ INFO ]</Text>
+                  </View>
+
+                  <View style={[styles.formGroup, { flex: 1 }]}>
+                    <Text style={styles.label}>Tag Versi / Sub-judul</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={announcementConfig.versionTag || ""}
+                      onChangeText={(val) =>
+                        setAnnouncementConfig({ ...announcementConfig, versionTag: val })
+                      }
+                      placeholder="Versi terbaru: 1.4.9"
+                      placeholderTextColor="#64748B"
+                    />
+                    <Text style={styles.hint}>Teks badge di bawah poin informasi.</Text>
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Poin-Poin Informasi (Satu Baris Per Poin)</Text>
+                  <TextInput
+                    style={[styles.input, { height: 160, textAlignVertical: "top" }]}
+                    value={announcementConfig.content}
+                    onChangeText={(val) =>
+                      setAnnouncementConfig({ ...announcementConfig, content: val })
+                    }
+                    multiline
+                    placeholder={`Fitur baru telah ditambahkan:\nKatalog anime musim ini sudah diperbarui\nPlayer video lebih stabil dan hemat kuota\nLaporkan bug di Discord kami`}
+                    placeholderTextColor="#64748B"
+                  />
+                  <Text style={styles.hint}>
+                    Setiap baris kalimat baru akan otomatis diformat dengan bullet poin cyan yang rapi.
+                  </Text>
+                </View>
+
+                <View style={styles.row}>
+                  <View style={[styles.formGroup, { flex: 1, marginRight: 16 }]}>
+                    <Text style={styles.label}>Teks Tombol Aksi</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={announcementConfig.buttonText || ""}
+                      onChangeText={(val) =>
+                        setAnnouncementConfig({ ...announcementConfig, buttonText: val })
+                      }
+                      placeholder="JOIN DISCORD"
+                      placeholderTextColor="#64748B"
+                    />
+                  </View>
+
+                  <View style={[styles.formGroup, { flex: 1 }]}>
+                    <Text style={styles.label}>Tautan URL Tombol</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={announcementConfig.buttonUrl || ""}
+                      onChangeText={(val) =>
+                        setAnnouncementConfig({ ...announcementConfig, buttonUrl: val })
+                      }
+                      placeholder="https://discord.gg/nuenime"
+                      placeholderTextColor="#64748B"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.row}>
+                  <TouchableOpacity
+                    style={[styles.previewBtnLarge, { marginRight: 12 }]}
+                    onPress={() => setShowAnnouncementPreview(true)}
+                  >
+                    <AppIcon name="eye-outline" size={16} color="#06B6D4" />
+                    <Text style={styles.previewBtnLargeText}>Lihat Preview</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.saveBtn, { flex: 1, backgroundColor: "#06B6D4" }]}
+                    onPress={handleSaveAnnouncement}
+                    disabled={isSavingAnnouncement}
+                  >
+                    {isSavingAnnouncement ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <>
+                        <AppIcon name="check-circle" size={16} color="#FFF" />
+                        <Text style={styles.saveBtnText}>Simpan & Terapkan Pop-up</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* TAB 3: MAINTENANCE MODE */}
             {activeTab === "maintenance" && (
               <View style={styles.card}>
                 <View style={styles.cardHeader}>
                   <View>
                     <Text style={styles.cardTitle}>Status Pemeliharaan Sistem (Maintenance Mode)</Text>
                     <Text style={styles.cardDesc}>
-                      Saat aktif, aplikasi Nuenime akan menampilkan layar pemeliharaan penuh dan menolak akses publik.
+                      Saat aktif, aplikasi Nuenime akan menampilkan layar pemeliharaan penuh dan menolak akses publik secara real-time.
                     </Text>
                   </View>
                 </View>
@@ -285,7 +589,7 @@ export default function AdminSystemScreen() {
                     </Text>
                     <Text style={styles.maintStatusDesc}>
                       {maintenanceConfig.isActive
-                        ? "Hanya administrator terdaftar yang dapat mengakses data."
+                        ? "Hanya administrator terdaftar yang dapat mengakses aplikasi. Layar Maintenance Gate otomatis mengunci penonton."
                         : "Semua penonton dan pengguna dapat mengakses aplikasi secara lancar."}
                     </Text>
                   </View>
@@ -323,13 +627,13 @@ export default function AdminSystemScreen() {
               </View>
             )}
 
-            {/* TAB 3: BROADCAST NOTIFICATIONS */}
+            {/* TAB 4: BROADCAST NOTIFICATIONS */}
             {activeTab === "broadcast" && (
               <View>
                 <View style={styles.card}>
                   <Text style={styles.cardTitle}>Kirim Siaran Notifikasi Massal</Text>
                   <Text style={styles.cardDesc}>
-                    Pesan akan dikirim langsung ke tab pemberitahuan akun seluruh pengguna Nuenime.
+                    Pesan akan langsung muncul sebagai banner real-time di layar seluruh pengguna aktif dan tersimpan di database.
                   </Text>
 
                   <View style={styles.formGroup}>
@@ -439,6 +743,12 @@ export default function AdminSystemScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* POPUP ANNOUNCEMENT PREVIEW MODAL */}
+      <AppAnnouncementModal
+        previewConfig={showAnnouncementPreview ? announcementConfig : null}
+        onClosePreview={() => setShowAnnouncementPreview(false)}
+      />
     </AdminLayout>
   );
 }
@@ -472,12 +782,14 @@ const styles = StyleSheet.create({
     padding: 4,
     borderWidth: 1,
     borderColor: "rgba(140, 87, 255, 0.2)",
+    flexWrap: "wrap",
+    gap: 4,
   },
   tabButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 8,
   },
@@ -520,6 +832,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-start",
     marginBottom: 20,
+    flexWrap: "wrap",
+    gap: 12,
   },
   cardTitle: {
     fontSize: 18,
@@ -530,6 +844,7 @@ const styles = StyleSheet.create({
   cardDesc: {
     fontSize: 13,
     color: "#94A3B8",
+    maxWidth: 600,
   },
   versionBadge: {
     backgroundColor: "rgba(140, 87, 255, 0.2)",
@@ -543,6 +858,106 @@ const styles = StyleSheet.create({
     color: "#8C57FF",
     fontWeight: "700",
     fontSize: 13,
+  },
+  githubSyncCard: {
+    backgroundColor: "#17142A",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.25)",
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 20,
+  },
+  githubSyncHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 12,
+  },
+  githubSyncTitle: {
+    color: "#38BDF8",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  githubSyncDesc: {
+    color: "#94A3B8",
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  githubInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  githubSyncBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#0284C7",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  githubSyncBtnText: {
+    color: "#FFF",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  syncFeedbackBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 10,
+    borderRadius: 6,
+    marginTop: 10,
+  },
+  syncSuccess: {
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.3)",
+  },
+  syncError: {
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.3)",
+  },
+  syncFeedbackText: {
+    fontSize: 12,
+    fontWeight: "600",
+    flex: 1,
+  },
+  previewBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(6, 182, 212, 0.12)",
+    borderColor: "#06B6D4",
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  previewBtnText: {
+    color: "#06B6D4",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  previewBtnLarge: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "rgba(6, 182, 212, 0.12)",
+    borderColor: "#06B6D4",
+    borderWidth: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  previewBtnLargeText: {
+    color: "#06B6D4",
+    fontSize: 14,
+    fontWeight: "700",
   },
   formGroup: {
     marginBottom: 16,
@@ -569,6 +984,7 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: "row",
+    alignItems: "center",
   },
   toggleRow: {
     flexDirection: "row",
@@ -614,6 +1030,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 20,
     borderWidth: 1,
+  },
+  popupActiveBg: {
+    backgroundColor: "rgba(6, 182, 212, 0.12)",
+    borderColor: "#06B6D4",
   },
   maintActiveBg: {
     backgroundColor: "rgba(239, 68, 68, 0.15)",
