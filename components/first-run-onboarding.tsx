@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import Constants from "expo-constants";
-import Feather from "@expo/vector-icons/Feather";
+import { AppIcon } from "@/components/app-icon";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
@@ -292,7 +292,7 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
               ]}
               hitSlop={20}
             >
-              <Feather name="chevron-up" size={18} color="#CBD5E1" />
+              <AppIcon name="chevron-up" size={18} color="#CBD5E1" />
               <Text style={styles.swipePromptText}>Geser ke atas</Text>
             </Pressable>
           </View>
@@ -361,7 +361,7 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
               ]}
               hitSlop={20}
             >
-              <Feather name="chevron-up" size={18} color="#CBD5E1" />
+              <AppIcon name="chevron-up" size={18} color="#CBD5E1" />
               <Text style={styles.swipePromptText}>Geser ke atas</Text>
             </Pressable>
           </View>
