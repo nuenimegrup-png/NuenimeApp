@@ -8,6 +8,7 @@ import {
   TextInput,
   Switch,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { AdminLayout } from "@/components/admin/admin-layout";
 import {
@@ -23,6 +24,8 @@ import {
   saveAdminMaintenanceConfig,
   getAdminBroadcasts,
   sendAdminBroadcast,
+  deleteAdminBroadcast,
+  clearAllAdminBroadcasts,
   fetchGitHubReleaseInfo,
   getAppAnnouncementConfig,
   saveAppAnnouncementConfig,
@@ -194,6 +197,54 @@ export default function AdminSystemScreen() {
     } finally {
       setIsSending(false);
     }
+  };
+
+  const handleDeleteBroadcast = (id: string) => {
+    Alert.alert(
+      "Hapus Siaran",
+      "Apakah Anda yakin ingin menghapus siaran ini dari riwayat dan menghentikan notifikasi aktif ke pengguna?",
+      [
+        { text: "Batal", style: "cancel" },
+        {
+          text: "Hapus",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteAdminBroadcast(id, currentAdmin);
+              setBroadcasts((prev) => prev.filter((b) => b.id !== id));
+              setFeedback("Siaran berhasil dihapus dan notifikasi dihentikan!");
+              setTimeout(() => setFeedback(null), 3000);
+            } catch (err: any) {
+              Alert.alert("Gagal", err?.message || "Gagal menghapus siaran.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleClearAllBroadcasts = () => {
+    Alert.alert(
+      "Hapus Semua Siaran",
+      "Hapus semua riwayat siaran dan bersihkan notifikasi siaran aktif?",
+      [
+        { text: "Batal", style: "cancel" },
+        {
+          text: "Hapus Semua",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await clearAllAdminBroadcasts(currentAdmin);
+              setBroadcasts([]);
+              setFeedback("Seluruh riwayat siaran berhasil dibersihkan!");
+              setTimeout(() => setFeedback(null), 3000);
+            } catch (err: any) {
+              Alert.alert("Gagal", err?.message || "Gagal membersihkan riwayat siaran.");
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -830,8 +881,20 @@ export default function AdminSystemScreen() {
                 {/* History Broadcasts */}
                 <View style={[styles.card, { marginTop: 24 }]}>
                   <View style={styles.historyHeader}>
-                    <AppIcon name="history" size={18} color="#CBD5E1" />
-                    <Text style={styles.historyTitle}>Riwayat Siaran Terkirim ({broadcasts.length})</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                      <AppIcon name="history" size={18} color="#CBD5E1" />
+                      <Text style={styles.historyTitle}>Riwayat Siaran Terkirim ({broadcasts.length})</Text>
+                    </View>
+                    {broadcasts.length > 0 && (
+                      <TouchableOpacity
+                        onPress={handleClearAllBroadcasts}
+                        style={styles.clearAllBtn}
+                        activeOpacity={0.7}
+                      >
+                        <AppIcon name="trash" size={14} color="#EF4444" />
+                        <Text style={styles.clearAllBtnText}>Bersihkan Semua</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
 
                   {broadcasts.length === 0 ? (
@@ -849,6 +912,14 @@ export default function AdminSystemScreen() {
                           <Text style={styles.historyCount}>
                             Kepada: {b.recipientsCount} Akun
                           </Text>
+                          <TouchableOpacity
+                            onPress={() => handleDeleteBroadcast(b.id)}
+                            style={styles.deleteBroadcastBtn}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <AppIcon name="trash" size={14} color="#EF4444" />
+                            <Text style={styles.deleteBroadcastText}>Hapus</Text>
+                          </TouchableOpacity>
                         </View>
                         <Text style={styles.historyItemTitle}>{b.title}</Text>
                         <Text style={styles.historyItemMessage}>{b.message}</Text>
@@ -1274,5 +1345,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#E2E8F0",
+  },
+  clearAllBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.3)",
+  },
+  clearAllBtnText: {
+    color: "#EF4444",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  deleteBroadcastBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.25)",
+    marginLeft: 10,
+  },
+  deleteBroadcastText: {
+    color: "#EF4444",
+    fontSize: 11,
+    fontWeight: "600",
   },
 });

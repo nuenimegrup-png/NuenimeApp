@@ -1995,6 +1995,80 @@ export async function sendAdminBroadcast(params: {
   return item;
 }
 
+export async function deleteAdminBroadcast(id: string, admin?: AdminUser): Promise<void> {
+  // 1. Hapus dari Supabase broadcast_notifications
+  try {
+    await supabase.from("broadcast_notifications").delete().eq("id", id);
+  } catch (err) {
+    console.warn("Failed deleting from Supabase broadcast_notifications:", err);
+  }
+
+  // 2. Jika siaran ini adalah broadcast_latest di system_configs, hapus/kosongkan
+  try {
+    const { data } = await supabase
+      .from("system_configs")
+      .select("value")
+      .eq("key", "broadcast_latest")
+      .maybeSingle();
+
+    if (data?.value) {
+      const val = typeof data.value === "string" ? JSON.parse(data.value) : data.value;
+      if (val && val.id === id) {
+        await supabase
+          .from("system_configs")
+          .update({ value: null, updated_at: new Date().toISOString() })
+          .eq("key", "broadcast_latest");
+      }
+    }
+  } catch (err) {
+    console.warn("Failed clearing broadcast_latest from system_configs:", err);
+  }
+
+  // 3. Hapus dari local cache
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_BROADCASTS);
+    if (raw) {
+      const list: BroadcastNotification[] = JSON.parse(raw);
+      const filtered = list.filter((b) => b.id !== id);
+      await AsyncStorage.setItem(STORAGE_BROADCASTS, JSON.stringify(filtered));
+    }
+  } catch {}
+
+  if (admin) {
+    await logAdminAction({
+      admin,
+      action: "DELETE_BROADCAST",
+      targetType: "broadcast",
+      targetId: id,
+      details: { broadcastId: id },
+    });
+  }
+}
+
+export async function clearAllAdminBroadcasts(admin?: AdminUser): Promise<void> {
+  try {
+    await supabase.from("broadcast_notifications").delete().neq("id", "0");
+  } catch {}
+  try {
+    await supabase
+      .from("system_configs")
+      .update({ value: null, updated_at: new Date().toISOString() })
+      .eq("key", "broadcast_latest");
+  } catch {}
+  try {
+    await AsyncStorage.removeItem(STORAGE_BROADCASTS);
+  } catch {}
+  if (admin) {
+    await logAdminAction({
+      admin,
+      action: "CLEAR_ALL_BROADCASTS",
+      targetType: "broadcast",
+      targetId: "all",
+      details: { count: "all" },
+    });
+  }
+}
+
 // ─── 12. MAILBOX / MASS GIFT ───
 
 export interface MassGiftCampaign {

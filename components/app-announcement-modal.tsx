@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppIcon } from "@/components/app-icon";
+import { useAnirakuAuth } from "@/providers/auth-provider";
 import {
   getAppAnnouncementConfig,
   type AppAnnouncementConfig,
@@ -30,11 +31,18 @@ export function AppAnnouncementModal({
 }: AppAnnouncementModalProps) {
   const [config, setConfig] = useState<AppAnnouncementConfig | null>(null);
   const [visible, setVisible] = useState(false);
+  const auth = useAnirakuAuth();
 
   const checkAnnouncement = useCallback(async () => {
     if (previewConfig) {
       setConfig(previewConfig);
       setVisible(true);
+      return;
+    }
+
+    // Hanya tampilkan jika user sudah selesai login dan berada di dalam aplikasi
+    if (auth.loading || !auth.user) {
+      setVisible(false);
       return;
     }
 
@@ -57,11 +65,23 @@ export function AppAnnouncementModal({
     } catch {
       setVisible(false);
     }
-  }, [previewConfig]);
+  }, [previewConfig, auth.loading, auth.user]);
 
   useEffect(() => {
-    checkAnnouncement();
-  }, [checkAnnouncement]);
+    if (previewConfig) {
+      checkAnnouncement();
+      return;
+    }
+    // Hanya picu setelah auth selesai dan user sudah login (posisi home)
+    if (!auth.loading && auth.user) {
+      const timer = setTimeout(() => {
+        checkAnnouncement();
+      }, 500);
+      return () => clearTimeout(timer);
+    } else {
+      setVisible(false);
+    }
+  }, [checkAnnouncement, auth.loading, auth.user, previewConfig]);
 
   const handleDismiss = async () => {
     setVisible(false);
