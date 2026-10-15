@@ -1059,6 +1059,10 @@ export interface MaintenanceModeConfig {
   isActive: boolean;
   message: string;
   endsAt?: string | null;
+  primaryButtonText?: string;
+  secondaryButtonText?: string;
+  secondaryButtonUrl?: string;
+  iconUrl?: string;
 }
 
 const STORAGE_APP_RELEASE = "nuenime.admin.app_release";
@@ -1250,6 +1254,7 @@ export async function saveAdminAppReleaseConfig(
 }
 
 export async function getAdminMaintenanceConfig(): Promise<MaintenanceModeConfig> {
+  const defaultIcon = "https://i.ibb.co.com/rKCB8QhB/maintenance-nuenime.png";
   try {
     const { data, error } = await supabase
       .from("system_configs")
@@ -1261,8 +1266,12 @@ export async function getAdminMaintenanceConfig(): Promise<MaintenanceModeConfig
       const parsed = typeof data.value === "string" ? JSON.parse(data.value) : data.value;
       const config: MaintenanceModeConfig = {
         isActive: parsed.is_active ?? parsed.isActive ?? false,
-        message: parsed.message ?? "Server sedang dalam pemeliharaan berkala untuk peningkatan performa.",
+        message: parsed.message ?? "Nuenime sedang dalam pemeliharaan sistem berkala. Mohon kembali beberapa saat lagi.",
         endsAt: parsed.ends_at ?? parsed.endsAt ?? null,
+        primaryButtonText: parsed.primary_button_text ?? parsed.primaryButtonText ?? "Cek Status Server",
+        secondaryButtonText: parsed.secondary_button_text ?? parsed.secondaryButtonText ?? "Komunitas Discord",
+        secondaryButtonUrl: parsed.secondary_button_url ?? parsed.secondaryButtonUrl ?? "https://discord.gg/nuenime",
+        iconUrl: parsed.icon_url ?? parsed.iconUrl ?? defaultIcon,
       };
       await AsyncStorage.setItem(STORAGE_MAINTENANCE, JSON.stringify(config));
       return config;
@@ -1276,7 +1285,11 @@ export async function getAdminMaintenanceConfig(): Promise<MaintenanceModeConfig
 
   return {
     isActive: false,
-    message: "Server sedang dalam pemeliharaan berkala untuk peningkatan performa.",
+    message: "Nuenime sedang dalam pemeliharaan sistem berkala. Mohon kembali beberapa saat lagi.",
+    primaryButtonText: "Cek Status Server",
+    secondaryButtonText: "Komunitas Discord",
+    secondaryButtonUrl: "https://discord.gg/nuenime",
+    iconUrl: defaultIcon,
   };
 }
 
@@ -1293,6 +1306,10 @@ export async function saveAdminMaintenanceConfig(
         is_active: config.isActive,
         message: config.message,
         ends_at: config.endsAt ?? null,
+        primary_button_text: config.primaryButtonText ?? "Cek Status Server",
+        secondary_button_text: config.secondaryButtonText ?? "Komunitas Discord",
+        secondary_button_url: config.secondaryButtonUrl ?? "https://discord.gg/nuenime",
+        icon_url: config.iconUrl ?? "https://i.ibb.co.com/rKCB8QhB/maintenance-nuenime.png",
       },
       updated_at: new Date().toISOString(),
     });

@@ -58,8 +58,22 @@ export const BorderAvatar: React.FC<BorderAvatarProps> = ({
   // 1. UKURAN AVATAR TETAP SESUAI KOMPONEN PEMANGGIL (TIDAK PERNAH DIUBAH OLEH BORDER)
   const avatarSize = Math.max(16, avatarSizeProp ?? sizeProp ?? 48);
 
-  // Cari data border dari ID atau prop
-  const borderData = borderProp || (borderId ? getBorderById(borderId) : undefined);
+  // Cari data border dari ID, direct URL, atau prop
+  const isDirectUrl = typeof borderId === "string" && (borderId.startsWith("http://") || borderId.startsWith("https://"));
+  const borderData =
+    borderProp ||
+    (isDirectUrl
+      ? {
+          id: "custom_url",
+          name: "Custom Border",
+          rarity: "Rare" as const,
+          assetUrl: borderId,
+          innerRatio: 0.74,
+          isReleased: true,
+        }
+      : borderId
+      ? getBorderById(borderId)
+      : undefined);
   const legacyAsset = borderId ? LEGACY_BORDER_ASSETS[borderId] : undefined;
   const hasActiveBorder = Boolean((borderData && borderData.assetUrl) || legacyAsset);
 

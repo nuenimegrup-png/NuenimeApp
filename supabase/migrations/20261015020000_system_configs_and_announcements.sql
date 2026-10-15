@@ -62,11 +62,28 @@ VALUES (
   '{
     "is_active": false,
     "message": "Nuenime sedang dalam pemeliharaan sistem berkala. Mohon kembali beberapa saat lagi.",
-    "ends_at": null
+    "ends_at": null,
+    "icon_url": "https://i.ibb.co.com/rKCB8QhB/maintenance-nuenime.png",
+    "primary_button_text": "Cek Status Server",
+    "secondary_button_text": "Discord Support",
+    "secondary_button_url": "https://discord.gg/nuenime"
   }'::jsonb,
   NOW()
 )
 ON CONFLICT (key) DO NOTHING;
+
+-- 4b. Patch baris maintenance_mode yang sudah ada tapi belum punya field baru
+UPDATE public.system_configs
+SET value = value || '{
+    "icon_url": "https://i.ibb.co.com/rKCB8QhB/maintenance-nuenime.png",
+    "primary_button_text": "Cek Status Server",
+    "secondary_button_text": "Discord Support",
+    "secondary_button_url": "https://discord.gg/nuenime"
+  }'::jsonb
+WHERE key = 'maintenance_mode'
+  AND (value->>'icon_url') IS NULL;
+
+
 
 -- 5. Inisialisasi default konfig: Rilis APK jika belum ada
 INSERT INTO public.system_configs (key, value, updated_at)

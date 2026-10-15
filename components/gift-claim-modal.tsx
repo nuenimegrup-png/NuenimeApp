@@ -84,7 +84,12 @@ export function GiftClaimModal({
 
           {/* Gift Icon Header */}
           <View style={styles.iconCircle}>
-            <Text style={{ fontSize: 32 }}>🎁</Text>
+            <Image
+              source={{ uri: "https://i.ibb.co.com/BHDK5h9W/hadiah-icon.png" }}
+              style={{ width: 64, height: 64 }}
+              contentFit="contain"
+              transition={200}
+            />
           </View>
 
           {/* Title & Date */}
@@ -173,14 +178,10 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "rgba(140, 87, 255, 0.18)",
+    width: 72,
+    height: 72,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(140, 87, 255, 0.35)",
     marginTop: 6,
   },
   title: {
@@ -245,16 +246,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     paddingVertical: 13,
-    borderRadius: 10,
+    borderRadius: 24,
     marginTop: 6,
   },
   claimBtnActive: {
-    backgroundColor: "#8C57FF",
-    shadowColor: "#8C57FF",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.32)",
   },
   claimBtnDisabled: {
     backgroundColor: "rgba(255, 255, 255, 0.08)",

@@ -9,6 +9,7 @@ import {
   Linking,
   Platform,
 } from "react-native";
+import { Image } from "expo-image";
 import { usePathname } from "expo-router";
 import { AppIcon } from "@/components/app-icon";
 import { useAnirakuAuth } from "@/providers/auth-provider";
@@ -60,6 +61,10 @@ export function MaintenanceGate() {
               isActive: Boolean(val.is_active ?? val.isActive),
               message: val.message || "Server sedang dalam pemeliharaan berkala.",
               endsAt: val.ends_at ?? val.endsAt ?? null,
+              iconUrl: val.icon_url ?? val.iconUrl ?? undefined,
+              primaryButtonText: val.primary_button_text ?? val.primaryButtonText ?? undefined,
+              secondaryButtonText: val.secondary_button_text ?? val.secondaryButtonText ?? undefined,
+              secondaryButtonUrl: val.secondary_button_url ?? val.secondaryButtonUrl ?? undefined,
             });
           }
         }
@@ -89,8 +94,13 @@ export function MaintenanceGate() {
     <View style={styles.overlayContainer}>
       <StatusBar barStyle="light-content" backgroundColor="#0B0E14" />
       <View style={styles.card}>
-        <View style={styles.iconCircle}>
-          <AppIcon name="construct" size={38} color="#F59E0B" />
+        <View style={styles.iconWrapper}>
+          <Image
+            source={{ uri: config.iconUrl || "https://i.ibb.co.com/rKCB8QhB/maintenance-nuenime.png" }}
+            style={styles.maintenanceIcon}
+            contentFit="contain"
+            transition={200}
+          />
         </View>
 
         <Text style={styles.badge}>MAINTENANCE MODE</Text>
@@ -116,18 +126,26 @@ export function MaintenanceGate() {
             ) : (
               <>
                 <AppIcon name="refresh" size={16} color="#FFFFFF" />
-                <Text style={styles.refreshBtnText}>Cek Status Server</Text>
+                <Text style={styles.refreshBtnText}>
+                  {config.primaryButtonText || "Cek Status Server"}
+                </Text>
               </>
             )}
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.discordBtn}
-            onPress={() => Linking.openURL("https://discord.gg/nuenime").catch(() => {})}
+            onPress={() =>
+              Linking.openURL(config.secondaryButtonUrl || "https://discord.gg/nuenime").catch(
+                () => {}
+              )
+            }
             activeOpacity={0.78}
           >
             <AppIcon name="logo-discord" size={16} color="#E2E8F0" />
-            <Text style={styles.discordBtnText}>Komunitas Discord</Text>
+            <Text style={styles.discordBtnText}>
+              {config.secondaryButtonText || "Komunitas Discord"}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -159,16 +177,16 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 12,
   },
-  iconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: "rgba(245, 158, 11, 0.12)",
-    borderWidth: 1.5,
-    borderColor: "rgba(245, 158, 11, 0.3)",
+  iconWrapper: {
+    width: 88,
+    height: 88,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
+  },
+  maintenanceIcon: {
+    width: "100%",
+    height: "100%",
   },
   badge: {
     fontSize: 11,
@@ -210,7 +228,7 @@ const styles = StyleSheet.create({
   },
   btnRow: {
     width: "100%",
-    gap: 10,
+    gap: 12,
   },
   refreshBtn: {
     backgroundColor: "rgba(255, 255, 255, 0.14)",
@@ -223,11 +241,6 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     paddingHorizontal: 20,
     borderRadius: 24,
-    shadowColor: "#FFFFFF",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 3,
     ...(Platform.OS === "web"
       ? ({
         backdropFilter: "blur(14px)",

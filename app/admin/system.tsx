@@ -42,6 +42,10 @@ export default function AdminSystemScreen() {
   const [maintenanceConfig, setMaintenanceConfig] = useState<MaintenanceModeConfig>({
     isActive: false,
     message: "Server sedang dalam pemeliharaan berkala untuk peningkatan performa.",
+    iconUrl: "https://i.ibb.co.com/rKCB8QhB/maintenance-nuenime.png",
+    primaryButtonText: "Cek Status Server",
+    secondaryButtonText: "Discord Support",
+    secondaryButtonUrl: "",
   });
   const [announcementConfig, setAnnouncementConfig] = useState<AppAnnouncementConfig>(DEFAULT_ANNOUNCEMENT_CONFIG);
   const [broadcasts, setBroadcasts] = useState<BroadcastNotification[]>([]);
@@ -657,6 +661,78 @@ export default function AdminSystemScreen() {
                     placeholder="Contoh: Kami sedang meningkatkan performa server. Harap kembali pukul 02:00 WIB."
                     placeholderTextColor="#64748B"
                   />
+                </View>
+
+                {/* ICON URL */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>URL Gambar Icon Maintenance</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={maintenanceConfig.iconUrl || ""}
+                    onChangeText={(val) =>
+                      setMaintenanceConfig({ ...maintenanceConfig, iconUrl: val })
+                    }
+                    placeholder="https://i.ibb.co.com/rKCB8QhB/maintenance-nuenime.png"
+                    placeholderTextColor="#64748B"
+                    autoCapitalize="none"
+                  />
+                  <Text style={styles.hint}>URL gambar icon yang muncul di halaman maintenance. Kosongkan untuk menggunakan ikon default.</Text>
+                </View>
+
+                {/* TOMBOL 1 (UTAMA) */}
+                <View style={styles.buttonConfigSection}>
+                  <View style={styles.buttonSectionHeader}>
+                    <AppIcon name="server" size={16} color="#38BDF8" />
+                    <Text style={styles.buttonSectionTitle}>Tombol 1 – Liquid Glass Utama</Text>
+                  </View>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Teks Tombol 1</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={maintenanceConfig.primaryButtonText || ""}
+                      onChangeText={(val) =>
+                        setMaintenanceConfig({ ...maintenanceConfig, primaryButtonText: val })
+                      }
+                      placeholder="Contoh: Cek Status Server"
+                      placeholderTextColor="#64748B"
+                    />
+                    <Text style={styles.hint}>Tombol utama di layar maintenance (silver liquid glass). Tidak bisa dikonfigurasi URL-nya.</Text>
+                  </View>
+                </View>
+
+                {/* TOMBOL 2 (SEKUNDER) */}
+                <View style={styles.buttonConfigSection}>
+                  <View style={styles.buttonSectionHeader}>
+                    <AppIcon name="discord" size={16} color="#CBD5E1" />
+                    <Text style={styles.buttonSectionTitle}>Tombol 2 – Liquid Glass Sekunder</Text>
+                  </View>
+                  <View style={styles.row}>
+                    <View style={[styles.formGroup, { flex: 1, marginRight: 16 }]}>
+                      <Text style={styles.label}>Teks Tombol 2</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={maintenanceConfig.secondaryButtonText || ""}
+                        onChangeText={(val) =>
+                          setMaintenanceConfig({ ...maintenanceConfig, secondaryButtonText: val })
+                        }
+                        placeholder="Contoh: Discord Support"
+                        placeholderTextColor="#64748B"
+                      />
+                    </View>
+                    <View style={[styles.formGroup, { flex: 1 }]}>
+                      <Text style={styles.label}>URL Tombol 2 (Opsional)</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={maintenanceConfig.secondaryButtonUrl || ""}
+                        onChangeText={(val) =>
+                          setMaintenanceConfig({ ...maintenanceConfig, secondaryButtonUrl: val })
+                        }
+                        placeholder="https://discord.gg/nuenime"
+                        placeholderTextColor="#64748B"
+                        autoCapitalize="none"
+                      />
+                    </View>
+                  </View>
                 </View>
 
                 <TouchableOpacity

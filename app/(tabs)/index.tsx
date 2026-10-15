@@ -32,6 +32,7 @@ import { useNotifications } from "@/hooks/use-notifications";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { useExp } from "@/providers/exp-toast-provider";
 import { EXP_RULES } from "@/lib/user-level";
+import { HomeTopLeaderboard } from "@/components/home-top-leaderboard";
 
 export const SERIES_GENRES = [
   { id: "Action", label: "Action" },
@@ -399,27 +400,9 @@ export default function HomeScreen() {
 
 
         {/* ══════════════════════════════════════════════════════════════
-            5. TOP LEADERBOARD CARD
+            5. TOP LEADERBOARD CARD (REALTIME)
             ══════════════════════════════════════════════════════════════ */}
-        <View style={styles.giveawayGlassCard}>
-          <View style={styles.giveawayHeaderRow}>
-            <View style={styles.giveawayTitleLeft}>
-              <Image
-                source={{ uri: "https://i.ibb.co.com/ccJmQCfx/download-7-removebg-preview.png" }}
-                style={styles.leaderboardIcon}
-                contentFit="contain"
-              />
-              <Text style={styles.giveawayTitleText}>TOP LEADERBOARD</Text>
-            </View>
-            <Pressable onPress={() => router.push("/support" as never)}>
-              <Text style={styles.giveawayLinkText}>Lihat Semua &gt;</Text>
-            </Pressable>
-          </View>
-          <Text style={styles.giveawayMainNotice}>Belum ada data Top Leaderboard.</Text>
-          <Text style={styles.giveawaySubNotice}>
-            Papan peringkat pendukung via Saweria akan segera diperbarui!
-          </Text>
-        </View>
+        <HomeTopLeaderboard />
 
         {/* ══════════════════════════════════════════════════════════════
             5.5. ANIME TERBARU (REKOMENDASI ANIME TERBARU)

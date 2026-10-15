@@ -619,6 +619,20 @@ export async function getEquippedBorderId(userId?: string | null): Promise<strin
     const val = await AsyncStorage.getItem(key);
     if (val) return val;
 
+    // Fallback: ambil dari Supabase profile jika di local belum ada
+    if (userId && userId.trim().length > 0 && userId !== "guest") {
+      const { data } = await supabase
+        .from("profiles")
+        .select("equipped_border")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (data?.equipped_border) {
+        await AsyncStorage.setItem(key, data.equipped_border);
+        return data.equipped_border;
+      }
+    }
+
     // Backward-compatibility fallback dengan legacy key
     const legacy = await AsyncStorage.getItem("nuenime.equipped.border");
     if (legacy) return legacy;
@@ -644,6 +658,18 @@ export async function setEquippedBorderId(
   } else {
     await AsyncStorage.removeItem(key);
     await AsyncStorage.removeItem("nuenime.equipped.border");
+  }
+
+  // Sinkronkan ke database Supabase profiles.equipped_border secara background
+  if (userId && userId.trim().length > 0 && userId !== "guest") {
+    try {
+      await supabase
+        .from("profiles")
+        .update({ equipped_border: borderId })
+        .eq("id", userId);
+    } catch {
+      // Non-blocking
+    }
   }
 }
 

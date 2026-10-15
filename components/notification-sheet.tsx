@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { AppIcon } from "@/components/app-icon";
 import { nothing } from "@/components/nothing-ui";
 import { useNotifications } from "@/hooks/use-notifications";
@@ -16,6 +17,8 @@ import { getUserMailboxGifts, type SystemGift } from "@/lib/mailbox-service";
 import { GiftClaimModal } from "@/components/gift-claim-modal";
 import { supabase } from "@/lib/supabase";
 import { hapticLight } from "@/lib/haptics";
+
+const HADIAH_ICON = { uri: "https://i.ibb.co.com/BHDK5h9W/hadiah-icon.png" };
 
 function timeAgo(dateStr: string): string {
   if (!dateStr) return "";
@@ -147,7 +150,7 @@ export function NotificationSheet({
                     unclaimedGiftsCount > 0 && { color: "#F59E0B", fontWeight: "900" },
                   ]}
                 >
-                  🎁 HADIAH {unclaimedGiftsCount > 0 ? `(${unclaimedGiftsCount})` : ""}
+                  HADIAH {unclaimedGiftsCount > 0 ? `(${unclaimedGiftsCount})` : ""}
                 </Text>
               </Pressable>
 
@@ -179,7 +182,7 @@ export function NotificationSheet({
                 }}
                 style={styles.unclaimedGiftBanner}
               >
-                <Text style={{ fontSize: 22 }}>🎁</Text>
+                <Image source={HADIAH_ICON} style={{ width: 28, height: 28 }} contentFit="contain" />
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={styles.unclaimedGiftTitle}>
                     Kamu punya {unclaimedGiftsCount} hadiah belum diklaim!
@@ -203,7 +206,7 @@ export function NotificationSheet({
                 </View>
               ) : gifts.length === 0 ? (
                 <View style={styles.empty}>
-                  <Text style={{ fontSize: 32 }}>🎁</Text>
+                  <Image source={HADIAH_ICON} style={{ width: 48, height: 48 }} contentFit="contain" />
                   <Text style={styles.emptyTitle}>Belum Ada Hadiah</Text>
                   <Text style={styles.emptyText}>
                     Hadiah massal dari admin akan muncul di sini.
@@ -222,7 +225,7 @@ export function NotificationSheet({
                       ]}
                     >
                       <View style={styles.giftIconWrap}>
-                        <Text style={{ fontSize: 24 }}>🎁</Text>
+                        <Image source={HADIAH_ICON} style={{ width: 30, height: 30 }} contentFit="contain" />
                       </View>
                       <View style={styles.rowBody}>
                         <View style={styles.giftTitleRow}>
