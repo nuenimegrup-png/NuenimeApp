@@ -191,7 +191,7 @@ export async function getFriendshipStatus(
 export async function sendFriendRequest(
   fromUserId: string,
   toUserId: string,
-  fromUserName?: string
+  fromUserName?: string | null
 ): Promise<{ success: boolean; error?: string }> {
   if (!fromUserId || !toUserId) return { success: false, error: "ID pengguna tidak valid." };
   if (fromUserId === toUserId) return { success: false, error: "Tidak dapat menambahkan diri sendiri." };
@@ -235,7 +235,7 @@ export async function sendFriendRequest(
 export async function acceptFriendRequest(
   currentUserId: string,
   requesterUserId: string,
-  currentUserName?: string
+  currentUserName?: string | null
 ): Promise<{ success: boolean; error?: string }> {
   if (!currentUserId || !requesterUserId) return { success: false, error: "ID tidak valid." };
 

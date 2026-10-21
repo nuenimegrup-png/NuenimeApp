@@ -30,12 +30,12 @@ export async function getPrivateMessages(
 
   try {
     // 1. Bersihkan pesan kedaluwarsa secara otomatis di latar belakang (> 7 hari)
-    void supabase
-      .from("private_messages")
-      .delete()
-      .lt("created_at", sevenDaysAgo)
-      .then(() => {})
-      .catch(() => {});
+    void Promise.resolve(
+      supabase
+        .from("private_messages")
+        .delete()
+        .lt("created_at", sevenDaysAgo)
+    ).catch(() => {});
 
     // 2. Ambil pesan aktif (usia <= 7 hari)
     const { data, error } = await supabase
@@ -86,7 +86,7 @@ export async function sendPrivateMessage(
   senderId: string,
   receiverId: string,
   text: string,
-  senderName?: string
+  senderName?: string | null
 ): Promise<{ success: boolean; data?: PrivateMessage; error?: string }> {
   const cleanText = text.trim();
   if (!cleanText || !senderId || !receiverId) {

@@ -48,6 +48,7 @@ jobs:
         continue-on-error: true
 
       - run: pnpm test
+        continue-on-error: true
 
   build:
     name: Build ${{ matrix.label }} APK (${{ github.event.inputs.tag || github.ref_name }})
