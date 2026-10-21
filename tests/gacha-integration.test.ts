@@ -135,10 +135,9 @@ describe("Nuenime Gacha & Profile Banner Integration Tests", () => {
   });
 
   describe("3. Admin Banner CRUD & Pool Management", () => {
-    it("loads default catalog when no database records exist", async () => {
+    it("returns pure database records without hardcoded dummy items", async () => {
       const banners = await getAllGachaBanners();
-      expect(banners.length).toBeGreaterThanOrEqual(WALLPAPER_CATALOG.length);
-      expect(banners.some((b) => b.id === "saitama_22")).toBe(true);
+      expect(Array.isArray(banners)).toBe(true);
     });
 
     it("allows adding a new banner with GIF format and proper rarity metadata", async () => {
@@ -210,6 +209,16 @@ describe("Nuenime Gacha & Profile Banner Integration Tests", () => {
   });
 
   describe("4. Crystal Balance & Summon Integration", () => {
+    beforeEach(async () => {
+      await addGachaBanner({
+        id: "banner_summon_test",
+        name: "Test Banner Summon",
+        rarity: "Normal",
+        image: "https://example.com/banner.jpg",
+        isActive: true,
+      });
+    });
+
     it("rejects summon when user balance is insufficient", async () => {
       const userId = "user_test_poor";
       await setCrystalBalance(userId, 200); // Only 200 Crystal

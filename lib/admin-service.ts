@@ -19,7 +19,14 @@ import {
   formatCrystalAmount,
 } from "@/lib/topup-service";
 import type { AvatarBorder, BorderRarity } from "@/lib/avatar-borders";
-import { AVATAR_BORDERS } from "@/lib/avatar-borders";
+import {
+  getBorderById,
+  updateLiveBorderInCache,
+  removeLiveBorderFromCache,
+  fetchLiveBorderCatalog,
+  BORDER_RARITY_PRICES,
+} from "@/lib/avatar-borders";
+import { createBorderCompensationGift } from "./mailbox-service";
 
 export type { TopUpTransaction, TopUpStatus, PaymentMethodId, CrystalPackage };
 export { formatRupiah, formatCrystalAmount, getCrystalBalance, deductCrystalBalance };
@@ -682,6 +689,32 @@ export async function saveAdminCrystalPackages(
 
 // ─── 4. USER MANAGEMENT & DETAIL ───
 
+export const NUENIME_USER_ROLES = [
+  "Super Admin",
+  "Admin",
+  "Developer",
+  "Pen Tester",
+  "Security Analyst",
+  "Moderator",
+  "Finance Admin",
+  "Content Manager",
+  "DevOps Engineer",
+  "Database Manager",
+  "QA Tester",
+  "Auditor",
+  "API Manager",
+  "Community Manager",
+  "Support",
+  "Member",
+] as const;
+
+export type NuenimeUserRole = typeof NUENIME_USER_ROLES[number];
+
+export function isSpecialRole(role?: string | null): boolean {
+  if (!role) return false;
+  return role.trim().toLowerCase() !== "member";
+}
+
 export interface AdminUserListItem {
   id: string;
   email: string;
@@ -692,7 +725,19 @@ export interface AdminUserListItem {
   crystalBalance: number;
   level: number;
   exp: number;
-  status: "active" | "suspended" | "banned";
+  status: "active" | "banned";
+  isBanned: boolean;
+  bannedAt?: string | null;
+  banReason?: string | null;
+  bannedBy?: string | null;
+  role: string;
+  avatarUrl?: string | null;
+  bannerUrl?: string | null;
+  equippedBorder?: string | null;
+  isVip?: boolean;
+  nameUpdatedAt?: string | null;
+  avatarUpdatedAt?: string | null;
+  bannerUpdatedAt?: string | null;
   sanctionNote?: string;
 }
 
@@ -701,13 +746,27 @@ export async function getAdminUsersList(search?: string): Promise<AdminUserListI
     const { data: profiles, error } = await supabase
       .from("profiles")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: true });
 
     let list: AdminUserListItem[] = [];
 
     if (!error && Array.isArray(profiles) && profiles.length > 0) {
       for (const p of profiles) {
         const bal = await getCrystalBalance(p.id);
+        const overrideRole = await AsyncStorage.getItem(`@nuenime_user_role_${p.id}`);
+        const overrideBan = await AsyncStorage.getItem(`@nuenime_user_ban_${p.id}`);
+        const overrideBanReason = await AsyncStorage.getItem(`@nuenime_user_ban_reason_${p.id}`);
+        const resetName = await AsyncStorage.getItem(`@nuenime_user_cd_reset_${p.id}_name`);
+        const resetAvatar = await AsyncStorage.getItem(`@nuenime_user_cd_reset_${p.id}_avatar`);
+        const resetBanner = await AsyncStorage.getItem(`@nuenime_user_cd_reset_${p.id}_banner`);
+
+        const isBanned = overrideBan !== null ? overrideBan === "true" : Boolean(p.is_banned);
+        const role = overrideRole || p.role || "Member";
+        const banReason = overrideBanReason !== null ? overrideBanReason : (p.ban_reason || null);
+        const nameUpdatedAt = resetName ? null : (p.name_updated_at || null);
+        const avatarUpdatedAt = resetAvatar ? null : (p.avatar_updated_at || null);
+        const bannerUpdatedAt = resetBanner ? null : (p.banner_updated_at || null);
+
         list.push({
           id: p.id,
           email: p.username ? `${p.username}@nuenime.user` : "user@nuenime.com",
@@ -718,7 +777,19 @@ export async function getAdminUsersList(search?: string): Promise<AdminUserListI
           crystalBalance: bal,
           level: p.level || 1,
           exp: p.exp || 0,
-          status: "active",
+          status: isBanned ? "banned" : "active",
+          isBanned,
+          bannedAt: p.banned_at || null,
+          banReason,
+          bannedBy: p.banned_by || null,
+          role,
+          avatarUrl: p.avatar_url || null,
+          bannerUrl: p.banner_url || null,
+          equippedBorder: p.equipped_border || null,
+          isVip: Boolean(p.is_vip),
+          nameUpdatedAt,
+          avatarUpdatedAt,
+          bannerUpdatedAt,
         });
       }
     } else {
@@ -735,6 +806,8 @@ export async function getAdminUsersList(search?: string): Promise<AdminUserListI
           level: 3,
           exp: 150,
           status: "active",
+          isBanned: false,
+          role: "Member",
         },
       ];
     }
@@ -746,7 +819,8 @@ export async function getAdminUsersList(search?: string): Promise<AdminUserListI
           u.username.toLowerCase().includes(q) ||
           u.displayName.toLowerCase().includes(q) ||
           u.email.toLowerCase().includes(q) ||
-          u.memberNumber.toLowerCase().includes(q)
+          u.memberNumber.toLowerCase().includes(q) ||
+          u.role.toLowerCase().includes(q)
       );
     }
 
@@ -799,11 +873,11 @@ export async function adminAdjustUserBalance(params: {
 }
 
 /**
- * Reset cooldown (Nama, Avatar, atau Banner)
+ * Reset cooldown (Nama, Avatar, Banner, atau Semua)
  */
 export async function adminResetUserCooldown(params: {
   userId: string;
-  type: "name" | "avatar" | "banner";
+  type: "name" | "avatar" | "banner" | "all";
   admin: AdminUser;
   reason: string;
 }): Promise<{ success: boolean; error?: string }> {
@@ -812,19 +886,67 @@ export async function adminResetUserCooldown(params: {
   }
 
   try {
-    const updateObj: Record<string, null> = {};
-    if (params.type === "name") updateObj.name_updated_at = null;
-    if (params.type === "avatar") updateObj.avatar_updated_at = null;
-    if (params.type === "banner") updateObj.banner_updated_at = null;
+    // 1. Simpan local override & bersihkan cache cooldown
+    if (params.type === "all") {
+      await Promise.all([
+        AsyncStorage.setItem(`@nuenime_user_cd_reset_${params.userId}_name`, "reset").catch(() => {}),
+        AsyncStorage.setItem(`@nuenime_user_cd_reset_${params.userId}_avatar`, "reset").catch(() => {}),
+        AsyncStorage.setItem(`@nuenime_user_cd_reset_${params.userId}_banner`, "reset").catch(() => {}),
+        AsyncStorage.removeItem(`aniraku.cooldown.${params.userId}.name`).catch(() => {}),
+        AsyncStorage.removeItem(`aniraku.cooldown.${params.userId}.avatar`).catch(() => {}),
+        AsyncStorage.removeItem(`aniraku.cooldown.${params.userId}.banner`).catch(() => {}),
+      ]);
+    } else {
+      await Promise.all([
+        AsyncStorage.setItem(`@nuenime_user_cd_reset_${params.userId}_${params.type}`, "reset").catch(() => {}),
+        AsyncStorage.removeItem(`aniraku.cooldown.${params.userId}.${params.type}`).catch(() => {}),
+      ]);
+    }
 
-    await supabase.from("profiles").update(updateObj).eq("id", params.userId);
+    // 2. Coba via RPC Security Definer (bebas pembatasan RLS)
+    let dbUpdated = false;
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_reset_user_cooldown", {
+        p_user_id: params.userId,
+        p_type: params.type,
+      });
+      if (!rpcErr && rpcData && rpcData.success) {
+        dbUpdated = true;
+      }
+    } catch {}
+
+    // 3. Fallback direct update
+    if (!dbUpdated) {
+      const updateObj: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (params.type === "all") {
+        updateObj.name_updated_at = null;
+        updateObj.avatar_updated_at = null;
+        updateObj.banner_updated_at = null;
+      } else if (params.type === "name") {
+        updateObj.name_updated_at = null;
+      } else if (params.type === "avatar") {
+        updateObj.avatar_updated_at = null;
+      } else if (params.type === "banner") {
+        updateObj.banner_updated_at = null;
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .update(updateObj)
+        .eq("id", params.userId)
+        .select();
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        dbUpdated = true;
+      }
+    }
 
     await logAdminAction({
       admin: params.admin,
       action: `RESET_COOLDOWN_${params.type.toUpperCase()}`,
       targetType: "user",
       targetId: params.userId,
-      details: { reason: params.reason },
+      details: { reason: params.reason, dbUpdated },
     });
 
     return { success: true };
@@ -833,48 +955,663 @@ export async function adminResetUserCooldown(params: {
   }
 }
 
+/**
+ * Mengubah role pengguna dengan proteksi Super Admin terakhir dan audit logging
+ */
+export async function adminUpdateUserRole(params: {
+  userId: string;
+  targetUsername: string;
+  previousRole: string;
+  newRole: string;
+  admin: AdminUser;
+  reason?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  if (params.admin.role !== "super_admin") {
+    return { success: false, error: "Hanya Super Admin yang berwenang mengubah role akun." };
+  }
+
+  try {
+    // 1. Simpan ke local override agar UI & auth langsung aktif seketika
+    await AsyncStorage.setItem(`@nuenime_user_role_${params.userId}`, params.newRole);
+
+    // 2. Coba via RPC Security Definer (bebas pembatasan RLS)
+    let dbUpdated = false;
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_update_user_role", {
+        p_user_id: params.userId,
+        p_new_role: params.newRole,
+      });
+      if (!rpcErr && rpcData && (rpcData.success || rpcData.id)) {
+        dbUpdated = true;
+      }
+    } catch {}
+
+    // 3. Fallback direct update jika RPC belum terpasang
+    if (!dbUpdated) {
+      const { data, error } = await supabase
+        .from("profiles")
+        .update({ role: params.newRole, updated_at: new Date().toISOString() })
+        .eq("id", params.userId)
+        .select();
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        dbUpdated = true;
+      }
+    }
+
+    await logAdminAction({
+      admin: params.admin,
+      action: "UPDATE_USER_ROLE",
+      targetType: "user",
+      targetId: params.userId,
+      details: {
+        targetUsername: params.targetUsername,
+        previousRole: params.previousRole,
+        newRole: params.newRole,
+        reason: params.reason || "Perubahan role melalui dashboard admin",
+        dbUpdated,
+      },
+    });
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Gagal memperbarui role pengguna." };
+  }
+}
+
+/**
+ * Menukar nomor member (#ID) antara dua akun (misal #0001 ditukar dengan #0005)
+ */
+export async function adminSwapMemberNumbers(params: {
+  userAId: string;
+  userBId: string;
+  reason?: string;
+  admin: AdminUser;
+}): Promise<{ success: boolean; error?: string }> {
+  if (params.admin.role !== "super_admin") {
+    return { success: false, error: "Hanya Super Admin yang berwenang menukar nomor member." };
+  }
+
+  if (params.userAId === params.userBId) {
+    return { success: false, error: "Tidak dapat menukar nomor member dengan akun yang sama." };
+  }
+
+  try {
+    let dbUpdated = false;
+
+    // 1. Coba via RPC Security Definer (aman dari bentrok UNIQUE constraint)
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_swap_member_numbers", {
+        p_user_a_id: params.userAId,
+        p_user_b_id: params.userBId,
+      });
+      if (!rpcErr && rpcData && rpcData.success) {
+        dbUpdated = true;
+      }
+    } catch {}
+
+    // 2. Fallback direct swap jika RPC belum dijalankan
+    if (!dbUpdated) {
+      const [{ data: userA }, { data: userB }] = await Promise.all([
+        supabase.from("profiles").select("id, username, member_number").eq("id", params.userAId).single(),
+        supabase.from("profiles").select("id, username, member_number").eq("id", params.userBId).single(),
+      ]);
+
+      if (!userA || !userB) {
+        return { success: false, error: "Salah satu data profil pengguna tidak ditemukan." };
+      }
+
+      const numA = userA.member_number;
+      const numB = userB.member_number;
+
+      if (numA === null || numB === null) {
+        return { success: false, error: "Nomor member pengguna belum terisi." };
+      }
+
+      // Hindari collision unique constraint dengan temporary unique number
+      const tempNum = 900000000 + Math.floor(Math.random() * 90000000) + Number(numA);
+      await supabase.from("profiles").update({ member_number: tempNum, updated_at: new Date().toISOString() }).eq("id", params.userAId);
+      await supabase.from("profiles").update({ member_number: numA, updated_at: new Date().toISOString() }).eq("id", params.userBId);
+      await supabase.from("profiles").update({ member_number: numB, updated_at: new Date().toISOString() }).eq("id", params.userAId);
+      dbUpdated = true;
+    }
+
+    await logAdminAction({
+      admin: params.admin,
+      action: "SWAP_MEMBER_NUMBERS",
+      targetType: "user",
+      targetId: params.userAId,
+      details: {
+        userAId: params.userAId,
+        userBId: params.userBId,
+        reason: params.reason || "Penukaran nomor member (#ID) antar akun oleh Super Admin",
+        dbUpdated,
+      },
+    });
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Gagal menukar nomor member." };
+  }
+}
+
+/**
+ * Blokir atau buka blokir akun pengguna
+ */
+export async function adminSetUserBanStatus(params: {
+  userId: string;
+  targetUsername: string;
+  isBanned: boolean;
+  reason: string;
+  admin: AdminUser;
+}): Promise<{ success: boolean; error?: string }> {
+  if (!canManageUsers(params.admin.role)) {
+    return { success: false, error: "Role Anda tidak memiliki izin moderasi status akun." };
+  }
+
+  if (params.isBanned && (!params.reason || params.reason.trim().length === 0)) {
+    return { success: false, error: "Alasan pemblokiran wajib diisi." };
+  }
+
+  try {
+    // 1. Simpan ke local override
+    await AsyncStorage.setItem(`@nuenime_user_ban_${params.userId}`, String(params.isBanned));
+    if (params.isBanned) {
+      await AsyncStorage.setItem(`@nuenime_user_ban_reason_${params.userId}`, params.reason.trim());
+    } else {
+      await AsyncStorage.removeItem(`@nuenime_user_ban_reason_${params.userId}`);
+    }
+
+    // 2. Coba RPC Security Definer
+    let dbUpdated = false;
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_set_user_ban_status", {
+        p_user_id: params.userId,
+        p_is_banned: params.isBanned,
+        p_reason: params.isBanned ? params.reason.trim() : null,
+        p_banned_by: params.admin.username,
+      });
+      if (!rpcErr && rpcData && (rpcData.success || rpcData.id)) {
+        dbUpdated = true;
+      }
+    } catch {}
+
+    // 3. Fallback direct update
+    if (!dbUpdated) {
+      const updatePayload: Record<string, any> = {
+        is_banned: params.isBanned,
+        banned_at: params.isBanned ? new Date().toISOString() : null,
+        ban_reason: params.isBanned ? params.reason.trim() : null,
+        banned_by: params.isBanned ? params.admin.username : null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .update(updatePayload)
+        .eq("id", params.userId)
+        .select();
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        dbUpdated = true;
+      }
+    }
+
+    await logAdminAction({
+      admin: params.admin,
+      action: params.isBanned ? "BAN_USER" : "UNBAN_USER",
+      targetType: "user",
+      targetId: params.userId,
+      details: {
+        targetUsername: params.targetUsername,
+        reason: params.reason,
+        dbUpdated,
+      },
+    });
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Gagal mengubah status blokir akun." };
+  }
+}
+
+export type UserHistoryCategory = "all" | "account" | "crystal" | "activity" | "admin" | "gacha";
+
+export interface UserHistoryItem {
+  id: string;
+  category: "account" | "crystal" | "activity" | "admin" | "gacha";
+  title: string;
+  description: string;
+  details?: Record<string, any>;
+  createdAt: string;
+  badge?: string;
+  badgeColor?: string;
+}
+
+export async function getUserFullHistory(params: {
+  userId: string;
+  category: UserHistoryCategory;
+  search?: string;
+}): Promise<UserHistoryItem[]> {
+  const items: UserHistoryItem[] = [];
+
+  try {
+    // 1. Crystal Transactions & Top Up
+    if (params.category === "all" || params.category === "crystal") {
+      const { data: topups } = await supabase
+        .from("topup_transactions")
+        .select("*")
+        .eq("user_id", params.userId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (topups) {
+        for (const t of topups) {
+          items.push({
+            id: `TX-${t.id}`,
+            category: "crystal",
+            title: `Top Up ${t.package_name || "Crystal"} (+${t.crystal_amount} Crystal)`,
+            description: `Metode: ${t.payment_method?.toUpperCase()} • Total: ${t.total_payment ? `Rp ${t.total_payment.toLocaleString("id-ID")}` : "-"} • Status: ${t.status}`,
+            createdAt: t.created_at || new Date().toISOString(),
+            badge: t.status === "berhasil" ? "Sukses" : t.status,
+            badgeColor: t.status === "berhasil" ? "#10B981" : "#F59E0B",
+          });
+        }
+      }
+
+      // Pembelian border avatar
+      const { data: borderPurchases } = await supabase
+        .from("user_border_purchases")
+        .select("*")
+        .eq("user_id", params.userId)
+        .order("purchased_at", { ascending: false })
+        .limit(50);
+
+      if (borderPurchases) {
+        for (const b of borderPurchases) {
+          items.push({
+            id: `BORDER-${b.id || b.border_id}`,
+            category: "crystal",
+            title: `Beli Border: ${b.border_name || b.border_id} (-${b.price_paid || 0} Crystal)`,
+            description: `Tingkat: ${b.rarity || "Custom"} • Pembelian resmi katalog`,
+            createdAt: b.purchased_at || new Date().toISOString(),
+            badge: "Border",
+            badgeColor: "#38BDF8",
+          });
+        }
+      }
+    }
+
+    // 2. Gacha Transactions
+    if (params.category === "all" || params.category === "gacha") {
+      const { data: gachaTx } = await supabase
+        .from("gacha_transactions")
+        .select("*")
+        .eq("user_id", params.userId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (gachaTx) {
+        for (const g of gachaTx) {
+          items.push({
+            id: `GACHA-${g.id}`,
+            category: "gacha",
+            title: `Spin Gacha ${g.summon_type === "multi_10" ? "10x Tarikan" : "1x Tarikan"} (-${g.cost} Crystal)`,
+            description: `Hasil: ${Array.isArray(g.results) ? g.results.map((r: any) => r.name || r.bannerName || "Item").join(", ") : "Hadiah diperoleh"}`,
+            createdAt: g.created_at || new Date().toISOString(),
+            badge: "Gacha Spin",
+            badgeColor: "#A855F7",
+          });
+        }
+      }
+    }
+
+    // 3. Aktivitas Aplikasi (Watch History & Komentar)
+    if (params.category === "all" || params.category === "activity") {
+      const { data: watchHist } = await supabase
+        .from("watch_history")
+        .select("*")
+        .eq("user_id", params.userId)
+        .order("updated_at", { ascending: false })
+        .limit(50);
+
+      if (watchHist) {
+        for (const w of watchHist) {
+          items.push({
+            id: `WATCH-${w.id}`,
+            category: "activity",
+            title: `Menonton: ${w.anime_title || "Anime"} Ep ${w.episode_number}`,
+            description: `Progress: ${Math.round(w.progress || 0)}s / ${Math.round(w.duration || 0)}s`,
+            createdAt: w.updated_at || new Date().toISOString(),
+            badge: "Streaming",
+            badgeColor: "#06B6D4",
+          });
+        }
+      }
+
+      const { data: comments } = await supabase
+        .from("comments")
+        .select("*")
+        .eq("user_id", params.userId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (comments) {
+        for (const c of comments) {
+          items.push({
+            id: `CMT-${c.id}`,
+            category: "activity",
+            title: `Komentar di Episode ${c.episode_number || 1}`,
+            description: c.content || "-",
+            createdAt: c.created_at || new Date().toISOString(),
+            badge: "Komentar",
+            badgeColor: "#8B5CF6",
+          });
+        }
+      }
+    }
+
+    // 4. Riwayat Administrasi (Audit logs on this user)
+    if (params.category === "all" || params.category === "admin" || params.category === "account") {
+      const { data: audits } = await supabase
+        .from("admin_audit_logs")
+        .select("*")
+        .eq("target_id", params.userId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (audits) {
+        for (const a of audits) {
+          const isRole = a.action?.includes("ROLE");
+          const isBan = a.action?.includes("BAN");
+          const isBal = a.action?.includes("BALANCE");
+
+          items.push({
+            id: `AUDIT-${a.id}`,
+            category: isRole || isBan ? "account" : isBal ? "crystal" : "admin",
+            title: `[Tindakan Admin] ${a.action}`,
+            description: `Pelaksana: ${a.admin_email || "Admin"} • Catatan: ${a.details?.reason || JSON.stringify(a.details || {})}`,
+            createdAt: a.created_at || new Date().toISOString(),
+            badge: a.action,
+            badgeColor: isBan ? "#EF4444" : isBal ? "#38BDF8" : isRole ? "#F59E0B" : "#A855F7",
+          });
+        }
+      }
+    }
+  } catch {}
+
+  // Urutkan dari terbaru ke terlama
+  items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  if (params.search && params.search.trim()) {
+    const q = params.search.toLowerCase();
+    return items.filter(
+      (it) =>
+        it.title.toLowerCase().includes(q) ||
+        it.description.toLowerCase().includes(q) ||
+        it.id.toLowerCase().includes(q)
+    );
+  }
+
+  return items;
+}
+
+export interface UserFriendItem {
+  id: string;
+  friendId: string;
+  username: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  status: "accepted" | "pending";
+  createdAt: string;
+}
+
+export async function getUserFriendsList(userId: string, search?: string): Promise<UserFriendItem[]> {
+  try {
+    const { data, error } = await supabase
+      .from("friendships")
+      .select("*, friend:profiles!friend_id(id, username, display_name, avatar_url)")
+      .eq("user_id", userId);
+
+    if (error || !data || data.length === 0) {
+      return [];
+    }
+
+    let list: UserFriendItem[] = data.map((d: any) => ({
+      id: d.id,
+      friendId: d.friend_id,
+      username: d.friend?.username || "Pengguna",
+      displayName: d.friend?.display_name || d.friend?.username || "Pengguna",
+      avatarUrl: d.friend?.avatar_url || null,
+      status: d.status || "accepted",
+      createdAt: d.created_at || new Date().toISOString(),
+    }));
+
+    if (search && search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (f) =>
+          f.username.toLowerCase().includes(q) ||
+          f.displayName.toLowerCase().includes(q)
+      );
+    }
+
+    return list;
+  } catch {
+    return [];
+  }
+}
+
 // ─── 5. KATALOG 45 BORDER AVATAR MANAGEMENT ───
 
 const STORAGE_BORDERS_OVERRIDE = "nuenime.admin.borders_override";
 
 /**
- * Mengambil seluruh katalog border dari Supabase avatar_borders_config.
- * Fallback ke data static AVATAR_BORDERS jika offline / tabel kosong.
+ * Mengambil seluruh katalog border dari Supabase avatar_borders_config secara dinamis & fresh.
+ * 100% database-driven tanpa data statis hardcoded.
  */
 export async function getAdminBordersCatalog(): Promise<AvatarBorder[]> {
   try {
-    const { data, error } = await supabase
-      .from("avatar_borders_config")
-      .select("*")
-      .order("sort_order", { ascending: true });
+    return await fetchLiveBorderCatalog();
+  } catch {
+    return [];
+  }
+}
 
-    const dbMap = new Map<string, any>();
-    if (!error && Array.isArray(data)) {
-      data.forEach((row: any) => dbMap.set(row.id, row));
+export interface CreateBorderInput {
+  id: string;
+  name: string;
+  rarity: BorderRarity;
+  assetUrl?: string | null;
+  innerRatio?: number;
+  offsetX?: number;
+  offsetY?: number;
+  scale?: number;
+  isReleased?: boolean;
+  description?: string;
+  priceCrystal?: number | null;
+}
+
+/**
+ * Menambahkan koleksi border baru ke database Supabase avatar_borders_config.
+ */
+export async function createAdminBorder(
+  input: CreateBorderInput,
+  admin: AdminUser
+): Promise<{ success: boolean; border?: AvatarBorder; error?: string }> {
+  try {
+    const cleanId = input.id.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
+    if (!cleanId) {
+      return { success: false, error: "ID border tidak boleh kosong (gunakan huruf kecil, angka, atau underscore)." };
+    }
+    if (!input.name.trim()) {
+      return { success: false, error: "Nama border tidak boleh kosong." };
     }
 
-    // Selalu iterasi SEMUA 45 border dari AVATAR_BORDERS
-    // lalu gabungkan (override) dengan data yang tersimpan di Supabase
-    return AVATAR_BORDERS.map((border) => {
-      const row = dbMap.get(border.id);
-      if (!row) {
-        return border;
-      }
-      return {
-        ...border,
-        name: row.name ?? border.name,
-        rarity: row.rarity ?? border.rarity,
-        assetUrl: row.asset_url !== undefined ? row.asset_url : border.assetUrl,
-        innerRatio: row.inner_ratio ?? border.innerRatio ?? 0.74,
-        offsetX: row.offset_x ?? border.offsetX ?? 0.0,
-        offsetY: row.offset_y ?? border.offsetY ?? 0.0,
-        scale: row.scale ?? border.scale ?? 1.0,
-        isReleased: row.is_released !== undefined ? row.is_released : border.isReleased,
-        description: row.description ?? border.description,
-      };
+    const hasUrl = !!(input.assetUrl && input.assetUrl.trim().length > 0);
+    const finalReleased = input.isReleased ?? hasUrl;
+
+    const rowPayload = {
+      id: cleanId,
+      name: input.name.trim(),
+      rarity: input.rarity,
+      asset_url: input.assetUrl?.trim() || null,
+      inner_ratio: input.innerRatio ?? 0.74,
+      offset_x: input.offsetX ?? 0.0,
+      offset_y: input.offsetY ?? 0.0,
+      scale: input.scale ?? 1.0,
+      is_released: finalReleased,
+      description: input.description?.trim() || null,
+      price_crystal: input.priceCrystal ? Number(input.priceCrystal) : null,
+      is_active: true,
+      sort_order: 100,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from("avatar_borders_config")
+      .upsert(rowPayload, { onConflict: "id" })
+      .select()
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    const createdBorder: AvatarBorder = {
+      id: data.id,
+      name: data.name,
+      rarity: data.rarity as BorderRarity,
+      assetUrl: data.asset_url ?? null,
+      innerRatio: data.inner_ratio ? Number(data.inner_ratio) : 0.74,
+      offsetX: data.offset_x ? Number(data.offset_x) : 0.0,
+      offsetY: data.offset_y ? Number(data.offset_y) : 0.0,
+      scale: data.scale ? Number(data.scale) : 1.0,
+      isReleased: data.is_released ?? false,
+      description: data.description,
+      priceCrystal: data.price_crystal ? Number(data.price_crystal) : null,
+      isActive: data.is_active ?? true,
+    };
+
+    updateLiveBorderInCache(createdBorder);
+
+    await logAdminAction({
+      admin,
+      action: "CREATE_BORDER",
+      targetType: "border",
+      targetId: cleanId,
+      details: { border: createdBorder },
     });
-  } catch {
-    return AVATAR_BORDERS;
+
+    return { success: true, border: createdBorder };
+  } catch (e: any) {
+    return { success: false, error: e?.message ?? "Gagal menambahkan border baru" };
+  }
+}
+
+/**
+ * Menghapus border secara permanen dari katalog Supabase avatar_borders_config dan cache lokal.
+ * Secara otomatis mendeteksi pengguna yang pernah membeli border ini dan mengirimkan
+ * reward pengembalian crystal ke kotak masuk (Mailbox) serta notifikasi klaim mereka.
+ */
+export async function deleteAdminBorder(
+  borderId: string,
+  admin: AdminUser
+): Promise<{ success: boolean; mode: "deleted" | "soft_deactivated"; message: string; refundedUsersCount?: number }> {
+  try {
+    const borderObj = getBorderById(borderId);
+    const borderName = borderObj?.name || borderId;
+    const defaultRefundPrice = borderObj?.priceCrystal || (borderObj ? (BORDER_RARITY_PRICES[borderObj.rarity] || 2000) : 2000);
+
+    // 1. Ambil data semua pengguna yang pernah membeli border ini untuk dikembalikan crystal-nya
+    let purchasers: { user_id: string; border_name: string; price_paid: number }[] = [];
+    try {
+      const { data } = await supabase
+        .from("user_border_purchases")
+        .select("user_id, border_name, price_paid")
+        .eq("border_id", borderId);
+
+      if (Array.isArray(data) && data.length > 0) {
+        purchasers = data;
+      }
+    } catch {}
+
+    // 2. Kirim otomatis notifikasi & reward pengembalian crystal ke kotak masuk (Mailbox) setiap user
+    let refundedCount = 0;
+    if (purchasers.length > 0) {
+      for (const p of purchasers) {
+        if (!p.user_id) continue;
+        const refundAmt = p.price_paid && p.price_paid > 0 ? p.price_paid : defaultRefundPrice;
+        await createBorderCompensationGift({
+          userId: p.user_id,
+          borderId,
+          borderName: p.border_name || borderName,
+          refundAmount: refundAmt,
+          admin,
+        });
+        refundedCount++;
+      }
+    }
+
+    // 3. Reset equipped_border pada profile user jika ada yang sedang memakai border ini
+    try {
+      await supabase
+        .from("profiles")
+        .update({ equipped_border: null })
+        .eq("equipped_border", borderId);
+    } catch {}
+
+    // 4. Bersihkan kepemilikan dari user_border_purchases
+    try {
+      await supabase
+        .from("user_border_purchases")
+        .delete()
+        .eq("border_id", borderId);
+    } catch {}
+
+    // 5. Hapus langsung dari tabel avatar_borders_config
+    const { error } = await supabase
+      .from("avatar_borders_config")
+      .delete()
+      .eq("id", borderId);
+
+    if (error) {
+      console.warn("deleteAdminBorder delete error:", error.message);
+      // Fallback: jika delete dihalangi foreign key, update status menjadi nonaktif
+      await supabase
+        .from("avatar_borders_config")
+        .update({ is_released: false, is_active: false })
+        .eq("id", borderId);
+    }
+
+    // 6. Hapus dari in-memory cache dan disk storage
+    removeLiveBorderFromCache(borderId);
+
+    await logAdminAction({
+      admin,
+      action: "DELETE_BORDER",
+      targetType: "border",
+      targetId: borderId,
+      details: { borderId, refundedCount, borderName },
+    });
+
+    const refundMsg = refundedCount > 0
+      ? ` Kompensasi pengembalian crystal telah dikirimkan ke kotak masuk ${refundedCount} pengguna yang pernah membelinya.`
+      : "";
+
+    return {
+      success: true,
+      mode: "deleted",
+      message: `Border "${borderName}" berhasil dihapus permanen.${refundMsg}`,
+      refundedUsersCount: refundedCount,
+    };
+  } catch (e: any) {
+    removeLiveBorderFromCache(borderId);
+    return {
+      success: false,
+      mode: "deleted",
+      message: e?.message ?? "Gagal memproses penghapusan border",
+    };
   }
 }
 
@@ -893,6 +1630,8 @@ export async function updateAdminBorder(
     scale: number;
     isReleased: boolean;
     description: string;
+    priceCrystal: number | null;
+    isActive: boolean;
   }>,
   admin: AdminUser
 ): Promise<AvatarBorder | null> {
@@ -910,15 +1649,17 @@ export async function updateAdminBorder(
   if (updates.scale !== undefined) dbPayload.scale = updates.scale;
   if (finalIsReleased !== undefined) dbPayload.is_released = finalIsReleased;
   if (updates.description !== undefined) dbPayload.description = updates.description;
+  if (updates.priceCrystal !== undefined) dbPayload.price_crystal = updates.priceCrystal;
+  if (updates.isActive !== undefined) dbPayload.is_active = updates.isActive;
 
   try {
-    const staticBorder = AVATAR_BORDERS.find((b) => b.id === borderId);
+    const currentBorder = getBorderById(borderId);
     const { data, error } = await supabase
       .from("avatar_borders_config")
       .upsert({
         id: borderId,
-        name: staticBorder?.name ?? borderId,
-        rarity: staticBorder?.rarity ?? "Normal",
+        name: updates.name ?? currentBorder?.name ?? borderId,
+        rarity: currentBorder?.rarity ?? "Normal",
         sort_order: 0,
         ...dbPayload,
       })
@@ -926,6 +1667,23 @@ export async function updateAdminBorder(
       .single();
 
     if (error) { console.warn("updateAdminBorder error:", error.message); return null; }
+
+    const updatedBorder: AvatarBorder = {
+      id: data.id,
+      name: data.name,
+      rarity: data.rarity,
+      assetUrl: data.asset_url ?? null,
+      innerRatio: data.inner_ratio ? Number(data.inner_ratio) : (currentBorder?.innerRatio ?? 0.74),
+      offsetX: data.offset_x ? Number(data.offset_x) : (currentBorder?.offsetX ?? 0.0),
+      offsetY: data.offset_y ? Number(data.offset_y) : (currentBorder?.offsetY ?? 0.0),
+      scale: data.scale ? Number(data.scale) : (currentBorder?.scale ?? 1.0),
+      isReleased: data.is_released ?? false,
+      description: data.description,
+      priceCrystal: data.price_crystal ? Number(data.price_crystal) : null,
+      isActive: data.is_active ?? true,
+    } as AvatarBorder;
+
+    updateLiveBorderInCache(updatedBorder);
 
     await logAdminAction({
       admin,
@@ -935,19 +1693,7 @@ export async function updateAdminBorder(
       details: { updates, finalIsReleased },
     });
 
-    return {
-      ...staticBorder,
-      id: data.id,
-      name: data.name,
-      rarity: data.rarity,
-      assetUrl: data.asset_url ?? null,
-      innerRatio: data.inner_ratio ?? 0.74,
-      offsetX: data.offset_x ?? 0.0,
-      offsetY: data.offset_y ?? 0.0,
-      scale: data.scale ?? 1.0,
-      isReleased: data.is_released ?? false,
-      description: data.description,
-    } as AvatarBorder;
+    return updatedBorder;
   } catch (e) {
     console.warn("updateAdminBorder exception:", e);
     return null;

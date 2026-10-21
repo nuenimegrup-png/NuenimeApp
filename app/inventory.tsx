@@ -25,10 +25,10 @@ import {
   BorderAvatar
 } from "@/components/border-avatar";
 import {
-  AVATAR_BORDERS,
   RARITY_THEME,
   getEquippedBorderId,
   setEquippedBorderId,
+  subscribeEquippedBorder,
 } from "@/lib/avatar-borders";
 
 // ─── 5 ASET GAMBAR RESMI DARI USER ───
@@ -38,7 +38,7 @@ const GACHA_BOOK = require("@/assets/images/inventory/border-magic-book.png");
 const BORDER_WHITE_MAGE = require("@/assets/images/inventory/border-white-mage.png");
 const EFFECT_CRYSTAL_STAR = require("@/assets/images/inventory/crystal-star.png");
 const TUTORIAL_BADGE = require("@/assets/images/inventory/tutorial-badge.png");
-const GACHA_BANNER_BG = require("@/assets/images/inventory/gacha-banner-bg.jpg");
+const GACHA_BANNER_BG = INVENTORY_BG;
 
 type MenuKey = "clans" | "gacha" | "avatar_border" | "profile_effects" | "tutorial";
 
@@ -113,12 +113,27 @@ export default function InventoryScreen() {
   const [gachaFeedback, setGachaFeedback] = useState<string | null>(null);
   const [crystalBalance, setCrystalBalance] = useState<number>(0);
 
-  // Sync equipped border from Avatar Decorations (per-user account)
-  useEffect(() => {
-    getEquippedBorderId(auth.user?.id).then((v: string | null) => {
+  // Sync equipped border from Avatar Decorations (per-user account & reactive 0ms)
+  const syncBorder = useCallback(async () => {
+    try {
+      const v = await getEquippedBorderId(auth.user?.id);
       setSelectedBorder(v);
-    });
+    } catch {}
   }, [auth.user?.id]);
+
+  useEffect(() => {
+    syncBorder();
+    const unsubFocus = navigation.addListener("focus" as any, syncBorder);
+    const unsubEquip = subscribeEquippedBorder((newBorderId, targetUserId) => {
+      if (!targetUserId || targetUserId === auth.user?.id) {
+        setSelectedBorder(newBorderId);
+      }
+    });
+    return () => {
+      unsubFocus();
+      unsubEquip();
+    };
+  }, [navigation, syncBorder, auth.user?.id]);
 
   // Sync crystal balance from Supabase & AsyncStorage
   const syncBalance = useCallback(async () => {

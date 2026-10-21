@@ -42,7 +42,6 @@ import {
   hapticSuccess,
   hapticWarning,
 } from "@/lib/haptics";
-import { useNsfwPreference } from "@/lib/nsfw-preference";
 import {
   loadSubtitlePreferences,
   saveSubtitlePreferences,
@@ -66,7 +65,6 @@ export default function SettingsScreen() {
   const auth = useAnirakuAuth();
   const stats = useWatchStats();
   const history = useWatchHistory();
-  const nsfw = useNsfwPreference();
 
   // ─── Playback Preferences ───
   const [autoPlay, setAutoPlay] = useState(false);
@@ -116,7 +114,6 @@ export default function SettingsScreen() {
   // ─── App Version & Update ───
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
-  const [showNsfwAgeModal, setShowNsfwAgeModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -242,22 +239,6 @@ export default function SettingsScreen() {
       await AsyncStorage.setItem("aniraku.notificationprefs", JSON.stringify(updated));
       emitNotificationPrefsChanged();
     } catch {}
-  };
-
-  const handleNsfwToggle = (next: boolean) => {
-    hapticLight();
-    if (next && !nsfw.ageVerified) {
-      setShowNsfwAgeModal(true);
-      return;
-    }
-    nsfw.setEnabled(next);
-  };
-
-  const confirmAgeVerification = async () => {
-    await nsfw.verifyAge();
-    nsfw.setEnabled(true);
-    setShowNsfwAgeModal(false);
-    hapticSuccess();
   };
 
   // Real disk cache clearing with calculateAppCacheSize
@@ -853,36 +834,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* ─── 6. SEKSI KONTEN & FILTER (FITUR ASLI) ─── */}
-        <View style={styles.sectionWrap}>
-          <Text style={styles.sectionTitle}>Filter Konten & Keamanan</Text>
-          <View style={styles.cardGroup}>
-            {/* Filter NSFW / Konten Dewasa */}
-            <View style={styles.rowItem}>
-              <View style={styles.rowTextCol}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Text style={styles.rowLabel}>Tampilkan Konten 18+ (Dewasa)</Text>
-                  <View style={styles.nsfwTagPill}>
-                    <Text style={styles.nsfwTagText}>18+</Text>
-                  </View>
-                </View>
-                <Text style={styles.rowSubLabel}>
-                  {nsfw.enabled
-                    ? "Semua anime termasuk kategori dewasa ditampilkan di katalog & pencarian"
-                    : "Anime berlabel dewasa/ecchi/18+ disembunyikan"}
-                </Text>
-              </View>
-              <Switch
-                value={nsfw.enabled}
-                onValueChange={handleNsfwToggle}
-                trackColor={{ false: "#27272A", true: "#EF4444" }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-          </View>
-        </View>
-
-        {/* ─── 7. SEKSI UNDUHAN & OFFLINE (FITUR ASLI) ─── */}
+        {/* ─── 6. SEKSI UNDUHAN & OFFLINE (FITUR ASLI) ─── */}
         <View style={styles.sectionWrap}>
           <Text style={styles.sectionTitle}>Unduhan & Offline</Text>
           <View style={styles.cardGroup}>
@@ -1457,41 +1409,7 @@ export default function SettingsScreen() {
         </Pressable>
       </Modal>
 
-      {/* Modal 6: Konfirmasi Usia 18+ untuk NSFW */}
-      <Modal
-        visible={showNsfwAgeModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowNsfwAgeModal(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowNsfwAgeModal(false)}>
-          <View style={styles.modalCard}>
-            <View style={styles.ageIconWrap}>
-              <Text style={styles.ageIconText}>18+</Text>
-            </View>
-            <Text style={styles.modalTitle}>Konfirmasi Usia</Text>
-            <Text style={styles.modalSubtitle}>
-              Konten ini mungkin memuat tema dewasa atau eksplisit. Anda harus berusia minimal 18 tahun untuk mengaktifkan fitur ini.
-            </Text>
-            <View style={styles.modalBtnRow}>
-              <Pressable
-                onPress={() => setShowNsfwAgeModal(false)}
-                style={({ pressed }) => [styles.modalBtnSecondary, pressed && styles.btnPressed]}
-              >
-                <Text style={styles.modalBtnSecondaryText}>Batal</Text>
-              </Pressable>
-              <Pressable
-                onPress={confirmAgeVerification}
-                style={({ pressed }) => [styles.modalBtnPrimary, { backgroundColor: "#EF4444" }, pressed && styles.btnPressed]}
-              >
-                <Text style={styles.modalBtnPrimaryText}>Saya 18+ Tahun</Text>
-              </Pressable>
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
-
-      {/* Modal 7: Level Progress (Redesign UI — 10 Tiers) */}
+      {/* Modal 6: Level Progress (Redesign UI — 10 Tiers) */}
       <LevelProgressModal
         visible={showLeaderboardModal}
         onClose={() => setShowLeaderboardModal(false)}

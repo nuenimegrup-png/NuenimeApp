@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 import * as Haptics from "expo-haptics";
 
 const HAPTICS_PREF_KEY = "nuenime.system.haptics";
@@ -21,26 +22,26 @@ export function isHapticsEnabled(): boolean {
 }
 
 export function hapticLight() {
-  if (!hapticsEnabled) return;
+  if (Platform.OS === "web" || !hapticsEnabled) return;
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 }
 
 export function hapticMedium() {
-  if (!hapticsEnabled) return;
+  if (Platform.OS === "web" || !hapticsEnabled) return;
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 }
 
 export function hapticHeavy() {
-  if (!hapticsEnabled) return;
+  if (Platform.OS === "web" || !hapticsEnabled) return;
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
 }
 
 export function hapticSuccess() {
-  if (!hapticsEnabled) return;
+  if (Platform.OS === "web" || !hapticsEnabled) return;
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 }
 
 export function hapticWarning() {
-  if (!hapticsEnabled) return;
+  if (Platform.OS === "web" || !hapticsEnabled) return;
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
 }

@@ -1439,7 +1439,7 @@ const styles = StyleSheet.create({
     width: 4,
     height: 18,
     borderRadius: 2,
-    backgroundColor: "#F5C518",
+    backgroundColor: "#CBD5E1",
   },
   cardSectionTitle: {
     fontFamily: "Nunito-Black",

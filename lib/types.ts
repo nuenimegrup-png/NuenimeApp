@@ -107,6 +107,10 @@ export type AnirakuProfile = {
   exp?: number | null;
   level?: number | null;
   is_vip?: boolean | null;
+  role?: string | null;
+  is_banned?: boolean | null;
+  banned_at?: string | null;
+  ban_reason?: string | null;
   banner_updated_at?: string | null;
   name_updated_at?: string | null;
   avatar_updated_at?: string | null;

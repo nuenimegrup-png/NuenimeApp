@@ -101,14 +101,16 @@ export default function TopUpScreen() {
 
   // Konfigurasi metode pembayaran resmi (dinamis dari Admin Dashboard via Supabase & AsyncStorage)
   const [paymentConfigs, setPaymentConfigs] = useState<Record<PaymentMethodId, PaymentMethodConfig>>(() => getPaymentMethodConfigs());
-  const [availablePackages, setAvailablePackages] = useState<CrystalPackage[]>(CRYSTAL_PACKAGES);
+  const [isLoadingInitial, setIsLoadingInitial] = useState<boolean>(true);
+  const [availablePackages, setAvailablePackages] = useState<CrystalPackage[]>([]);
   const activeMethodConfig = paymentConfigs[selectedMethodId];
 
   // 2 kartu dalam 1 baris (padding 16px di kiri-kanan = 32px, gap 12px antar kartu)
   const cardWidth = Math.floor((Math.min(windowWidth, 600) - 32 - 12) / 2);
 
-  // ─── LOAD DATA AWAL & PEMULIHAN TRANSAKSI AKTIF ───
+  // ─── LOAD DATA AWAL & PEMULIHAN TRANSAKSI AKTIF LANGSUNG DARI DATABASE ───
   const reloadData = useCallback(async () => {
+    setIsLoadingInitial(true);
     try {
       const [balance, txs, dynConfigs, dynPkgs, pendingTx] = await Promise.all([
         getCrystalBalance(userId),
@@ -132,6 +134,8 @@ export default function TopUpScreen() {
       }
     } catch {
       // Abaikan error loading lokal
+    } finally {
+      setIsLoadingInitial(false);
     }
   }, [userId]);
 
@@ -544,9 +548,13 @@ export default function TopUpScreen() {
           {/* Saldo Dylan Crystal Akun Pengguna Saat Ini */}
           <View style={styles.balancePill}>
             <Image source={TOPUP_CRYSTAL} style={styles.balancePillIcon} contentFit="contain" />
-            <Text style={styles.balancePillText}>
-              {crystalBalance.toLocaleString("id-ID")}
-            </Text>
+            {isLoadingInitial ? (
+              <ActivityIndicator size="small" color="#38BDF8" style={{ transform: [{ scale: 0.75 }] }} />
+            ) : (
+              <Text style={styles.balancePillText}>
+                {crystalBalance.toLocaleString("id-ID")}
+              </Text>
+            )}
           </View>
         </View>
 
@@ -742,65 +750,108 @@ export default function TopUpScreen() {
                 </Text>
               </View>
 
-              {/* Grid Paket: 2 Kartu Per Baris */}
-              <View style={styles.packageGrid}>
-                {availablePackages.filter((pkg) => pkg.active !== false).map((pkg) => {
-                  const isSelected = selectedPkg?.id === pkg.id;
-                  return (
-                    <Pressable
-                      key={pkg.id}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Paket ${pkg.name}, ${pkg.amountFormatted} Crystal, harga ${pkg.priceFormatted}`}
-                      onPress={() => handleSelectPackage(pkg)}
-                      style={({ pressed }) => [
-                        { width: cardWidth },
-                        styles.packageCard,
-                        isSelected && styles.packageCardSelected,
-                        pressed && styles.cardPressed,
-                      ]}
-                    >
-                      {/* Tag Opsional di Sudut Atas */}
-                      {pkg.tag ? (
-                        <View
-                          style={[
-                            styles.tagBadge,
-                            { borderColor: pkg.tagColor, backgroundColor: `${pkg.tagColor}22` },
+              {/* Grid Paket: 2 Kartu Per Baris atau Skeleton Loading */}
+              {isLoadingInitial ? (
+                <View style={styles.loadingContainerInitial}>
+                  <View style={styles.loadingHeaderRow}>
+                    <ActivityIndicator size="small" color="#38BDF8" />
+                    <Text style={styles.loadingTextInitial}>
+                      Menghubungkan ke database Dylan Crystal...
+                    </Text>
+                  </View>
+                  <View style={styles.packageGrid}>
+                    {[1, 2, 3, 4, 5, 6].map((i) => (
+                      <View
+                        key={`skeleton-${i}`}
+                        style={[{ width: cardWidth }, styles.packageCard, styles.packageCardSkeleton]}
+                      >
+                        <View style={styles.skeletonIconWrap}>
+                          <Image
+                            source={TOPUP_CRYSTAL}
+                            style={[styles.crystalIcon, { opacity: 0.2 }]}
+                            contentFit="contain"
+                          />
+                        </View>
+                        <View style={styles.skeletonBarTitle} />
+                        <View style={styles.skeletonBarAmount} />
+                        <View style={styles.skeletonBarPrice} />
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : availablePackages.filter((pkg) => pkg.active !== false).length === 0 ? (
+                <View style={styles.emptyContainerInitial}>
+                  <AppIcon name="alert-circle-outline" size={32} color="#94A3B8" />
+                  <Text style={styles.emptyTextInitial}>Belum ada paket top up tersedia di database.</Text>
+                  <Pressable
+                    onPress={reloadData}
+                    style={({ pressed }) => [styles.retryBtn, pressed && styles.btnPressed]}
+                  >
+                    <Text style={styles.retryBtnText}>Muat Ulang</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.packageGrid}>
+                  {availablePackages
+                    .filter((pkg) => pkg.active !== false)
+                    .map((pkg) => {
+                      const isSelected = selectedPkg?.id === pkg.id;
+                      return (
+                        <Pressable
+                          key={pkg.id}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Paket ${pkg.name}, ${pkg.amountFormatted} Crystal, harga ${pkg.priceFormatted}`}
+                          onPress={() => handleSelectPackage(pkg)}
+                          style={({ pressed }) => [
+                            { width: cardWidth },
+                            styles.packageCard,
+                            isSelected && styles.packageCardSelected,
+                            pressed && styles.cardPressed,
                           ]}
                         >
-                          <Text style={[styles.tagBadgeText, { color: pkg.tagColor }]}>
-                            {pkg.tag}
+                          {/* Tag Opsional di Sudut Atas */}
+                          {pkg.tag ? (
+                            <View
+                              style={[
+                                styles.tagBadge,
+                                { borderColor: pkg.tagColor, backgroundColor: `${pkg.tagColor}22` },
+                              ]}
+                            >
+                              <Text style={[styles.tagBadgeText, { color: pkg.tagColor }]}>
+                                {pkg.tag}
+                              </Text>
+                            </View>
+                          ) : null}
+
+                          {/* Ikon Crystal Resmi */}
+                          <View style={styles.crystalIconWrap}>
+                            <Image
+                              source={TOPUP_CRYSTAL}
+                              style={styles.crystalIcon}
+                              contentFit="contain"
+                            />
+                          </View>
+
+                          {/* Nama Paket */}
+                          <Text style={styles.packageNameText} numberOfLines={1}>
+                            {pkg.name}
                           </Text>
-                        </View>
-                      ) : null}
 
-                      {/* Ikon Crystal Resmi */}
-                      <View style={styles.crystalIconWrap}>
-                        <Image
-                          source={TOPUP_CRYSTAL}
-                          style={styles.crystalIcon}
-                          contentFit="contain"
-                        />
-                      </View>
+                          {/* Jumlah Crystal */}
+                          <View style={styles.amountRow}>
+                            <Text style={styles.amountNumber}>{pkg.amountFormatted}</Text>
+                            <Text style={styles.amountUnit}>Crystal</Text>
+                          </View>
 
-                      {/* Nama Paket */}
-                      <Text style={styles.packageNameText} numberOfLines={1}>
-                        {pkg.name}
-                      </Text>
-
-                      {/* Jumlah Crystal */}
-                      <View style={styles.amountRow}>
-                        <Text style={styles.amountNumber}>{pkg.amountFormatted}</Text>
-                        <Text style={styles.amountUnit}>Crystal</Text>
-                      </View>
-
-                      {/* Harga Rupiah */}
-                      <View style={styles.pricePill}>
-                        <Text style={styles.priceText}>{pkg.priceFormatted}</Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </View>
+                          {/* Harga Rupiah */}
+                          <View style={styles.pricePill}>
+                            <Text style={styles.priceText}>{pkg.priceFormatted}</Text>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                </View>
+              )}
 
               {/* Catatan / Keterangan Pembayaran */}
               <View style={styles.footerInfoBox}>
@@ -1723,6 +1774,85 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#94A3B8",
     lineHeight: 16,
+  },
+
+  // ─── INITIAL LOADING & SKELETON ───
+  loadingContainerInitial: {
+    width: "100%",
+    gap: 12,
+  },
+  loadingHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.2)",
+    marginBottom: 4,
+  },
+  loadingTextInitial: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12,
+    color: "#38BDF8",
+  },
+  packageCardSkeleton: {
+    borderColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: "rgba(18, 23, 34, 0.5)",
+  },
+  skeletonIconWrap: {
+    width: 48,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+  },
+  skeletonBarTitle: {
+    width: 50,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.07)",
+  },
+  skeletonBarAmount: {
+    width: 76,
+    height: 18,
+    borderRadius: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.09)",
+    marginTop: 2,
+  },
+  skeletonBarPrice: {
+    width: 68,
+    height: 22,
+    borderRadius: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    marginTop: 6,
+  },
+  emptyContainerInitial: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+    gap: 10,
+  },
+  emptyTextInitial: {
+    fontFamily: "Nunito-Medium",
+    fontSize: 13,
+    color: "#94A3B8",
+    textAlign: "center",
+  },
+  retryBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(56, 189, 248, 0.15)",
+    borderWidth: 1,
+    borderColor: "#38BDF8",
+  },
+  retryBtnText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12.5,
+    color: "#38BDF8",
   },
 
   // ─── TAHAP 2: RINGKASAN PESANAN ───

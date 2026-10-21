@@ -146,7 +146,7 @@ const airingScheduleQuery = `query AiringSchedule($page: Int!, $perPage: Int!, $
  * getAnimeById when a title is opened.
  */
 const scheduleMediaFields = `
-  id type title { romaji english native } coverImage { large extraLarge } format status
+  id type title { romaji english native } coverImage { large extraLarge } format status averageScore popularity
 `;
 
 /**

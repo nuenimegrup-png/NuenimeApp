@@ -68,7 +68,7 @@ function CustomLiquidGlassTabBar({ state, descriptors, navigation }: BottomTabBa
   });
 
   return (
-    <View style={[styles.floatingDockRow, { bottom: bottomPosition }]} pointerEvents="box-none">
+    <View style={[styles.floatingDockRow, { bottom: bottomPosition, pointerEvents: "box-none" as any }]}>
       {/* ══════════════════════════════════════════════════════════════
           1. MAIN NAVIGATION DOCK (BERANDA, JADWAL, SUBSCRIBE, RIWAYAT)
           ══════════════════════════════════════════════════════════════ */}
@@ -84,13 +84,13 @@ function CustomLiquidGlassTabBar({ state, descriptors, navigation }: BottomTabBa
         {/* Animated Sliding Frosted Glass Pill for the 4 Dock Tabs */}
         {pillWidth > 0 && !isProfileActive ? (
           <Animated.View
-            pointerEvents="none"
             style={[
               styles.slidingActivePill,
               {
                 width: pillWidth,
                 left: hPadding + pillMargin,
                 transform: [{ translateX }],
+                pointerEvents: "none" as any,
               },
             ]}
           />
@@ -185,7 +185,7 @@ function CustomLiquidGlassTabBar({ state, descriptors, navigation }: BottomTabBa
             <AppIcon
               name="account"
               size={22}
-              color={isProfileActive ? "#38BDF8" : "#FFFFFF"}
+              color={isProfileActive ? "#E2E8F0" : "#FFFFFF"}
             />
           )}
         </View>
@@ -313,12 +313,12 @@ const styles = StyleSheet.create({
       : {}),
   },
   standaloneProfileCircleActive: {
-    borderColor: "#38BDF8",
+    borderColor: "#E2E8F0",
     borderWidth: 2,
-    backgroundColor: "rgba(56, 189, 248, 0.16)",
+    backgroundColor: "rgba(255, 255, 255, 0.14)",
     ...(Platform.OS === "web"
       ? ({
-          boxShadow: "0 0 14px rgba(56, 189, 248, 0.5)",
+          boxShadow: "0 0 16px rgba(226, 232, 240, 0.6)",
         } as any)
       : {}),
   },

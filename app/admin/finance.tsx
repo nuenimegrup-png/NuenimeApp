@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -10,6 +10,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { AdminLayout } from "@/components/admin/admin-layout";
 import { AppIcon } from "@/components/app-icon";
@@ -33,6 +34,16 @@ import {
   formatRupiah,
   formatCrystalAmount,
 } from "@/lib/admin-service";
+
+// ─── HELPERS ───────────────────────────────────────────────────────────────
+function formatRupiahShort(val: number): string {
+  if (val >= 1_000_000_000) return `Rp ${(val / 1_000_000_000).toFixed(1)}M`;
+  if (val >= 1_000_000) return `Rp ${(val / 1_000_000).toFixed(1)}Jt`;
+  if (val >= 1_000) return `Rp ${(val / 1_000).toFixed(0)}K`;
+  return `Rp ${val.toLocaleString("id-ID")}`;
+}
+
+type PeriodFilter = "today" | "week" | "month" | "all";
 
 export default function AdminFinanceScreen() {
   const [activeTab, setActiveTab] = useState<"queue" | "gateways" | "packages" | "reports">("queue");
@@ -59,6 +70,13 @@ export default function AdminFinanceScreen() {
   const [packages, setPackages] = useState<CrystalPackage[]>([]);
   const [editingPkg, setEditingPkg] = useState<CrystalPackage | null>(null);
   const [showPkgModal, setShowPkgModal] = useState(false);
+
+  // Report Period Filter
+  const [reportPeriod, setReportPeriod] = useState<PeriodFilter>("month");
+  const [copySuccess, setCopySuccess] = useState(false);
+
+  const { width } = useWindowDimensions();
+  const isWide = width >= 860;
 
   const mockAdmin: AdminUser = {
     id: "admin-super",
@@ -99,15 +117,12 @@ export default function AdminFinanceScreen() {
 
     if (res.success && res.transaction) {
       hapticSuccess();
-      Alert.alert(
-        "Persetujuan Berhasil! 🎉",
-        `Transaksi ${tx.id} telah disetujui. Saldo ${tx.crystalAmount} Dylan Crystal berhasil ditambahkan ke akun ${tx.username}.`
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === tx.id ? res.transaction! : t))
       );
-      setSelectedTx(null);
-      loadData();
+      Alert.alert("Berhasil", `Transaksi ${tx.id} berhasil disetujui.`);
     } else {
-      hapticWarning();
-      Alert.alert("Gagal Menyetujui", res.error || "Terjadi kendala.");
+      Alert.alert("Gagal", res.error || "Gagal menyetujui transaksi.");
     }
   };
 
@@ -115,7 +130,7 @@ export default function AdminFinanceScreen() {
   const handleConfirmReject = async () => {
     if (!selectedTx) return;
     if (!rejectReason.trim()) {
-      Alert.alert("Alasan Wajib", "Harap masukkan alasan penolakan transaksi.");
+      Alert.alert("Alasan Wajib", "Masukkan alasan penolakan secara jelas.");
       return;
     }
 
@@ -128,30 +143,26 @@ export default function AdminFinanceScreen() {
 
     if (res.success && res.transaction) {
       hapticWarning();
-      Alert.alert("Transaksi Ditolak", `Transaksi ${selectedTx.id} telah ditandai ditolak.`);
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === selectedTx.id ? res.transaction! : t))
+      );
       setShowRejectModal(false);
       setSelectedTx(null);
       setRejectReason("");
-      loadData();
+      Alert.alert("Ditolak", `Transaksi ${selectedTx.id} telah ditolak.`);
     } else {
-      Alert.alert("Gagal Menolak", res.error || "Terjadi kendala.");
+      Alert.alert("Gagal", res.error || "Gagal menolak transaksi.");
     }
   };
 
-  // Handle Open Detail Modal
-  const handleOpenDetail = (tx: TopUpTransaction) => {
-    hapticLight();
-    setSelectedTx(tx);
-    setShowDetailModal(true);
-  };
-
-  // Handle Open Reversal Modal
+  // Handle Open Reverse Modal
   const handleOpenReverse = async (tx: TopUpTransaction) => {
     hapticLight();
     setSelectedTx(tx);
     setReverseReason("");
     setUserBalForReverse(null);
     setShowReverseModal(true);
+
     try {
       const bal = await getCrystalBalance(tx.userId);
       setUserBalForReverse(bal);
@@ -164,48 +175,37 @@ export default function AdminFinanceScreen() {
   const handleConfirmReverse = async () => {
     if (!selectedTx) return;
     if (!reverseReason.trim()) {
-      Alert.alert("Alasan Wajib", "Harap masukkan alasan penarikan kembali (reversal) Crystal.");
-      return;
-    }
-
-    if (userBalForReverse !== null && userBalForReverse < selectedTx.crystalAmount) {
-      Alert.alert(
-        "Saldo Tidak Mencukupi",
-        `Saldo akun saat ini (${userBalForReverse.toLocaleString(
-          "id-ID"
-        )} Crystal) lebih kecil daripada jumlah yang ingin ditarik (${selectedTx.crystalAmount.toLocaleString(
-          "id-ID"
-        )} Dylan Crystal). Penarikan dibatalkan agar saldo tidak menjadi negatif.`
-      );
+      Alert.alert("Alasan Wajib", "Masukkan alasan penarikan kembali secara spesifik.");
       return;
     }
 
     setReverseLoading(true);
-    hapticLight();
-    const res = await adminReverseTransaction({
-      transactionId: selectedTx.id,
-      reason: reverseReason.trim(),
-      admin: mockAdmin,
-    });
-    setReverseLoading(false);
+    try {
+      const res = await adminReverseTransaction({
+        transactionId: selectedTx.id,
+        reason: reverseReason.trim(),
+        admin: mockAdmin,
+      });
 
-    if (res.success && res.transaction) {
-      hapticSuccess();
-      Alert.alert(
-        "Penarikan Crystal Berhasil 🎉",
-        `Sebanyak ${selectedTx.crystalAmount.toLocaleString(
-          "id-ID"
-        )} Dylan Crystal berhasil ditarik kembali dari akun ${selectedTx.username}. Saldo pengguna sekarang: ${
-          res.newBalance !== undefined ? res.newBalance.toLocaleString("id-ID") : "-"
-        } Crystal.`
-      );
-      setShowReverseModal(false);
-      setSelectedTx(null);
-      setReverseReason("");
-      loadData();
-    } else {
-      hapticWarning();
-      Alert.alert("Gagal Melakukan Penarikan", res.error || "Terjadi kendala saat memproses penarikan.");
+      if (res.success && res.transaction) {
+        hapticSuccess();
+        setTransactions((prev) =>
+          prev.map((t) => (t.id === selectedTx.id ? res.transaction! : t))
+        );
+        setShowReverseModal(false);
+        setSelectedTx(null);
+        setReverseReason("");
+        Alert.alert(
+          "Berhasil Ditarik",
+          `Dylan Crystal untuk transaksi ${selectedTx.id} berhasil ditarik kembali.`
+        );
+      } else {
+        Alert.alert("Gagal", res.error || "Gagal melakukan penarikan transaksi.");
+      }
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "Terjadi kesalahan internal.");
+    } finally {
+      setReverseLoading(false);
     }
   };
 
@@ -213,65 +213,318 @@ export default function AdminFinanceScreen() {
   const handleSaveGateways = async () => {
     if (!gatewayConfig) return;
     setGatewaySaving(true);
-    await savePaymentGatewaysConfig(gatewayConfig, mockAdmin);
-    setGatewaySaving(false);
-    hapticSuccess();
-    Alert.alert("Tersimpan", "Konfigurasi metode pembayaran berhasil diperbarui.");
+    hapticLight();
+
+    try {
+      await savePaymentGatewaysConfig(gatewayConfig, mockAdmin);
+      hapticSuccess();
+      Alert.alert("Tersimpan", "Konfigurasi metode pembayaran berhasil diperbarui.");
+    } catch {
+      Alert.alert("Gagal", "Tidak dapat menyimpan konfigurasi pembayaran.");
+    } finally {
+      setGatewaySaving(false);
+    }
   };
 
   // Handle Save Package
   const handleSavePackage = async () => {
     if (!editingPkg) return;
-    let list = [...packages];
-    const idx = list.findIndex((p) => p.id === editingPkg.id);
-    if (idx !== -1) {
-      list[idx] = editingPkg;
-    } else {
-      list.push(editingPkg);
+    hapticLight();
+
+    const exists = packages.some((p) => p.id === editingPkg.id);
+    const updated = exists
+      ? packages.map((p) => (p.id === editingPkg.id ? editingPkg : p))
+      : [...packages, editingPkg];
+
+    try {
+      await saveAdminCrystalPackages(updated, mockAdmin);
+      hapticSuccess();
+      setPackages(updated);
+      setShowPkgModal(false);
+      setEditingPkg(null);
+      Alert.alert("Tersimpan", "Paket Crystal berhasil diperbarui.");
+    } catch {
+      Alert.alert("Gagal", "Tidak dapat menyimpan paket Crystal.");
     }
-    setPackages(list);
-    await saveAdminCrystalPackages(list, mockAdmin);
-    setShowPkgModal(false);
-    setEditingPkg(null);
-    hapticSuccess();
   };
 
-  // CSV Export
-  const handleExportCSV = () => {
-    hapticSuccess();
-    const headers = "ID Transaksi,Username,Paket,Crystal,Total Bayar,Metode,Status,Tanggal\n";
-    const rows = transactions
-      .map(
+  // Handle Open Detail Modal
+  const handleOpenDetail = (tx: TopUpTransaction) => {
+    hapticLight();
+    setSelectedTx(tx);
+    setShowDetailModal(true);
+  };
+
+  // ─── FILTERED TRANSACTIONS FOR REPORTS ─────────────────────────────────────
+  const filteredReportTxs = useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfWeek = startOfToday - 6 * 24 * 60 * 60 * 1000;
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    return transactions.filter((t) => {
+      const time = new Date(t.createdAt).getTime();
+      if (reportPeriod === "today") return time >= startOfToday;
+      if (reportPeriod === "week") return time >= startOfWeek;
+      if (reportPeriod === "month") return time >= startOfMonth;
+      return true;
+    });
+  }, [transactions, reportPeriod]);
+
+  // Report Metrics Computation
+  const reportMetrics = useMemo(() => {
+    const success = filteredReportTxs.filter((t) => t.status === "berhasil");
+    const pending = filteredReportTxs.filter(
+      (t) => t.status === "menunggu_verifikasi" || t.status === "menunggu_konfirmasi"
+    );
+    const rejected = filteredReportTxs.filter((t) => t.status === "ditolak");
+
+    const grossRevenue = success.reduce((acc, t) => acc + t.totalPayment, 0);
+    const estGatewayFee = Math.round(grossRevenue * 0.015); // 1.5% MDR
+    const netRevenue = grossRevenue - estGatewayFee;
+    const totalCrystals = success.reduce((acc, t) => acc + t.crystalAmount, 0);
+    const aov = success.length > 0 ? Math.round(grossRevenue / success.length) : 0;
+    const successRate =
+      filteredReportTxs.length > 0
+        ? ((success.length / filteredReportTxs.length) * 100).toFixed(1)
+        : "0.0";
+
+    // 7-day revenue trend for chart
+    const dailyTrend = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      const dayEnd = dayStart + 86400000;
+      const dayTxs = transactions.filter(
         (t) =>
-          `"${t.id}","${t.username}","${t.packageName}",${t.crystalAmount},${t.totalPayment},"${t.paymentMethod}","${t.status}","${t.createdAt}"`
-      )
-      .join("\n");
-    const csvContent = headers + rows;
+          t.status === "berhasil" &&
+          new Date(t.createdAt).getTime() >= dayStart &&
+          new Date(t.createdAt).getTime() < dayEnd
+      );
+      const total = dayTxs.reduce((sum, t) => sum + t.totalPayment, 0);
+      const label = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"][d.getDay()];
+      const dateStr = `${d.getDate()}/${d.getMonth() + 1}`;
+      return { label, dateStr, total, count: dayTxs.length };
+    });
+
+    // Payment Method Breakdown
+    const pmStats: Record<string, { count: number; total: number }> = {};
+    success.forEach((t) => {
+      const pm = t.paymentMethod || "lainnya";
+      if (!pmStats[pm]) pmStats[pm] = { count: 0, total: 0 };
+      pmStats[pm].count++;
+      pmStats[pm].total += t.totalPayment;
+    });
+
+    const topGateways = Object.entries(pmStats)
+      .map(([name, data]) => ({
+        name,
+        count: data.count,
+        total: data.total,
+        pct: grossRevenue > 0 ? ((data.total / grossRevenue) * 100).toFixed(0) : "0",
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    // Crystal Package Breakdown
+    const pkgStats: Record<string, { count: number; totalRev: number; crystals: number }> = {};
+    success.forEach((t) => {
+      const key = `${t.crystalAmount} Crystal`;
+      if (!pkgStats[key]) pkgStats[key] = { count: 0, totalRev: 0, crystals: 0 };
+      pkgStats[key].count++;
+      pkgStats[key].totalRev += t.totalPayment;
+      pkgStats[key].crystals += t.crystalAmount;
+    });
+
+    const topPackages = Object.entries(pkgStats)
+      .map(([name, data]) => ({
+        name,
+        count: data.count,
+        totalRev: data.totalRev,
+        crystals: data.crystals,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      successCount: success.length,
+      pendingCount: pending.length,
+      rejectedCount: rejected.length,
+      totalCount: filteredReportTxs.length,
+      grossRevenue,
+      estGatewayFee,
+      netRevenue,
+      totalCrystals,
+      aov,
+      successRate,
+      dailyTrend,
+      topGateways,
+      topPackages,
+    };
+  }, [filteredReportTxs, transactions]);
+
+  // Overall Global Stats for Header Strip
+  const globalSuccessTxs = transactions.filter((t) => t.status === "berhasil");
+  const globalTotalRevenue = globalSuccessTxs.reduce((acc, t) => acc + t.totalPayment, 0);
+  const globalPendingCount = transactions.filter(
+    (t) => t.status === "menunggu_verifikasi" || t.status === "menunggu_konfirmasi"
+  ).length;
+
+  // Handle Export CSV
+  const handleExportCSV = () => {
+    hapticLight();
+    const targetTxs = activeTab === "reports" ? filteredReportTxs : transactions;
+    const headers = [
+      "ID Transaksi",
+      "User ID",
+      "Username",
+      "Jumlah Crystal",
+      "Metode Pembayaran",
+      "Total Bayar (IDR)",
+      "Status",
+      "Crystal Diberikan",
+      "Catatan",
+      "Tanggal Dibuat",
+    ];
+
+    const rows = targetTxs.map((t) => [
+      t.id,
+      t.userId,
+      t.username,
+      t.crystalAmount,
+      t.paymentMethod,
+      t.totalPayment,
+      t.status,
+      t.crystalsGranted ? "Ya" : "Tidak",
+      `"${(t.statusNote || "").replace(/"/g, '""')}"`,
+      new Date(t.createdAt).toLocaleString("id-ID"),
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
 
     if (Platform.OS === "web") {
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Laporan-TopUp-Nuenime-${Date.now()}.csv`;
+      a.download = `Laporan-Keuangan-Nuenime-${reportPeriod}-${Date.now()}.csv`;
       a.click();
     } else {
       Alert.alert("Ekspor CSV", "Data transaksi berhasil diekspor ke format CSV.");
     }
   };
 
+  // Handle Copy Report Summary
+  const handleCopySummary = () => {
+    hapticLight();
+    const periodLabel = {
+      today: "Hari Ini",
+      week: "7 Hari Terakhir",
+      month: "Bulan Ini",
+      all: "Semua Waktu",
+    }[reportPeriod];
+
+    const text = `📊 *REKAP KEUANGAN NUENIME (${periodLabel})*
+----------------------------------------
+💰 *Omset Bruto:* ${formatRupiah(reportMetrics.grossRevenue)}
+🛡️ *Est. Biaya Gateway (1.5%):* -${formatRupiah(reportMetrics.estGatewayFee)}
+✨ *Omset Bersih:* ${formatRupiah(reportMetrics.netRevenue)}
+💎 *Crystal Terjual:* ${reportMetrics.totalCrystals.toLocaleString("id-ID")} Dylan Crystal
+🎯 *Rata-rata Order (AOV):* ${formatRupiah(reportMetrics.aov)}
+📈 *Tingkat Keberhasilan:* ${reportMetrics.successRate}%
+📦 *Total Transaksi Berhasil:* ${reportMetrics.successCount} transaksi
+⏳ *Antrean Pending Saat Ini:* ${reportMetrics.pendingCount} transaksi
+----------------------------------------
+_Laporan digenerate dari Admin Portal Nuenime_`;
+
+    if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2500);
+    } else {
+      Alert.alert("Ringkasan Laporan", text);
+    }
+  };
+
   return (
     <AdminLayout
       title="Finance & Top Up Crystal"
-      subtitle="Kelola verifikasi transaksi, pembayaran, paket Crystal, dan rekap keuangan"
+      subtitle="Kelola verifikasi transaksi, pembayaran, paket Crystal, dan rekap omset keuangan"
+      activeKey="finance"
     >
+      {/* ─── QUICK KPI STRIP ─── */}
+      <View style={[styles.kpiStrip, !isWide && styles.kpiStripMobile]}>
+        <View style={styles.kpiStripItem}>
+          <View style={[styles.kpiStripIcon, { backgroundColor: "rgba(16, 185, 129, 0.15)" }]}>
+            <AppIcon name="cash" size={18} color="#10B981" />
+          </View>
+          <View>
+            <Text style={styles.kpiStripLabel}>Total Omset Sah</Text>
+            <Text style={styles.kpiStripVal}>{formatRupiahShort(globalTotalRevenue)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.kpiStripDivider} />
+
+        <View style={styles.kpiStripItem}>
+          <View
+            style={[
+              styles.kpiStripIcon,
+              {
+                backgroundColor:
+                  globalPendingCount > 0 ? "rgba(245, 158, 11, 0.15)" : "rgba(255, 255, 255, 0.05)",
+              },
+            ]}
+          >
+            <AppIcon
+              name="clock-outline"
+              size={18}
+              color={globalPendingCount > 0 ? "#F59E0B" : "#94A3B8"}
+            />
+          </View>
+          <View>
+            <Text style={styles.kpiStripLabel}>Menunggu Verifikasi</Text>
+            <Text
+              style={[
+                styles.kpiStripVal,
+                globalPendingCount > 0 && { color: "#F59E0B" },
+              ]}
+            >
+              {globalPendingCount} Transaksi
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.kpiStripDivider} />
+
+        <View style={styles.kpiStripItem}>
+          <View style={[styles.kpiStripIcon, { backgroundColor: "rgba(56, 189, 248, 0.15)" }]}>
+            <AppIcon name="check-circle-outline" size={18} color="#38BDF8" />
+          </View>
+          <View>
+            <Text style={styles.kpiStripLabel}>Transaksi Sukses</Text>
+            <Text style={styles.kpiStripVal}>{globalSuccessTxs.length}</Text>
+          </View>
+        </View>
+
+        <View style={styles.kpiStripDivider} />
+
+        <View style={styles.kpiStripItem}>
+          <View style={[styles.kpiStripIcon, { backgroundColor: "rgba(140, 87, 255, 0.15)" }]}>
+            <AppIcon name="crystal-ball" size={18} color="#8C57FF" />
+          </View>
+          <View>
+            <Text style={styles.kpiStripLabel}>Katalog Paket</Text>
+            <Text style={styles.kpiStripVal}>{packages.length} Tier</Text>
+          </View>
+        </View>
+      </View>
+
       {/* ─── SUB TABS NAVIGATION ─── */}
       <View style={styles.tabNavRow}>
         {[
-          { key: "queue", label: "Antrean Verifikasi", icon: "clipboard-check-outline" },
-          { key: "gateways", label: "Konfigurasi Gateway", icon: "cog-outline" },
-          { key: "packages", label: "Paket Crystal", icon: "package-variant" },
+          { key: "queue", label: "Antrean Verifikasi", icon: "clipboard-check-outline", badge: globalPendingCount },
           { key: "reports", label: "Laporan & Omset", icon: "file-chart-outline" },
+          { key: "packages", label: "Paket Crystal", icon: "package-variant" },
+          { key: "gateways", label: "Konfigurasi Gateway", icon: "cog-outline" },
         ].map((tab) => (
           <Pressable
             key={tab.key}
@@ -294,6 +547,11 @@ export default function AdminFinanceScreen() {
             >
               {tab.label}
             </Text>
+            {tab.badge !== undefined && tab.badge > 0 && (
+              <View style={styles.tabBadge}>
+                <Text style={styles.tabBadgeText}>{tab.badge}</Text>
+              </View>
+            )}
           </Pressable>
         ))}
       </View>
@@ -319,10 +577,10 @@ export default function AdminFinanceScreen() {
             <View style={styles.filterChipRow}>
               {[
                 { key: "all", label: "Semua" },
-                { key: "menunggu_verifikasi", label: "Pending Verifikasi" },
+                { key: "menunggu_verifikasi", label: "Pending" },
                 { key: "berhasil", label: "Berhasil" },
                 { key: "ditolak", label: "Ditolak" },
-                { key: "reversed", label: "Ditarik (Reversed)" },
+                { key: "reversed", label: "Ditarik" },
               ].map((f) => (
                 <Pressable
                   key={f.key}
@@ -351,9 +609,14 @@ export default function AdminFinanceScreen() {
           {/* Tabel Transaksi */}
           <View style={styles.cardBox}>
             <View style={styles.cardBoxHeader}>
-              <Text style={styles.cardBoxTitle}>
-                Daftar Transaksi ({transactions.length})
-              </Text>
+              <View>
+                <Text style={styles.cardBoxTitle}>
+                  Daftar Transaksi ({transactions.length})
+                </Text>
+                <Text style={styles.cardBoxSubtitle}>
+                  Klik Detail untuk melihat bukti transfer dan informasi lengkap
+                </Text>
+              </View>
               <Pressable onPress={handleExportCSV} style={styles.exportBtn}>
                 <AppIcon name="file-download-outline" size={15} color="#10B981" />
                 <Text style={styles.exportBtnText}>Ekspor CSV</Text>
@@ -361,21 +624,22 @@ export default function AdminFinanceScreen() {
             </View>
 
             {loading ? (
-              <ActivityIndicator size="small" color="#8C57FF" style={{ padding: 20 }} />
+              <ActivityIndicator size="small" color="#E2E8F0" style={{ padding: 24 }} />
             ) : transactions.length === 0 ? (
               <View style={styles.emptyWrap}>
+                <AppIcon name="credit-card" size={36} color="#334155" />
                 <Text style={styles.emptyText}>Tidak ada transaksi yang cocok.</Text>
               </View>
             ) : (
               <View style={styles.tableWrap}>
                 <View style={styles.thRow}>
                   <Text style={[styles.th, { flex: 1.8 }]}>ID PESANAN</Text>
-                  <Text style={[styles.th, { flex: 1.6 }]}>PENGGUNA</Text>
-                  <Text style={[styles.th, { flex: 1.6 }]}>PAKET</Text>
-                  <Text style={[styles.th, { flex: 1.2 }]}>METODE</Text>
+                  <Text style={[styles.th, { flex: 1.5 }]}>PENGGUNA</Text>
+                  <Text style={[styles.th, { flex: 1.4 }]}>PAKET</Text>
+                  <Text style={[styles.th, { flex: 1.1 }]}>METODE</Text>
                   <Text style={[styles.th, { flex: 1.4 }]}>TOTAL</Text>
-                  <Text style={[styles.th, { flex: 1.4 }]}>STATUS</Text>
-                  <Text style={[styles.th, { flex: 2.4, textAlign: "right" }]}>AKSI</Text>
+                  <Text style={[styles.th, { flex: 1.3 }]}>STATUS</Text>
+                  <Text style={[styles.th, { flex: 2.2, textAlign: "right" }]}>AKSI</Text>
                 </View>
 
                 {transactions.map((tx) => (
@@ -383,19 +647,19 @@ export default function AdminFinanceScreen() {
                     <Text style={[styles.tdBold, { flex: 1.8 }]} numberOfLines={1}>
                       {tx.id}
                     </Text>
-                    <Text style={[styles.td, { flex: 1.6 }]} numberOfLines={1}>
+                    <Text style={[styles.td, { flex: 1.5 }]} numberOfLines={1}>
                       {tx.username}
                     </Text>
-                    <Text style={[styles.td, { flex: 1.6 }]} numberOfLines={1}>
+                    <Text style={[styles.td, { flex: 1.4 }]} numberOfLines={1}>
                       {tx.crystalAmount.toLocaleString("id-ID")} Crystal
                     </Text>
-                    <Text style={[styles.td, { flex: 1.2 }]}>
-                      {tx.paymentMethod.toUpperCase()}
+                    <Text style={[styles.td, { flex: 1.1 }]}>
+                      {tx.paymentMethod.replace(/_/g, " ").toUpperCase()}
                     </Text>
                     <Text style={[styles.tdBold, { flex: 1.4, color: "#38BDF8" }]}>
-                      Rp{tx.totalPayment.toLocaleString("id-ID")}
+                      {formatRupiahShort(tx.totalPayment)}
                     </Text>
-                    <View style={{ flex: 1.4 }}>
+                    <View style={{ flex: 1.3 }}>
                       <View
                         style={[
                           styles.statusBadge,
@@ -431,8 +695,8 @@ export default function AdminFinanceScreen() {
                         </Text>
                       </View>
                     </View>
-                    <View style={[styles.actionBtnGroup, { flex: 2.4, justifyContent: "flex-end" }]}>
-                      {/* Tombol Detail selalu tampil */}
+                    <View style={[styles.actionBtnGroup, { flex: 2.2, justifyContent: "flex-end" }]}>
+                      {/* Tombol Detail */}
                       <Pressable
                         onPress={() => handleOpenDetail(tx)}
                         style={[styles.smallBtn, styles.btnDetail]}
@@ -465,14 +729,14 @@ export default function AdminFinanceScreen() {
                         </>
                       )}
 
-                      {/* Status Berhasil (Approved): Tombol Tarik Kembali Crystal */}
+                      {/* Status Berhasil: Tombol Tarik Kembali Crystal */}
                       {tx.status === "berhasil" && (
                         <Pressable
                           onPress={() => handleOpenReverse(tx)}
                           style={[styles.smallBtn, styles.btnReverse]}
                         >
                           <AppIcon name="history" size={12} color="#FFFFFF" />
-                          <Text style={styles.smallBtnText}>Tarik Kembali</Text>
+                          <Text style={styles.smallBtnText}>Tarik</Text>
                         </Pressable>
                       )}
                     </View>
@@ -485,15 +749,368 @@ export default function AdminFinanceScreen() {
       )}
 
       {/* ══════════════════════════════════════════════════════
-          TAB 2: KONFIGURASI GATEWAY PEMBAYARAN
+          TAB 2: LAPORAN & OMSET (SUPER CHARGED & BEAUTIFUL)
+         ══════════════════════════════════════════════════════ */}
+      {activeTab === "reports" && (
+        <View style={styles.tabContentWrap}>
+          {/* Header Action & Period Filter */}
+          <View style={styles.reportHeaderCard}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.reportHeaderTitle}>Analitik Keuangan & Omset</Text>
+              <Text style={styles.reportHeaderSubtitle}>
+                Ringkasan performa finansial, konversi Crystal, dan estimasi laba bersih
+              </Text>
+            </View>
+
+            {/* Time Filter Pills */}
+            <View style={styles.periodPillRow}>
+              {[
+                { key: "today", label: "Hari Ini" },
+                { key: "week", label: "7 Hari" },
+                { key: "month", label: "Bulan Ini" },
+                { key: "all", label: "Semua" },
+              ].map((p) => (
+                <Pressable
+                  key={p.key}
+                  onPress={() => {
+                    hapticLight();
+                    setReportPeriod(p.key as any);
+                  }}
+                  style={[
+                    styles.periodPill,
+                    reportPeriod === p.key && styles.periodPillActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.periodPillText,
+                      reportPeriod === p.key && styles.periodPillTextActive,
+                    ]}
+                  >
+                    {p.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          {/* ─── 4 MAIN FINANCIAL KPI BOXES ─── */}
+          <View style={[styles.reportMetricGrid, !isWide && styles.reportMetricGridMobile]}>
+            {/* Omset Bruto */}
+            <View style={[styles.reportCard, { borderTopColor: "#10B981" }]}>
+              <View style={styles.reportCardTop}>
+                <View style={[styles.reportIconWrap, { backgroundColor: "rgba(16, 185, 129, 0.15)" }]}>
+                  <AppIcon name="cash" size={20} color="#10B981" />
+                </View>
+                <View style={[styles.badgePill, { backgroundColor: "rgba(16, 185, 129, 0.15)" }]}>
+                  <Text style={[styles.badgePillText, { color: "#10B981" }]}>Bruto</Text>
+                </View>
+              </View>
+              <Text style={styles.reportValText}>{formatRupiahShort(reportMetrics.grossRevenue)}</Text>
+              <Text style={styles.reportLabelText}>Total Pemasukan Kotor</Text>
+              <Text style={styles.reportFootnote}>
+                Dari {reportMetrics.successCount} transaksi berhasil
+              </Text>
+            </View>
+
+            {/* Omset Bersih (Net Revenue) */}
+            <View style={[styles.reportCard, { borderTopColor: "#8C57FF" }]}>
+              <View style={styles.reportCardTop}>
+                <View style={[styles.reportIconWrap, { backgroundColor: "rgba(140, 87, 255, 0.15)" }]}>
+                  <AppIcon name="shield-check" size={20} color="#8C57FF" />
+                </View>
+                <View style={[styles.badgePill, { backgroundColor: "rgba(140, 87, 255, 0.15)" }]}>
+                  <Text style={[styles.badgePillText, { color: "#8C57FF" }]}>Netto</Text>
+                </View>
+              </View>
+              <Text style={styles.reportValText}>{formatRupiahShort(reportMetrics.netRevenue)}</Text>
+              <Text style={styles.reportLabelText}>Estimasi Omset Bersih</Text>
+              <Text style={styles.reportFootnote}>
+                Potongan MDR ~1.5% (-{formatRupiahShort(reportMetrics.estGatewayFee)})
+              </Text>
+            </View>
+
+            {/* Dylan Crystal Terjual */}
+            <View style={[styles.reportCard, { borderTopColor: "#EC4899" }]}>
+              <View style={styles.reportCardTop}>
+                <View style={[styles.reportIconWrap, { backgroundColor: "rgba(236, 72, 153, 0.15)" }]}>
+                  <AppIcon name="crystal-ball" size={20} color="#EC4899" />
+                </View>
+                <View style={[styles.badgePill, { backgroundColor: "rgba(236, 72, 153, 0.15)" }]}>
+                  <Text style={[styles.badgePillText, { color: "#EC4899" }]}>Crystal</Text>
+                </View>
+              </View>
+              <Text style={styles.reportValText}>
+                {((reportMetrics.totalCrystals || 0) / 1000).toFixed(1)}K
+              </Text>
+              <Text style={styles.reportLabelText}>Dylan Crystal Diterbitkan</Text>
+              <Text style={styles.reportFootnote}>
+                Total: {(reportMetrics.totalCrystals || 0).toLocaleString("id-ID")} Crystal
+              </Text>
+            </View>
+
+            {/* AOV & Success Rate */}
+            <View style={[styles.reportCard, { borderTopColor: "#38BDF8" }]}>
+              <View style={styles.reportCardTop}>
+                <View style={[styles.reportIconWrap, { backgroundColor: "rgba(56, 189, 248, 0.15)" }]}>
+                  <AppIcon name="chart-bar" size={20} color="#38BDF8" />
+                </View>
+                <View style={[styles.badgePill, { backgroundColor: "rgba(56, 189, 248, 0.15)" }]}>
+                  <Text style={[styles.badgePillText, { color: "#38BDF8" }]}>{reportMetrics.successRate}% OK</Text>
+                </View>
+              </View>
+              <Text style={styles.reportValText}>{formatRupiahShort(reportMetrics.aov)}</Text>
+              <Text style={styles.reportLabelText}>Rata-rata Order (AOV)</Text>
+              <Text style={styles.reportFootnote}>
+                {reportMetrics.pendingCount} menunggu · {reportMetrics.rejectedCount} ditolak
+              </Text>
+            </View>
+          </View>
+
+          {/* ─── ROW: DAILY REVENUE CHART + PAYMENT BREAKDOWN ─── */}
+          <View style={[styles.analyticsRow, !isWide && { flexDirection: "column" }]}>
+            {/* Visual Bar Chart 7 Hari */}
+            <View style={[styles.chartCard, { flex: 1.6 }]}>
+              <View style={styles.cardBoxHeader}>
+                <View>
+                  <Text style={styles.cardBoxTitle}>Tren Omset 7 Hari Terakhir</Text>
+                  <Text style={styles.cardBoxSubtitle}>Fluktuasi pendapatan harian sukses</Text>
+                </View>
+                <View style={[styles.badgePill, { backgroundColor: "rgba(16, 185, 129, 0.15)" }]}>
+                  <AppIcon name="trending-up" size={13} color="#10B981" />
+                  <Text style={[styles.badgePillText, { color: "#10B981" }]}>Live Trend</Text>
+                </View>
+              </View>
+
+              <View style={{ gap: 10, marginTop: 4 }}>
+                {reportMetrics.dailyTrend.map((d, i) => {
+                  const max = Math.max(...reportMetrics.dailyTrend.map((t) => t.total), 1);
+                  const pct = d.total / max;
+                  const isToday = i === reportMetrics.dailyTrend.length - 1;
+                  return (
+                    <View key={i} style={styles.trendBarRow}>
+                      <View style={{ width: 62 }}>
+                        <Text style={styles.trendBarDay}>{d.label}</Text>
+                        <Text style={styles.trendBarDate}>{d.dateStr}</Text>
+                      </View>
+                      <View style={styles.trendBarBg}>
+                        <View
+                          style={[
+                            styles.trendBarFill,
+                            {
+                              width: `${Math.max(pct * 100, d.total > 0 ? 4 : 0)}%`,
+                              backgroundColor: isToday ? "#10B981" : "rgba(16, 185, 129, 0.45)",
+                            },
+                          ]}
+                        />
+                      </View>
+                      <View style={{ minWidth: 70, alignItems: "flex-end" }}>
+                        <Text style={[styles.trendBarVal, isToday && { color: "#10B981" }]}>
+                          {d.total > 0 ? formatRupiahShort(d.total) : "—"}
+                        </Text>
+                        <Text style={styles.trendBarCount}>{d.count} tx</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Metode Pembayaran Terpopuler */}
+            <View style={[styles.chartCard, { flex: 1 }]}>
+              <View style={styles.cardBoxHeader}>
+                <View>
+                  <Text style={styles.cardBoxTitle}>Metode Pembayaran</Text>
+                  <Text style={styles.cardBoxSubtitle}>Pangsa revenue channel</Text>
+                </View>
+              </View>
+
+              {reportMetrics.topGateways.length > 0 ? (
+                <View style={{ gap: 14, marginTop: 4 }}>
+                  {reportMetrics.topGateways.map((gw, idx) => {
+                    const colors = ["#8C57FF", "#38BDF8", "#10B981", "#F59E0B", "#EC4899"];
+                    const col = colors[idx % colors.length];
+                    return (
+                      <View key={gw.name} style={{ gap: 5 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: col }} />
+                            <Text style={styles.pmTitle}>{gw.name.replace(/_/g, " ").toUpperCase()}</Text>
+                          </View>
+                          <Text style={[styles.pmPct, { color: col }]}>{gw.pct}% ({formatRupiahShort(gw.total)})</Text>
+                        </View>
+                        <View style={styles.progressTrack}>
+                          <View style={[styles.progressFill, { width: `${gw.pct}%` as any, backgroundColor: col }]} />
+                        </View>
+                        <Text style={styles.pmSub}>{gw.count} transaksi berhasil</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <View style={styles.emptyCenter}>
+                  <AppIcon name="chart-bar" size={32} color="#334155" />
+                  <Text style={styles.emptyText}>Belum ada data pembayaran</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* ─── ROW: TOP PACKAGES SOLD & REPORT ACTIONS ─── */}
+          <View style={[styles.analyticsRow, !isWide && { flexDirection: "column" }]}>
+            {/* Paket Crystal Terlaris */}
+            <View style={[styles.chartCard, { flex: 1.5 }]}>
+              <View style={styles.cardBoxHeader}>
+                <View>
+                  <Text style={styles.cardBoxTitle}>Paket Crystal Terlaris</Text>
+                  <Text style={styles.cardBoxSubtitle}>Peringkat volume pembelian user</Text>
+                </View>
+              </View>
+
+              {reportMetrics.topPackages.length > 0 ? (
+                <View style={{ gap: 8, marginTop: 4 }}>
+                  {reportMetrics.topPackages.map((pkg, i) => (
+                    <View key={pkg.name} style={styles.pkgStatRow}>
+                      <View style={styles.pkgRankBadge}>
+                        <Text style={styles.pkgRankText}>#{i + 1}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.pkgStatName}>{pkg.name}</Text>
+                        <Text style={styles.pkgStatSub}>
+                          {pkg.count} pesanan · {pkg.crystals.toLocaleString("id-ID")} Crystal
+                        </Text>
+                      </View>
+                      <Text style={styles.pkgStatRev}>{formatRupiahShort(pkg.totalRev)}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.emptyCenter}>
+                  <AppIcon name="package-variant" size={32} color="#334155" />
+                  <Text style={styles.emptyText}>Belum ada paket terjual pada periode ini</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Quick Actions & Ekspor */}
+            <View style={[styles.chartCard, { flex: 1 }]}>
+              <Text style={styles.cardBoxTitle}>Aksi Laporan & Rekonsiliasi</Text>
+              <Text style={styles.cardBoxSubtitle}>Unduh rekap atau bagikan ke tim manajemen</Text>
+
+              <View style={{ gap: 10, marginTop: 6 }}>
+                <Pressable onPress={handleExportCSV} style={styles.reportActionBtn}>
+                  <View style={[styles.reportActionIcon, { backgroundColor: "rgba(16, 185, 129, 0.15)" }]}>
+                    <AppIcon name="file-download-outline" size={18} color="#10B981" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.reportActionTitle}>Unduh Rekap CSV</Text>
+                    <Text style={styles.reportActionSub}>Format spreadsheet detail</Text>
+                  </View>
+                  <AppIcon name="chevron-right" size={14} color="#94A3B8" />
+                </Pressable>
+
+                <Pressable onPress={handleCopySummary} style={styles.reportActionBtn}>
+                  <View style={[styles.reportActionIcon, { backgroundColor: "rgba(140, 87, 255, 0.15)" }]}>
+                    <AppIcon name="content-copy" size={18} color="#8C57FF" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.reportActionTitle}>
+                      {copySuccess ? "Tersalin ke Clipboard!" : "Salin Ringkasan Teks"}
+                    </Text>
+                    <Text style={styles.reportActionSub}>Format WhatsApp & Telegram</Text>
+                  </View>
+                  <AppIcon name="chevron-right" size={14} color="#94A3B8" />
+                </Pressable>
+
+                <View style={styles.auditReconBox}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <AppIcon name="shield-account" size={16} color="#38BDF8" />
+                    <Text style={styles.auditReconTitle}>Status Audit Finansial</Text>
+                  </View>
+                  <Text style={styles.auditReconText}>
+                    Semua transaksi tercatat permanen di audit log. Penarikan saldo memerlukan konfirmasi admin super.
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* ══════════════════════════════════════════════════════
+          TAB 3: PAKET CRYSTAL CRUD
+         ══════════════════════════════════════════════════════ */}
+      {activeTab === "packages" && (
+        <View style={styles.cardBox}>
+          <View style={styles.cardBoxHeader}>
+            <View>
+              <Text style={styles.cardBoxTitle}>Katalog Paket Dylan Crystal</Text>
+              <Text style={styles.cardBoxSubtitle}>
+                Daftar harga dan tier paket Dylan Crystal yang dapat dibeli oleh pengguna
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                setEditingPkg({
+                  id: `pkg_${Date.now()}`,
+                  name: "Paket Baru",
+                  amount: 2000,
+                  amountFormatted: "2.000",
+                  price: 2000,
+                  priceFormatted: "Rp2.000",
+                });
+                setShowPkgModal(true);
+              }}
+              style={styles.addBtn}
+            >
+              <AppIcon name="plus" size={16} color="#FFFFFF" />
+              <Text style={styles.addBtnText}>Tambah Paket</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.packageGrid}>
+            {packages.map((pkg) => (
+              <View key={pkg.id} style={styles.packageCard}>
+                <View style={styles.packageCardTop}>
+                  <View style={styles.packageCrystalIcon}>
+                    <AppIcon name="crystal-ball" size={24} color="#E2E8F0" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.packageName}>{pkg.name}</Text>
+                    <Text style={styles.packageAmount}>{pkg.amountFormatted} Crystal</Text>
+                  </View>
+                </View>
+                <View style={styles.packagePriceRow}>
+                  <Text style={styles.packagePrice}>{pkg.priceFormatted}</Text>
+                  <Pressable
+                    onPress={() => {
+                      setEditingPkg({ ...pkg });
+                      setShowPkgModal(true);
+                    }}
+                    style={styles.editBtn}
+                  >
+                    <AppIcon name="pencil" size={13} color="#FFFFFF" />
+                    <Text style={styles.editBtnText}>Edit</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* ══════════════════════════════════════════════════════
+          TAB 4: KONFIGURASI GATEWAY PEMBAYARAN
          ══════════════════════════════════════════════════════ */}
       {activeTab === "gateways" && gatewayConfig && (
         <View style={styles.cardBox}>
-          <Text style={styles.cardBoxTitle}>Konfigurasi Akun & Metode Pembayaran</Text>
-          <Text style={styles.cardBoxSubtitle}>
-            Pengaturan ini langsung tersinkronisasi ke aplikasi tanpa mengharuskan pengguna
-            membangun ulang (rebuild) file APK.
-          </Text>
+          <View>
+            <Text style={styles.cardBoxTitle}>Konfigurasi Akun & Metode Pembayaran</Text>
+            <Text style={styles.cardBoxSubtitle}>
+              Pengaturan ini langsung tersinkronisasi ke aplikasi tanpa mengharuskan pengguna
+              membangun ulang (rebuild) file APK.
+            </Text>
+          </View>
 
           <View style={styles.formGroup}>
             <Text style={styles.fieldLabel}>Nomor WhatsApp Admin (Verifikasi):</Text>
@@ -515,7 +1132,6 @@ export default function AdminFinanceScreen() {
               placeholderTextColor="#64748B"
               style={styles.fieldInput}
             />
-            {/* Preview QRIS jika URL valid */}
             {gatewayConfig.qrisUrl?.startsWith("http") ? (
               <View style={styles.qrisPreviewBox}>
                 <Text style={styles.qrisPreviewLabel}>Preview QRIS:</Text>
@@ -593,94 +1209,13 @@ export default function AdminFinanceScreen() {
           >
             <AppIcon name="content-save-outline" size={18} color="#FFFFFF" />
             <Text style={styles.saveBtnText}>
-              {gatewaySaving ? "Menyimpan..." : "Simpan Konfigurasi"}
+              {gatewaySaving ? "Menyimpan..." : "Simpan Konfigurasi Gateway"}
             </Text>
           </Pressable>
         </View>
       )}
 
-      {/* ══════════════════════════════════════════════════════
-          TAB 3: PAKET CRYSTAL CRUD
-         ══════════════════════════════════════════════════════ */}
-      {activeTab === "packages" && (
-        <View style={styles.cardBox}>
-          <View style={styles.cardBoxHeader}>
-            <Text style={styles.cardBoxTitle}>Katalog Paket Dylan Crystal</Text>
-            <Pressable
-              onPress={() => {
-                setEditingPkg({
-                  id: `pkg_${Date.now()}`,
-                  name: "Paket Baru",
-                  amount: 2000,
-                  amountFormatted: "2.000",
-                  price: 2000,
-                  priceFormatted: "Rp2.000",
-                });
-                setShowPkgModal(true);
-              }}
-              style={styles.addBtn}
-            >
-              <AppIcon name="plus" size={16} color="#FFFFFF" />
-              <Text style={styles.addBtnText}>Tambah Paket</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.packageList}>
-            {packages.map((pkg) => (
-              <View key={pkg.id} style={styles.packageRow}>
-                <View>
-                  <Text style={styles.packageName}>{pkg.name}</Text>
-                  <Text style={styles.packageAmount}>{pkg.amountFormatted} Crystal</Text>
-                </View>
-                <Text style={styles.packagePrice}>{pkg.priceFormatted}</Text>
-                <Pressable
-                  onPress={() => {
-                    setEditingPkg({ ...pkg });
-                    setShowPkgModal(true);
-                  }}
-                  style={styles.editBtn}
-                >
-                  <AppIcon name="pencil" size={14} color="#8C57FF" />
-                  <Text style={styles.editBtnText}>Edit</Text>
-                </Pressable>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
-
-      {/* ══════════════════════════════════════════════════════
-          TAB 4: LAPORAN & OMSET
-         ══════════════════════════════════════════════════════ */}
-      {activeTab === "reports" && (
-        <View style={styles.cardBox}>
-          <Text style={styles.cardBoxTitle}>Laporan Omset & Rekap Keuangan</Text>
-          <View style={styles.reportSummaryGrid}>
-            <View style={styles.reportBox}>
-              <Text style={styles.reportBoxLabel}>Total Transaksi Berhasil</Text>
-              <Text style={styles.reportBoxVal}>
-                {transactions.filter((t) => t.status === "berhasil").length}
-              </Text>
-            </View>
-            <View style={styles.reportBox}>
-              <Text style={styles.reportBoxLabel}>Total Pemasukan Sah</Text>
-              <Text style={[styles.reportBoxVal, { color: "#10B981" }]}>
-                Rp
-                {transactions
-                  .filter((t) => t.status === "berhasil")
-                  .reduce((acc, t) => acc + t.totalPayment, 0)
-                  .toLocaleString("id-ID")}
-              </Text>
-            </View>
-          </View>
-          <Pressable onPress={handleExportCSV} style={styles.downloadReportBtn}>
-            <AppIcon name="download" size={18} color="#FFFFFF" />
-            <Text style={styles.downloadReportBtnText}>Unduh Rekap Lengkap (CSV)</Text>
-          </Pressable>
-        </View>
-      )}
-
-      {/* ─── MODAL TOLAK DENGAN ALASAN WAJIB ─── */}
+      {/* ─── MODAL TOLAK TRANSAKSI ─── */}
       <Modal visible={showRejectModal} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
@@ -716,7 +1251,7 @@ export default function AdminFinanceScreen() {
       <Modal visible={showPkgModal} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Edit Paket Crystal</Text>
+            <Text style={styles.modalTitle}>Kelola Paket Crystal</Text>
             {editingPkg && (
               <>
                 <View style={styles.formGroup}>
@@ -780,7 +1315,7 @@ export default function AdminFinanceScreen() {
       <Modal visible={showDetailModal} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Detail Transaksi Top Up</Text>
+            <Text style={styles.modalTitle}>Detail Transaksi</Text>
             {selectedTx && (
               <View style={styles.detailGrid}>
                 <View style={styles.detailItemRow}>
@@ -794,15 +1329,15 @@ export default function AdminFinanceScreen() {
                   </Text>
                 </View>
                 <View style={styles.detailItemRow}>
-                  <Text style={styles.detailItemLabel}>Paket Crystal:</Text>
-                  <Text style={styles.detailItemVal}>
-                    {selectedTx.packageName} ({selectedTx.crystalAmount.toLocaleString("id-ID")} Crystal)
+                  <Text style={styles.detailItemLabel}>Jumlah Crystal:</Text>
+                  <Text style={[styles.detailItemValBold, { color: "#8C57FF" }]}>
+                    {selectedTx.crystalAmount.toLocaleString("id-ID")} Crystal
                   </Text>
                 </View>
                 <View style={styles.detailItemRow}>
                   <Text style={styles.detailItemLabel}>Metode Pembayaran:</Text>
                   <Text style={styles.detailItemVal}>
-                    {selectedTx.paymentMethod.toUpperCase()}
+                    {selectedTx.paymentMethod.replace(/_/g, " ").toUpperCase()}
                   </Text>
                 </View>
                 <View style={styles.detailItemRow}>
@@ -932,7 +1467,6 @@ export default function AdminFinanceScreen() {
               </View>
             )}
 
-            {/* Peringatan Saldo Tidak Mencukupi (Mencegah Saldo Negatif) */}
             {userBalForReverse !== null &&
               selectedTx &&
               userBalForReverse < selectedTx.crystalAmount && (
@@ -1002,7 +1536,56 @@ export default function AdminFinanceScreen() {
   );
 }
 
+// ─── STYLES ─────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  // ── KPI Top Strip
+  kpiStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#0D1117",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.07)",
+    borderRadius: 14,
+    padding: 16,
+    gap: 16,
+    marginBottom: 16,
+  },
+  kpiStripMobile: {
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  kpiStripItem: {
+    flex: 1,
+    minWidth: 140,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  kpiStripIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  kpiStripLabel: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 10.5,
+    color: "#64748B",
+  },
+  kpiStripVal: {
+    fontFamily: "Nunito-Black",
+    fontSize: 15,
+    color: "#FFFFFF",
+    marginTop: 2,
+  },
+  kpiStripDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+  },
+
+  // ── Tabs
   tabNavRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1014,25 +1597,44 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: 8,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.07)",
   },
   tabNavBtnActive: {
-    backgroundColor: "#8C57FF",
+    backgroundColor: "rgba(255, 255, 255, 0.14)",
+    borderColor: "rgba(255, 255, 255, 0.32)",
+    shadowOpacity: 0,
+    elevation: 0,
   },
   tabNavBtnText: {
     fontFamily: "Nunito-Bold",
-    fontSize: 12.5,
+    fontSize: 12,
     color: "#94A3B8",
   },
   tabNavBtnTextActive: {
     color: "#FFFFFF",
     fontFamily: "Nunito-Black",
   },
+  tabBadge: {
+    backgroundColor: "#EF4444",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 10,
+  },
+  tabBadgeText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 9,
+    color: "#FFFFFF",
+  },
+
   tabContentWrap: {
     gap: 16,
   },
+
+  // ── Filter Bar
   filterBar: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1046,7 +1648,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#211D36",
+    backgroundColor: "#0D1117",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
@@ -1067,12 +1669,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
   },
   filterChipActive: {
-    backgroundColor: "rgba(140, 87, 255, 0.25)",
-    borderWidth: 1,
-    borderColor: "#8C57FF",
+    backgroundColor: "rgba(255, 255, 255, 0.14)",
+    borderColor: "rgba(255, 255, 255, 0.30)",
+    shadowOpacity: 0,
+    elevation: 0,
   },
   filterChipText: {
     fontFamily: "Nunito-Bold",
@@ -1082,12 +1687,14 @@ const styles = StyleSheet.create({
   filterChipTextActive: {
     color: "#FFFFFF",
   },
+
+  // ── Card Box
   cardBox: {
-    backgroundColor: "#211D36",
-    borderRadius: 12,
+    backgroundColor: "#0D1117",
+    borderRadius: 14,
     padding: 20,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(255, 255, 255, 0.07)",
     gap: 14,
   },
   cardBoxHeader: {
@@ -1097,29 +1704,33 @@ const styles = StyleSheet.create({
   },
   cardBoxTitle: {
     fontFamily: "Nunito-Black",
-    fontSize: 16,
+    fontSize: 15,
     color: "#FFFFFF",
   },
   cardBoxSubtitle: {
     fontFamily: "Nunito-Regular",
-    fontSize: 12,
-    color: "#94A3B8",
-    marginBottom: 8,
+    fontSize: 11.5,
+    color: "#64748B",
+    marginTop: 2,
   },
   exportBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 6,
     backgroundColor: "rgba(16, 185, 129, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.3)",
   },
   exportBtnText: {
     fontFamily: "Nunito-Bold",
     fontSize: 11,
     color: "#10B981",
   },
+
+  // ── Table
   tableWrap: {
     gap: 2,
   },
@@ -1127,13 +1738,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderRadius: 6,
   },
   th: {
     fontFamily: "Nunito-Bold",
-    fontSize: 11,
-    color: "#94A3B8",
+    fontSize: 10.5,
+    color: "#64748B",
   },
   trRow: {
     flexDirection: "row",
@@ -1171,6 +1782,7 @@ const styles = StyleSheet.create({
   textDanger: { color: "#EF4444" },
   bgReversed: { backgroundColor: "rgba(249, 115, 22, 0.15)" },
   textReversed: { color: "#F97316" },
+
   actionBtnGroup: {
     flexDirection: "row",
     gap: 6,
@@ -1178,15 +1790,15 @@ const styles = StyleSheet.create({
   smallBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
+    gap: 4,
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    paddingVertical: 5,
+    borderRadius: 5,
   },
   btnDetail: {
-    backgroundColor: "rgba(56, 189, 248, 0.15)",
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
     borderWidth: 1,
-    borderColor: "rgba(56, 189, 248, 0.3)",
+    borderColor: "rgba(56, 189, 248, 0.25)",
   },
   btnApprove: {
     backgroundColor: "#10B981",
@@ -1199,51 +1811,396 @@ const styles = StyleSheet.create({
   },
   smallBtnText: {
     fontFamily: "Nunito-Bold",
-    fontSize: 10,
+    fontSize: 10.5,
     color: "#FFFFFF",
   },
-  emptyWrap: {
-    padding: 30,
+
+  // ── Reports Header Card
+  reportHeaderCard: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#0D1117",
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.07)",
+    gap: 12,
   },
-  emptyText: {
+  reportHeaderTitle: {
+    fontFamily: "Nunito-Black",
+    fontSize: 15,
+    color: "#FFFFFF",
+  },
+  reportHeaderSubtitle: {
     fontFamily: "Nunito-Regular",
-    fontSize: 13,
+    fontSize: 11.5,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  periodPillRow: {
+    flexDirection: "row",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderRadius: 8,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+  },
+  periodPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  periodPillActive: {
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.32)",
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  periodPillText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
     color: "#94A3B8",
   },
+  periodPillTextActive: {
+    color: "#FFFFFF",
+  },
+
+  // ── Report Metrics Grid
+  reportMetricGrid: {
+    flexDirection: "row",
+    gap: 14,
+  },
+  reportMetricGridMobile: {
+    flexWrap: "wrap",
+  },
+  reportCard: {
+    flex: 1,
+    minWidth: 160,
+    backgroundColor: "#0D1117",
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.07)",
+    borderTopWidth: 3,
+    gap: 6,
+  },
+  reportCardTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  reportIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reportValText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 20,
+    color: "#FFFFFF",
+    letterSpacing: -0.5,
+  },
+  reportLabelText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
+    color: "#64748B",
+  },
+  reportFootnote: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 10,
+    color: "#94A3B8",
+    marginTop: 2,
+  },
+  badgePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 5,
+  },
+  badgePillText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 9.5,
+  },
+
+  // ── Analytics Row
+  analyticsRow: {
+    flexDirection: "row",
+    gap: 14,
+  },
+  chartCard: {
+    backgroundColor: "#0D1117",
+    borderRadius: 14,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.07)",
+    gap: 14,
+  },
+
+  // ── Daily Trend Bar
+  trendBarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  trendBarDay: {
+    fontFamily: "Nunito-Black",
+    fontSize: 11,
+    color: "#FFFFFF",
+  },
+  trendBarDate: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 9.5,
+    color: "#64748B",
+  },
+  trendBarBg: {
+    flex: 1,
+    height: 18,
+    borderRadius: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    overflow: "hidden",
+  },
+  trendBarFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+  trendBarVal: {
+    fontFamily: "Nunito-Black",
+    fontSize: 11,
+    color: "#FFFFFF",
+  },
+  trendBarCount: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 9.5,
+    color: "#64748B",
+  },
+
+  // ── Payment method stats
+  pmTitle: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
+    color: "#CBD5E1",
+  },
+  pmPct: {
+    fontFamily: "Nunito-Black",
+    fontSize: 10.5,
+  },
+  pmSub: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 9.5,
+    color: "#64748B",
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 3,
+  },
+
+  // ── Packages ranking
+  packageGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  packageCard: {
+    flex: 1,
+    minWidth: 220,
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+    gap: 12,
+  },
+  packageCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  packageCrystalIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: "rgba(140, 87, 255, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  packageName: {
+    fontFamily: "Nunito-Black",
+    fontSize: 13,
+    color: "#FFFFFF",
+  },
+  packageAmount: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
+    color: "#38BDF8",
+    marginTop: 2,
+  },
+  packagePriceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.04)",
+  },
+  packagePrice: {
+    fontFamily: "Nunito-Black",
+    fontSize: 14,
+    color: "#FFFFFF",
+  },
+  editBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 5,
+    backgroundColor: "rgba(255, 255, 255, 0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.20)",
+  },
+  editBtnText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
+    color: "#FFFFFF",
+  },
+
+  // ── Package Stat Rows in Reports
+  pkgStatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 6,
+  },
+  pkgRankBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pkgRankText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 10.5,
+    color: "#CBD5E1",
+  },
+  pkgStatName: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11.5,
+    color: "#FFFFFF",
+  },
+  pkgStatSub: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 10,
+    color: "#64748B",
+    marginTop: 1,
+  },
+  pkgStatRev: {
+    fontFamily: "Nunito-Black",
+    fontSize: 12,
+    color: "#10B981",
+  },
+
+  // ── Report Action Buttons
+  reportActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+  },
+  reportActionIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reportActionTitle: {
+    fontFamily: "Nunito-Black",
+    fontSize: 12,
+    color: "#FFFFFF",
+  },
+  reportActionSub: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 10,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  auditReconBox: {
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: "rgba(56, 189, 248, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.18)",
+    gap: 6,
+    marginTop: 4,
+  },
+  auditReconTitle: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
+    color: "#38BDF8",
+  },
+  auditReconText: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 10,
+    color: "#94A3B8",
+    lineHeight: 14,
+  },
+
+  // ── Forms & Gateways
   formGroup: {
     gap: 6,
   },
   fieldLabel: {
     fontFamily: "Nunito-Bold",
-    fontSize: 12,
+    fontSize: 11.5,
     color: "#CBD5E1",
   },
   fieldInput: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 9,
     fontFamily: "Nunito-Regular",
     fontSize: 13,
     color: "#FFFFFF",
   },
   formDivider: {
     height: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     marginVertical: 6,
   },
   subSectionTitle: {
     fontFamily: "Nunito-Black",
-    fontSize: 14,
+    fontSize: 13.5,
     color: "#E2E8F0",
   },
   qrisPreviewBox: {
     marginTop: 8,
     padding: 10,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "rgba(56, 189, 248, 0.25)",
@@ -1266,110 +2223,44 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: "#8C57FF",
+    backgroundColor: "rgba(255, 255, 255, 0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.30)",
     paddingVertical: 12,
     borderRadius: 8,
     marginTop: 8,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   saveBtnText: {
     fontFamily: "Nunito-Black",
     fontSize: 13,
     color: "#FFFFFF",
+    letterSpacing: 0.3,
   },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: "#8C57FF",
-    paddingHorizontal: 10,
+    gap: 5,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.25)",
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   addBtnText: {
     fontFamily: "Nunito-Bold",
     fontSize: 11.5,
     color: "#FFFFFF",
   },
-  packageList: {
-    gap: 8,
-  },
-  packageRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
-  },
-  packageName: {
-    fontFamily: "Nunito-Black",
-    fontSize: 13,
-    color: "#FFFFFF",
-  },
-  packageAmount: {
-    fontFamily: "Nunito-Bold",
-    fontSize: 11,
-    color: "#38BDF8",
-  },
-  packagePrice: {
-    fontFamily: "Nunito-Black",
-    fontSize: 14,
-    color: "#F1F5F9",
-  },
-  editBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    backgroundColor: "rgba(140, 87, 255, 0.15)",
-  },
-  editBtnText: {
-    fontFamily: "Nunito-Bold",
-    fontSize: 11,
-    color: "#8C57FF",
-  },
-  reportSummaryGrid: {
-    flexDirection: "row",
-    gap: 16,
-    marginVertical: 8,
-  },
-  reportBox: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 8,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
-    gap: 4,
-  },
-  reportBoxLabel: {
-    fontFamily: "Nunito-Bold",
-    fontSize: 12,
-    color: "#94A3B8",
-  },
-  reportBoxVal: {
-    fontFamily: "Nunito-Black",
-    fontSize: 20,
-    color: "#FFFFFF",
-  },
-  downloadReportBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#10B981",
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  downloadReportBtnText: {
-    fontFamily: "Nunito-Black",
-    fontSize: 13,
-    color: "#FFFFFF",
-  },
+
+  // ── Modals
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
     justifyContent: "center",
     alignItems: "center",
     padding: 16,
@@ -1377,21 +2268,21 @@ const styles = StyleSheet.create({
   modalCard: {
     width: "100%",
     maxWidth: 460,
-    backgroundColor: "#211D36",
+    backgroundColor: "#0D1117",
     borderRadius: 14,
     padding: 20,
     gap: 12,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
+    borderColor: "rgba(255, 255, 255, 0.09)",
   },
   modalTitle: {
     fontFamily: "Nunito-Black",
-    fontSize: 16,
+    fontSize: 15,
     color: "#FFFFFF",
   },
   modalSub: {
     fontFamily: "Nunito-Regular",
-    fontSize: 12,
+    fontSize: 11.5,
     color: "#94A3B8",
     lineHeight: 16,
   },
@@ -1405,7 +2296,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
   },
   modalCancelText: {
     fontFamily: "Nunito-Bold",
@@ -1427,16 +2318,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 6,
-    backgroundColor: "#8C57FF",
+    backgroundColor: "rgba(255, 255, 255, 0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.30)",
+    shadowOpacity: 0,
+    elevation: 0,
   },
   modalSaveText: {
     fontFamily: "Nunito-Bold",
     fontSize: 12,
     color: "#FFFFFF",
+    letterSpacing: 0.3,
   },
   detailGrid: {
     gap: 10,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
     padding: 14,
     borderRadius: 8,
     borderWidth: 1,
@@ -1449,17 +2345,17 @@ const styles = StyleSheet.create({
   },
   detailItemLabel: {
     fontFamily: "Nunito-Bold",
-    fontSize: 12,
+    fontSize: 11.5,
     color: "#94A3B8",
   },
   detailItemVal: {
     fontFamily: "Nunito-Bold",
-    fontSize: 12,
+    fontSize: 11.5,
     color: "#E2E8F0",
   },
   detailItemValBold: {
     fontFamily: "Nunito-Black",
-    fontSize: 12.5,
+    fontSize: 12,
     color: "#FFFFFF",
   },
   detailItemValHighlight: {
@@ -1469,14 +2365,14 @@ const styles = StyleSheet.create({
   },
   detailItemValMuted: {
     fontFamily: "Nunito-Regular",
-    fontSize: 11.5,
+    fontSize: 11,
     color: "#94A3B8",
   },
   detailNoteText: {
     fontFamily: "Nunito-Regular",
-    fontSize: 12,
+    fontSize: 11.5,
     color: "#CBD5E1",
-    backgroundColor: "rgba(0, 0, 0, 0.25)",
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
     padding: 8,
     borderRadius: 6,
     borderLeftWidth: 3,
@@ -1484,7 +2380,7 @@ const styles = StyleSheet.create({
   },
   modalCloseBtn: {
     paddingHorizontal: 18,
-    paddingVertical: 9,
+    paddingVertical: 8,
     borderRadius: 6,
     backgroundColor: "#8C57FF",
   },
@@ -1509,20 +2405,38 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 8,
     padding: 10,
-    backgroundColor: "rgba(239, 68, 68, 0.15)",
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.3)",
+    borderColor: "rgba(239, 68, 68, 0.25)",
   },
   reversalWarningTitle: {
     fontFamily: "Nunito-Black",
-    fontSize: 12,
+    fontSize: 11.5,
     color: "#EF4444",
   },
   reversalWarningText: {
     fontFamily: "Nunito-Regular",
-    fontSize: 11.5,
+    fontSize: 11,
     color: "#FCA5A5",
-    lineHeight: 16,
+    lineHeight: 15,
+  },
+
+  // ── Empties
+  emptyWrap: {
+    padding: 30,
+    alignItems: "center",
+    gap: 10,
+  },
+  emptyText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12.5,
+    color: "#475569",
+  },
+  emptyCenter: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 24,
+    gap: 10,
   },
 });

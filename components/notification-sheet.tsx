@@ -1,14 +1,17 @@
 import React, { useEffect, useState, useCallback } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { Image } from "expo-image";
+import { router } from "expo-router";
 import { AppIcon } from "@/components/app-icon";
 import { nothing } from "@/components/nothing-ui";
 import { useNotifications } from "@/hooks/use-notifications";
@@ -36,11 +39,11 @@ export function NotificationSheet({
   visible,
   onClose,
 }: {
-  visible: boolean;
   onClose: () => void;
+  visible: boolean;
 }) {
   const { user } = useAnirakuAuth();
-  const { notifications, markRead, markAllRead } = useNotifications();
+  const { notifications, markRead, markAllRead, deleteAll } = useNotifications();
   const [filter, setFilter] = useState<"all" | "unread" | "gifts">("unread");
   const [gifts, setGifts] = useState<SystemGift[]>([]);
   const [loadingGifts, setLoadingGifts] = useState(false);
@@ -169,6 +172,44 @@ export function NotificationSheet({
               {filter !== "gifts" && unreadNotifCount > 0 ? (
                 <Pressable onPress={() => markAllRead.mutate()} style={styles.markAllBtn}>
                   <Text style={styles.markAllText}>BACA SEMUA</Text>
+                </Pressable>
+              ) : null}
+
+              {filter !== "gifts" && items.length > 0 ? (
+                <Pressable
+                  onPress={() => {
+                    const doDelete = async () => {
+                      hapticLight();
+                      try {
+                        await deleteAll.mutateAsync();
+                      } catch (e) {
+                        console.warn("[notification-sheet] Delete error:", e);
+                      }
+                    };
+                    if (Platform.OS === "web") {
+                      const confirmed = typeof window !== "undefined" ? window.confirm("Hapus semua notifikasi akun Anda?") : true;
+                      if (confirmed) void doDelete();
+                    } else {
+                      Alert.alert(
+                        "Hapus Semua Notifikasi?",
+                        "Semua notifikasi akun Anda akan dihapus permanen.",
+                        [
+                          { text: "Batal", style: "cancel" },
+                          {
+                            text: "Hapus",
+                            style: "destructive",
+                            onPress: () => {
+                              void doDelete();
+                            },
+                          },
+                        ]
+                      );
+                    }
+                  }}
+                  style={styles.deleteAllNotifBtn}
+                >
+                  <AppIcon name="trash-can-outline" size={11} color="#EF4444" />
+                  <Text style={styles.deleteAllNotifText}>HAPUS</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -318,6 +359,19 @@ export function NotificationSheet({
                 contentContainerStyle={styles.list}
               />
             )}
+
+            {/* Footer: Navigasi ke Library Tab Notifikasi */}
+            <Pressable
+              onPress={() => {
+                hapticLight();
+                onClose();
+                router.push("/(tabs)/library?tab=alerts" as never);
+              }}
+              style={styles.viewAllFooterBtn}
+            >
+              <Text style={styles.viewAllFooterText}>Lihat Semua Notifikasi di Library</Text>
+              <AppIcon name="chevron-right" size={15} color="#38BDF8" />
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -416,6 +470,42 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.5,
+  },
+  deleteAllNotifBtn: {
+    marginLeft: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 3.5,
+    borderRadius: 6,
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.28)",
+  },
+  deleteAllNotifText: {
+    color: "#EF4444",
+    fontSize: 9.5,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+  },
+  viewAllFooterBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 10,
+    marginHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.22)",
+  },
+  viewAllFooterText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12,
+    color: "#38BDF8",
   },
 
   unclaimedGiftBanner: {

@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useBookmarks } from "@/hooks/use-bookmarks";
 import { useNotifications } from "@/hooks/use-notifications";
 import { useWatchHistory } from "@/hooks/use-watch-history";
@@ -19,6 +19,9 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/async-state";
 import { AppIcon } from "@/components/app-icon";
 import { FirstRunImportPrompt } from "@/components/first-run-import-prompt";
 import { hapticLight } from "@/lib/haptics";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAnirakuAuth } from "@/providers/auth-provider";
+import { localWatchKey } from "@/lib/watch-progress";
 import { RESUME_ROWS_STORAGE_KEY, buildResumeRows, type ResumeRow } from "@/lib/up-next";
 
 export type LibraryTab = "history" | "bookmarks" | "alerts";
@@ -102,10 +105,13 @@ export function LibraryView({
   headerTitle,
   headerSubtitle,
 }: LibraryViewProps) {
+  const { user } = useAnirakuAuth();
+  const queryClient = useQueryClient();
   const history = useWatchHistory();
   const bookmarks = useBookmarks();
   const notifications = useNotifications();
-  const [tab, setTab] = useState<LibraryTab>(initialTab);
+  const params = useLocalSearchParams<{ tab?: LibraryTab }>();
+  const [tab, setTab] = useState<LibraryTab>(params.tab || initialTab);
   const [sort, setSort] = useState<LibrarySort>("recent");
   const [layout, setLayout] = useState<LibraryLayout>("list");
   const [search, setSearch] = useState("");
@@ -114,10 +120,12 @@ export function LibraryView({
   const [cachedResumeRows, setCachedResumeRows] = useState<ResumeRow[] | null>(null);
 
   useEffect(() => {
-    if (initialTab) {
+    if (params.tab && (params.tab === "history" || params.tab === "bookmarks" || params.tab === "alerts")) {
+      setTab(params.tab);
+    } else if (initialTab) {
       setTab(initialTab);
     }
-  }, [initialTab]);
+  }, [params.tab, initialTab]);
 
   useEffect(() => {
     let active = true;
@@ -136,6 +144,39 @@ export function LibraryView({
       active = false;
     };
   }, []);
+
+  const handleDeleteAllNotifications = async () => {
+    const executeDelete = async () => {
+      try {
+        hapticLight();
+        await notifications.deleteAll.mutateAsync();
+      } catch (err: any) {
+        console.warn("[library-view] Delete notifications error:", err);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      const confirmed = typeof window !== "undefined" ? window.confirm("Hapus semua notifikasi akun Anda?") : true;
+      if (confirmed) {
+        await executeDelete();
+      }
+    } else {
+      Alert.alert(
+        "Hapus Semua Notifikasi?",
+        "Semua notifikasi akun Anda akan dihapus permanen.",
+        [
+          { text: "Batal", style: "cancel" },
+          {
+            text: "Hapus Semua",
+            style: "destructive",
+            onPress: () => {
+              void executeDelete();
+            },
+          },
+        ]
+      );
+    }
+  };
 
   const liveHistory = history.history.data;
   useEffect(() => {
@@ -177,7 +218,7 @@ export function LibraryView({
       ? bookmarks.bookmarks
       : notifications.notifications;
   const allRecords: any[] = tab === "history" && fallbackRows?.length ? fallbackRows : data.data ?? [];
-  const canRemoveHistory = tab === "history" && Boolean(history.history.data) && !fallbackRows?.length;
+  const canRemoveHistory = tab === "history";
   const activeSort = sortOptionsFor(tab).includes(sort) ? sort : "recent";
   const query = search.trim().toLowerCase();
   const searched = query ? allRecords.filter((row) => searchText(tab, row, query)) : allRecords;
@@ -196,18 +237,53 @@ export function LibraryView({
     if (!Number.isInteger(animeId) || !Number.isInteger(episode)) return;
     const key = `${animeId}:${episode}`;
     const title = String(row?.anime_title || "Anime");
+
+    const doRemove = async () => {
+      hapticLight();
+      setRemovingKey(key);
+      try {
+        // 1. Optimistic UI removal in React Query cache so it vanishes instantly
+        queryClient.setQueryData(["watch-history", user?.id], (old: any[] | undefined) => {
+          if (!old || !Array.isArray(old)) return old;
+          return old.filter((item) => !(Number(item.anime_id) === animeId && Number(item.episode_number) === episode));
+        });
+
+        // 2. Remove from local watch progress
+        await AsyncStorage.removeItem(localWatchKey(animeId, episode)).catch(() => {});
+
+        // 3. Remove from cached resume rows storage
+        setCachedResumeRows((prev) => {
+          if (!prev) return prev;
+          const filtered = prev.filter((r) => !(r.animeId === animeId && r.episode === episode));
+          void AsyncStorage.setItem(RESUME_ROWS_STORAGE_KEY, JSON.stringify({ savedAt: Date.now(), rows: filtered })).catch(() => {});
+          return filtered;
+        });
+
+        // 4. Remove from server / Supabase if user is signed in
+        if (history.remove?.mutateAsync) {
+          await history.remove.mutateAsync({ animeId, episode }).catch(() => {});
+        }
+      } catch {
+        // Silently handled
+      } finally {
+        setRemovingKey(null);
+      }
+    };
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      if (window.confirm(`Hapus ${title} · Episode ${episode} dari riwayat tontonan kamu?`)) {
+        void doRemove();
+      }
+      return;
+    }
+
     Alert.alert("Hapus dari riwayat?", `Hapus ${title} · Episode ${episode} dari riwayat tontonan kamu?`, [
       { text: "BATAL", style: "cancel" },
       {
         text: "HAPUS",
         style: "destructive",
         onPress: () => {
-          hapticLight();
-          setRemovingKey(key);
-          void history.remove
-            .mutateAsync({ animeId, episode })
-            .catch(() => Alert.alert("Gagal", "Tidak dapat menghapus baris riwayat. Coba lagi saat online."))
-            .finally(() => setRemovingKey(null));
+          void doRemove();
         },
       },
     ]);
@@ -303,12 +379,16 @@ export function LibraryView({
           <View style={styles.typeBadge}>
             <Text style={styles.typeBadgeText}>{item.type || "ANIME"}</Text>
           </View>
-          {Number(item?.score) > 0 ? (
-            <View style={styles.scoreBadge}>
-              <Text style={styles.scoreStarIcon}>★</Text>
-              <Text style={styles.scoreBadgeText}>{(Number(item.score) / 10).toFixed(1)}</Text>
-            </View>
-          ) : null}
+          {(() => {
+            const rawScore = Number(item?.score ?? item?.averageScore ?? 0);
+            const displayScore = rawScore > 10 ? (rawScore / 10).toFixed(1) : rawScore > 0 ? rawScore.toFixed(1) : null;
+            return displayScore ? (
+              <View style={styles.scoreBadge}>
+                <Text style={styles.scoreStarIcon}>★</Text>
+                <Text style={styles.scoreBadgeText}>{displayScore}</Text>
+              </View>
+            ) : null;
+          })()}
         </View>
         <Text style={styles.cardTitle} numberOfLines={2}>
           {item.title || item.anime_title || "Anime"}
@@ -346,11 +426,15 @@ export function LibraryView({
               {String(item.title || item.anime_title || "A").charAt(0).toUpperCase()}
             </Text>
           )}
-          {Number.isFinite(score) && score > 0 ? (
-            <View style={styles.gridBadge}>
-              <Text style={styles.gridBadgeText}>★ {(score / 10).toFixed(1)}</Text>
-            </View>
-          ) : null}
+          {(() => {
+            const rawScore = Number(item?.score ?? item?.averageScore ?? 0);
+            const displayScore = rawScore > 10 ? (rawScore / 10).toFixed(1) : rawScore > 0 ? rawScore.toFixed(1) : null;
+            return displayScore ? (
+              <View style={styles.gridBadge}>
+                <Text style={styles.gridBadgeText}>★ {displayScore}</Text>
+              </View>
+            ) : null;
+          })()}
         </View>
         <Text style={styles.gridTitle} numberOfLines={2}>
           {item.title || item.anime_title || "Anime"}
@@ -376,6 +460,11 @@ export function LibraryView({
         <View style={[styles.alertDot, !item.read && styles.alertDotUnread]} />
       </View>
       <View style={styles.cardBody}>
+        {item.title ? (
+          <Text style={[styles.cardTitle, { fontSize: 13, marginBottom: 2 }]} numberOfLines={1}>
+            {item.title}
+          </Text>
+        ) : null}
         <Text style={styles.alertText}>{item.message}</Text>
         <Text style={styles.alertTimeText}>
           {item.read ? "Sudah dibaca" : "Pemberitahuan baru"}
@@ -538,6 +627,26 @@ export function LibraryView({
           </View>
         )}
 
+        {/* Tombol Hapus Notifikasi di samping kiri tombol OFFLINE */}
+        {tab === "alerts" ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Hapus semua notifikasi"
+            disabled={notifications.deleteAll.isPending || records.length === 0}
+            onPress={handleDeleteAllNotifications}
+            style={({ pressed }) => [
+              styles.deleteBtnTop,
+              (records.length === 0 || notifications.deleteAll.isPending) && styles.deleteBtnTopDisabled,
+              pressed && styles.btnPressed,
+            ]}
+          >
+            <AppIcon name="trash-can-outline" size={14} color="#EF4444" />
+            <Text style={styles.deleteBtnTopText}>
+              {notifications.deleteAll.isPending ? "MENGHAPUS..." : "HAPUS"}
+            </Text>
+          </Pressable>
+        ) : null}
+
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Buka download offline"
@@ -602,9 +711,9 @@ export function LibraryView({
                     ]}
                   >
                     <AppIcon
-                      name={option === "grid" ? "view-grid-outline" : "layers"}
+                      name={option === "grid" ? "view-grid-outline" : "view-list-outline"}
                       size={15}
-                      color={isActive ? "#38BDF8" : "#94A3B8"}
+                      color={isActive ? "#E2E8F0" : "#94A3B8"}
                     />
                   </Pressable>
                 );
@@ -733,8 +842,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   tabPillActive: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderColor: "rgba(255, 255, 255, 0.1)",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderColor: "rgba(226, 232, 240, 0.35)",
   },
   tabPillText: {
     fontFamily: "Nunito-Bold",
@@ -742,7 +851,7 @@ const styles = StyleSheet.create({
     color: "#94A3B8",
   },
   tabPillTextActive: {
-    color: "#38BDF8",
+    color: "#E2E8F0",
     fontFamily: "Nunito-Black",
   },
 
@@ -853,8 +962,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   chipActive: {
-    borderColor: "rgba(255, 255, 255, 0.1)",
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: "rgba(226, 232, 240, 0.35)",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
   },
   chipText: {
     fontFamily: "Nunito-Bold",
@@ -863,7 +972,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   chipTextActive: {
-    color: "#38BDF8",
+    color: "#E2E8F0",
     fontFamily: "Nunito-Black",
   },
 
@@ -900,6 +1009,31 @@ const styles = StyleSheet.create({
   alertActionPillTextActive: {
     color: "#FFFFFF",
     fontFamily: "Nunito-Black",
+  },
+
+  // Tombol Hapus di samping kiri Offline
+  deleteBtnTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.3)",
+    marginRight: 8,
+    ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
+  },
+  deleteBtnTopDisabled: {
+    opacity: 0.35,
+    ...(Platform.OS === "web" ? ({ cursor: "not-allowed" } as any) : {}),
+  },
+  deleteBtnTopText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 11,
+    color: "#EF4444",
+    letterSpacing: 0.4,
   },
 
   // ─── 6. CONTENT & CARDS (LIQUID GLASS) ───
@@ -956,9 +1090,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   epBadge: {
-    backgroundColor: "rgba(56, 189, 248, 0.15)",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
     borderWidth: 1,
-    borderColor: "rgba(56, 189, 248, 0.35)",
+    borderColor: "rgba(226, 232, 240, 0.3)",
     borderRadius: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -966,7 +1100,7 @@ const styles = StyleSheet.create({
   epBadgeText: {
     fontFamily: "Nunito-Black",
     fontSize: 10,
-    color: "#38BDF8",
+    color: "#CBD5E1",
   },
   resumeStatusText: {
     fontFamily: "Nunito-SemiBold",
@@ -992,13 +1126,13 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   scoreStarIcon: {
-    color: "#F5C518",
+    color: "#CBD5E1",
     fontSize: 11,
   },
   scoreBadgeText: {
     fontFamily: "Nunito-Bold",
     fontSize: 10.5,
-    color: "#F5C518",
+    color: "#CBD5E1",
   },
   cardTitle: {
     fontFamily: "Nunito-Black",
@@ -1020,7 +1154,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: "100%",
-    backgroundColor: "#38BDF8",
+    backgroundColor: "#CBD5E1",
     borderRadius: 2,
   },
   historyContentWrap: {
@@ -1087,7 +1221,7 @@ const styles = StyleSheet.create({
   },
   gridBadgeText: {
     fontFamily: "Nunito-Black",
-    color: "#F5C518",
+    color: "#CBD5E1",
     fontSize: 10,
   },
   gridTitle: {
@@ -1117,7 +1251,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.2)",
   },
   alertDotUnread: {
-    backgroundColor: "#38BDF8",
+    backgroundColor: "#CBD5E1",
   },
   alertText: {
     fontFamily: "Nunito-Bold",

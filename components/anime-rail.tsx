@@ -74,7 +74,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   browseText: {
-    color: "#38BDF8",
+    color: "#C0C0C0",
     fontFamily: "Nunito-Bold",
     fontSize: 12,
   },

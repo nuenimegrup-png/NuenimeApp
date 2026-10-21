@@ -407,7 +407,7 @@ export default function AdminSupportScreen() {
                         style={styles.input}
                         value={formHeadlineBadge}
                         onChangeText={setFormHeadlineBadge}
-                        placeholder="🎌 NUENIME"
+                        placeholder="NUENIME"
                         placeholderTextColor="#64748B"
                       />
                     </View>
@@ -534,7 +534,10 @@ export default function AdminSupportScreen() {
                     {/* Saweria card mock */}
                     <View style={styles.mockCard}>
                       <View style={styles.mockCardTop}>
-                        <Text style={styles.mockSaweriaTitle}>☕ Saweria</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <AppIcon name="coffee" size={14} color="#F59E0B" />
+                          <Text style={styles.mockSaweriaTitle}>Saweria</Text>
+                        </View>
                         <View
                           style={[
                             styles.mockPill,
@@ -570,7 +573,8 @@ export default function AdminSupportScreen() {
 
                       {/* Button */}
                       <View style={styles.mockBtn}>
-                        <Text style={styles.mockBtnText}>☕ Dukung Sekarang</Text>
+                        <AppIcon name="coffee" size={13} color="#FFFFFF" />
+                        <Text style={[styles.mockBtnText, { marginLeft: 6 }]}>Dukung Sekarang</Text>
                       </View>
                     </View>
 
@@ -584,7 +588,7 @@ export default function AdminSupportScreen() {
                         />
                       ) : null}
                       <Text style={styles.mockThankYouText}>
-                        Arigatou gozaimasu! 🙏
+                        Arigatou gozaimasu!
                       </Text>
                     </View>
                   </View>
@@ -1167,7 +1171,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.22)",
     paddingVertical: 8,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
   },
   mockBtnText: {
     fontFamily: "Nunito-Bold",

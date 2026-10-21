@@ -19,6 +19,7 @@ export interface LeaderboardEntry {
   periodStart: string;
   periodEnd: string;
   equippedBorder?: string | null;
+  role?: string | null;
 }
 
 function getPeriodStart(period: LeaderboardPeriod): Date {
@@ -57,7 +58,7 @@ export async function getLeaderboard(
   if (period === "alltime") {
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, username, display_name, avatar_url, member_number, level, exp, is_vip, equipped_border")
+      .select("id, username, display_name, avatar_url, member_number, level, exp, is_vip, equipped_border, role")
       .order("exp", { ascending: false })
       .limit(limit);
 
@@ -80,6 +81,7 @@ export async function getLeaderboard(
       periodStart: periodStart.toISOString(),
       periodEnd: now.toISOString(),
       equippedBorder: p.equipped_border ?? null,
+      role: p.role ?? "Member",
     }));
   }
 
@@ -117,7 +119,7 @@ export async function getLeaderboard(
   // Step 4: fetch profiles untuk user tersebut
   const { data: profileData, error: profError } = await supabase
     .from("profiles")
-    .select("id, username, display_name, avatar_url, member_number, level, is_vip, equipped_border")
+    .select("id, username, display_name, avatar_url, member_number, level, is_vip, equipped_border, role")
     .in("id", sortedUserIds);
 
   if (profError) {
@@ -141,6 +143,7 @@ export async function getLeaderboard(
       periodStart: periodStart.toISOString(),
       periodEnd: now.toISOString(),
       equippedBorder: p?.equipped_border ?? null,
+      role: p?.role ?? "Member",
     };
   });
 }

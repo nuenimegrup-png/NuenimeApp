@@ -33,6 +33,8 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
+    // @ts-ignore
+    usesCleartextTraffic: true,
     permissions: ["POST_NOTIFICATIONS", "REQUEST_INSTALL_PACKAGES"],
     intentFilters: [
       { action: "VIEW", autoVerify: true, data: [{ scheme: env.scheme, host: "auth" }], category: ["BROWSABLE", "DEFAULT"] },
@@ -52,7 +54,15 @@ const config: ExpoConfig = {
     ["expo-secure-store", { configureAndroidBackup: false }],
     ["expo-notifications", { icon: "./assets/images/logo-app.png", color: "#FF4D4D" }],
     ["expo-splash-screen", { image: "./assets/images/logo-app.png", imageWidth: 200, resizeMode: "contain", backgroundColor: "#0E0E11", dark: { backgroundColor: "#0E0E11" } }],
-    ["expo-build-properties", { android: { buildArchs: ["armeabi-v7a", "arm64-v8a", "x86_64"], minSdkVersion: 28 } }],
+    ["expo-build-properties", {
+      android: {
+        // x86_64 hanya untuk emulator — hapus dari device APK agar lebih kecil dan cepat load
+        buildArchs: ["armeabi-v7a", "arm64-v8a"],
+        minSdkVersion: 28,
+        // Hapus resource yang tidak dipakai dari APK final
+        shrinkResources: true,
+      }
+    }],
     "@react-native-google-signin/google-signin",
   ],
   // Keep file-route typing, but remove optional compiler/runtime experiments

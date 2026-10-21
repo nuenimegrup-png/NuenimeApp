@@ -46,36 +46,36 @@ export const CRYSTAL_PACKAGES: CrystalPackage[] = [
   {
     id: "starter",
     name: "Starter",
-    amount: 300,
-    amountFormatted: "300",
-    price: 300,
-    priceFormatted: "Rp300",
+    amount: 1500,
+    amountFormatted: "1.500",
+    price: 1500,
+    priceFormatted: "Rp1.500",
   },
   {
     id: "basic",
     name: "Basic",
-    amount: 500,
-    amountFormatted: "500",
-    price: 500,
-    priceFormatted: "Rp500",
+    amount: 2500,
+    amountFormatted: "2.500",
+    price: 2500,
+    priceFormatted: "Rp2.500",
   },
   {
     id: "standard",
     name: "Standard",
-    amount: 1000,
-    amountFormatted: "1.000",
-    price: 1000,
-    priceFormatted: "Rp1.000",
+    amount: 4000,
+    amountFormatted: "4.000",
+    price: 4000,
+    priceFormatted: "Rp4.000",
     tag: "POPULER",
     tagColor: "#38BDF8",
   },
   {
     id: "advanced",
     name: "Advanced",
-    amount: 2500,
-    amountFormatted: "2.500",
-    price: 2500,
-    priceFormatted: "Rp2.500",
+    amount: 10000,
+    amountFormatted: "10.000",
+    price: 10000,
+    priceFormatted: "Rp10.000",
   },
   {
     id: "premium",
@@ -262,17 +262,24 @@ export async function fetchCrystalPackages(): Promise<CrystalPackage[]> {
       .eq("key", "crystal_packages")
       .maybeSingle();
 
-    if (!error && data?.value && Array.isArray(data.value) && data.value.length > 0) {
-      const list: CrystalPackage[] = data.value.map((p: any) => {
+    let val = data?.value;
+    if (typeof val === "string") {
+      try {
+        val = JSON.parse(val);
+      } catch {}
+    }
+
+    if (!error && val && Array.isArray(val) && val.length > 0) {
+      const list: CrystalPackage[] = val.map((p: any) => {
         const amount = Number(p.amount) || 0;
         const price = Number(p.price) || 0;
         return {
           id: p.id,
           name: p.name,
           amount,
-          amountFormatted: formatCrystalAmount(amount),
+          amountFormatted: p.amountFormatted || formatCrystalAmount(amount),
           price,
-          priceFormatted: formatRupiah(price),
+          priceFormatted: p.priceFormatted || formatRupiah(price),
           tag: p.tag,
           tagColor: p.tagColor || p.tag_color,
           active: p.active !== false,

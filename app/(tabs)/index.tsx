@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Alert,
   Platform,
@@ -84,17 +85,44 @@ export default function HomeScreen() {
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const [selectedGenre, setSelectedGenre] = useState<string>("Action");
 
+  const [cachedHome, setCachedHome] = useState<{ trending: any[]; popular: any[]; upcoming: any[] } | null>(null);
+
+  // Load cached home data instantly on startup for zero-delay first paint
+  useEffect(() => {
+    void AsyncStorage.getItem(`nuenime.cache.home.${isAdultParam}`).then((raw) => {
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.trending) && parsed.trending.length > 0) {
+            setCachedHome(parsed);
+          }
+        } catch {}
+      }
+    });
+  }, [isAdultParam]);
+
   const home = useQuery({
     queryKey: ["home-anime", isAdultParam],
     queryFn: () => getHomeAnime(isAdultParam),
+    placeholderData: cachedHome ?? undefined,
     staleTime: 10 * 60_000,
     retry: 3,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   });
 
+  // Save fresh home data to cache
+  useEffect(() => {
+    if (home.data && home.data.trending && home.data.trending.length > 0) {
+      void AsyncStorage.setItem(`nuenime.cache.home.${isAdultParam}`, JSON.stringify(home.data)).catch(() => {});
+    }
+  }, [home.data, isAdultParam]);
+
+  // Secondary rails only fetch AFTER the hero & trending cards have arrived,
+  // preventing network bottleneck and AniList rate limit choke during initial load
   const rails = useQuery({
     queryKey: ["home-rails", isAdultParam],
     queryFn: () => getHomeRailAnime(isAdultParam),
+    enabled: Boolean(home.data),
     staleTime: 10 * 60_000,
     retry: 2,
     retryDelay: 1_500,
@@ -110,6 +138,7 @@ export default function HomeScreen() {
         perPage: 12,
         isAdult: isAdultParam,
       }).then((res) => res.media),
+    enabled: Boolean(home.data),
     staleTime: 10 * 60_000,
   });
 
@@ -122,6 +151,7 @@ export default function HomeScreen() {
         perPage: 12,
         isAdult: isAdultParam,
       }).then((res) => res.media),
+    enabled: Boolean(home.data),
     staleTime: 10 * 60_000,
   });
 
@@ -548,7 +578,7 @@ export default function HomeScreen() {
               style={({ pressed }) => [styles.seeAllGenreBtn, pressed && styles.btnPressed]}
             >
               <Text style={styles.seeAllGenreText}>Lihat Semua</Text>
-              <AppIcon name="chevron-right" size={14} color="#F5C518" />
+              <AppIcon name="chevron-right" size={14} color="#C0C0C0" />
             </Pressable>
           </View>
 
@@ -1149,14 +1179,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6,
-    backgroundColor: "rgba(245, 197, 24, 0.15)",
+    backgroundColor: "rgba(192, 192, 192, 0.14)",
     borderWidth: 1,
-    borderColor: "rgba(245, 197, 24, 0.3)",
+    borderColor: "rgba(192, 192, 192, 0.35)",
   },
   genreBadgeText: {
     fontFamily: "Nunito-ExtraBold",
     fontSize: 9.5,
-    color: "#F5C518",
+    color: "#C0C0C0",
     letterSpacing: 0.6,
   },
   genreSectionTitle: {
@@ -1178,14 +1208,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(192, 192, 192, 0.25)",
   },
   seeAllGenreText: {
     fontFamily: "Nunito-Bold",
     fontSize: 11.5,
-    color: "#F5C518",
+    color: "#C0C0C0",
   },
   genreGrid: {
     flexDirection: "row",
@@ -1199,7 +1229,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: "rgba(22, 27, 38, 0.72)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
+    borderColor: "rgba(192, 192, 192, 0.22)",
     alignItems: "center",
     justifyContent: "center",
     ...(Platform.OS === "web"
@@ -1210,13 +1240,13 @@ const styles = StyleSheet.create({
       : {}),
   },
   genreBtnActive: {
-    backgroundColor: "rgba(56, 189, 248, 0.18)",
-    borderColor: "#38BDF8",
+    backgroundColor: "rgba(192, 192, 192, 0.22)",
+    borderColor: "#E2E8F0",
   },
   genreBtnText: {
     fontFamily: "Nunito-Bold",
     fontSize: 11,
-    color: "#94A3B8",
+    color: "#CBD5E1",
     textAlign: "center",
   },
   genreBtnTextActive: {

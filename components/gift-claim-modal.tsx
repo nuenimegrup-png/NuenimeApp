@@ -14,6 +14,8 @@ import { nothing } from "@/components/nothing-ui";
 import { hapticLight, hapticSuccess, hapticWarning } from "@/lib/haptics";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { type SystemGift, claimGiftForUser } from "@/lib/mailbox-service";
+import { BorderAvatar } from "@/components/border-avatar";
+import { getBorderById, getBorderByIdAsync, type AvatarBorder } from "@/lib/avatar-borders";
 
 const CRYSTAL_ICON = require("@/assets/images/topup/topup-crystal.png");
 
@@ -32,6 +34,24 @@ export function GiftClaimModal({
 }: GiftClaimModalProps) {
   const auth = useAnirakuAuth();
   const [claiming, setClaiming] = useState(false);
+  const [borderInfo, setBorderInfo] = useState<AvatarBorder | null>(() => {
+    return gift && gift.giftType === "border" ? getBorderById(gift.giftValue) || null : null;
+  });
+
+  React.useEffect(() => {
+    if (gift && gift.giftType === "border") {
+      const syncB = getBorderById(gift.giftValue);
+      if (syncB) {
+        setBorderInfo(syncB);
+      } else {
+        void getBorderByIdAsync(gift.giftValue).then((b) => {
+          if (b) setBorderInfo(b);
+        });
+      }
+    } else {
+      setBorderInfo(null);
+    }
+  }, [gift?.giftType, gift?.giftValue]);
 
   if (!gift) return null;
 
@@ -52,10 +72,11 @@ export function GiftClaimModal({
       }
 
       hapticSuccess();
+      const bMeta = gift.giftType === "border" ? getBorderById(gift.giftValue) : null;
       const rewardText =
         gift.giftType === "crystal"
           ? `+${gift.giftValue} Dylan Crystal`
-          : `Border Avatar (${gift.giftValue})`;
+          : `Border Avatar "${bMeta?.name || gift.giftValue}"`;
 
       Alert.alert(
         "Klaim Berhasil 🎉",
@@ -102,7 +123,15 @@ export function GiftClaimModal({
           </View>
 
           {/* Reward Item Box */}
-          <View style={styles.rewardBox}>
+          <View
+            style={[
+              styles.rewardBox,
+              gift.giftType === "border" && {
+                backgroundColor: "rgba(168, 85, 247, 0.12)",
+                borderColor: "rgba(168, 85, 247, 0.35)",
+              },
+            ]}
+          >
             {gift.giftType === "crystal" ? (
               <>
                 <Image source={CRYSTAL_ICON} style={styles.crystalIcon} contentFit="contain" />
@@ -112,13 +141,26 @@ export function GiftClaimModal({
                 </View>
               </>
             ) : (
-              <>
-                <AppIcon name="shield-star-outline" size={32} color="#F59E0B" />
-                <View>
-                  <Text style={styles.rewardLabel}>HADIAH BORDER AVATAR</Text>
-                  <Text style={styles.rewardAmount}>{gift.giftValue}</Text>
+              <View style={styles.borderRewardRow}>
+                <View style={styles.borderAvatarWrapper}>
+                  <BorderAvatar
+                    size={48}
+                    borderId={gift.giftValue}
+                    avatarUrl={auth.profile?.avatar_url || "https://images.alphacoders.com/132/1328004.png"}
+                  />
                 </View>
-              </>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={[styles.rewardLabel, { color: "#C084FC" }]}>HADIAH BORDER AVATAR</Text>
+                  <Text style={styles.rewardAmount}>
+                    {borderInfo?.name || gift.giftValue}
+                  </Text>
+                  {borderInfo?.rarity && (
+                    <Text style={styles.borderRarityTag}>
+                      Kelangkaan: {borderInfo.rarity}
+                    </Text>
+                  )}
+                </View>
+              </View>
             )}
           </View>
 
@@ -268,5 +310,23 @@ const styles = StyleSheet.create({
     fontFamily: "Nunito-Bold",
     fontSize: 14,
     color: "#94A3B8",
+  },
+  borderRewardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    flex: 1,
+  },
+  borderAvatarWrapper: {
+    width: 62,
+    height: 62,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  borderRarityTag: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
+    color: "#CBD5E1",
+    marginTop: 1,
   },
 });

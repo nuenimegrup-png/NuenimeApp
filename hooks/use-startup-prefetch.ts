@@ -19,22 +19,30 @@ export function useStartupPrefetch() {
   const queryClient = useQueryClient();
   useEffect(() => {
     let cancelled = false;
-    const window = currentWeekWindow();
-    queryClient.prefetchQuery({
-      queryKey: ["schedule", window.startAt, window.endAt],
-      queryFn: () => getAiringScheduleWindow(window),
-      staleTime: 5 * 60_000,
-    });
-    void readNsfwPreference().then((nsfwEnabled) => {
+    // Delay prefetch so Home screen gets 100% of network & AniList request slots at cold start
+    const timer = setTimeout(() => {
       if (cancelled) return;
-      const isAdultParam = nsfwFilterParam(nsfwEnabled);
-      const pages = sessionRandomPages();
+      const window = currentWeekWindow();
       queryClient.prefetchQuery({
-        queryKey: ["random-pool", pages[0], pages[1], pages[2], isAdultParam],
-        queryFn: () => getAnimePool({ pages, perPage: 50, isAdult: isAdultParam }),
-        staleTime: 10 * 60_000,
+        queryKey: ["schedule", window.startAt, window.endAt],
+        queryFn: () => getAiringScheduleWindow(window),
+        staleTime: 5 * 60_000,
       });
-    }).catch(() => {});
-    return () => { cancelled = true; };
+      void readNsfwPreference().then((nsfwEnabled) => {
+        if (cancelled) return;
+        const isAdultParam = nsfwFilterParam(nsfwEnabled);
+        const pages = sessionRandomPages();
+        queryClient.prefetchQuery({
+          queryKey: ["random-pool", pages[0], pages[1], pages[2], isAdultParam],
+          queryFn: () => getAnimePool({ pages, perPage: 50, isAdult: isAdultParam }),
+          staleTime: 10 * 60_000,
+        });
+      }).catch(() => {});
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [queryClient]);
 }

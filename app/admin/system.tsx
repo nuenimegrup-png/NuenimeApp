@@ -332,7 +332,7 @@ export default function AdminSystemScreen() {
                   <View style={styles.githubSyncHeader}>
                     <AppIcon name="github" size={20} color="#38BDF8" />
                     <View style={{ flex: 1, marginLeft: 10 }}>
-                      <Text style={styles.githubSyncTitle}>⚡ Auto-Sync dari GitHub Release</Text>
+                      <Text style={styles.githubSyncTitle}>Auto-Sync dari GitHub Release</Text>
                       <Text style={styles.githubSyncDesc}>
                         Tempel tautan release GitHub (tag atau repo). Sistem akan otomatis membaca versi, file .apk, dan catatan changelog.
                       </Text>
@@ -497,7 +497,7 @@ export default function AdminSystemScreen() {
                     </Text>
                     <Text style={styles.maintStatusDesc}>
                       {announcementConfig.isActive
-                        ? "Modal pengumuman akan muncul saat user membuka aplikasi (bisa ditutup dengan tombol ✕)."
+                        ? "Modal pengumuman akan muncul saat user membuka aplikasi (bisa ditutup dengan tombol Close)."
                         : "Pengguna langsung diarahkan ke layar utama tanpa dialog pengumuman pembuka."}
                     </Text>
                   </View>
@@ -523,7 +523,7 @@ export default function AdminSystemScreen() {
                       placeholder="INFO"
                       placeholderTextColor="#64748B"
                     />
-                    <Text style={styles.hint}>Akan ditampilkan di header modal seperti: 🔔 [ INFO ]</Text>
+                    <Text style={styles.hint}>Akan ditampilkan di header modal seperti: [ INFO ]</Text>
                   </View>
 
                   <View style={[styles.formGroup, { flex: 1 }]}>

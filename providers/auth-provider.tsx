@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { AppState, Platform } from "react-native";
+import { AppState, Platform, Modal, StyleSheet, Text, View, Pressable } from "react-native";
+import { router } from "expo-router";
+import { AppIcon } from "@/components/app-icon";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as WebBrowser from "expo-web-browser";
 import { supabase } from "@/lib/supabase";
@@ -123,19 +125,29 @@ export function AuthProvider({ children }: PropsWithChildren) {
         AsyncStorage.getItem(`aniraku.cooldown.${user.id}.avatar`).catch(() => null),
       ]);
 
-      // Query database HANYA kolom standar yang ada di Supabase remote agar tidak ada error 400 Bad Request
+      // Query database profil pengguna
       const { data: profileData, error: profileErr } = await supabase
         .from("profiles")
-        .select(BASE_PROFILE_COLUMNS)
+        .select("*")
         .eq("id", user.id)
         .maybeSingle();
 
       if (!profileErr && profileData) {
+        const [overrideRole, overrideBan, overrideBanReason] = await Promise.all([
+          AsyncStorage.getItem(`@nuenime_user_role_${user.id}`).catch(() => null),
+          AsyncStorage.getItem(`@nuenime_user_ban_${user.id}`).catch(() => null),
+          AsyncStorage.getItem(`@nuenime_user_ban_reason_${user.id}`).catch(() => null),
+        ]);
+
         const fullProfile = {
           ...profileData,
-          banner_updated_at: localBannerAt || null,
-          name_updated_at: localNameAt || null,
-          avatar_updated_at: localAvatarAt || null,
+          role: overrideRole || (profileData as any)?.role || "Member",
+          is_banned: overrideBan !== null ? overrideBan === "true" : Boolean((profileData as any)?.is_banned),
+          banned_at: (profileData as any)?.banned_at || null,
+          ban_reason: overrideBanReason || (profileData as any)?.ban_reason || null,
+          banner_updated_at: (profileData as any)?.banner_updated_at || localBannerAt || null,
+          name_updated_at: (profileData as any)?.name_updated_at || localNameAt || null,
+          avatar_updated_at: (profileData as any)?.avatar_updated_at || localAvatarAt || null,
         } as AnirakuProfile;
 
         // Jika profil di DB belum memiliki avatar_url, atau masih memakai avatar placeholder bawaan,
@@ -170,7 +182,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       const { data: created, error: createError } = await supabase
         .from("profiles")
         .upsert(initialPayload, { onConflict: "id" })
-        .select(BASE_PROFILE_COLUMNS)
+        .select("*")
         .maybeSingle();
 
       if (createError) throw createError;
@@ -285,7 +297,9 @@ function getGoogleSignin() {
       // Tidak ada fallback ke web browser. Kalau native gagal, lempar error
       // ke UI agar user mendapat pesan yang jelas, bukan diarahkan ke Chrome.
       const gModule = getGoogleSignin();
-      const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+      const webClientId =
+        process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+        "444728416290-rtacl8l6hofjhm0uauid82vppsda4e1i.apps.googleusercontent.com";
 
       if (!gModule || !webClientId) {
         throw new Error("Login Google belum dikonfigurasi untuk perangkat ini.");
@@ -419,7 +433,11 @@ function getGoogleSignin() {
     const nowIso = new Date().toISOString();
     const { error: updateErr } = await supabase
       .from("profiles")
-      .update({ banner_url: cleanUrl })
+      .update({
+        banner_url: cleanUrl,
+        banner_updated_at: nowIso,
+        updated_at: nowIso,
+      })
       .eq("id", user.id);
     if (updateErr) throw updateErr;
 
@@ -456,7 +474,11 @@ function getGoogleSignin() {
     const nowIso = new Date().toISOString();
     const { error: updateErr } = await supabase
       .from("profiles")
-      .update({ display_name: clean })
+      .update({
+        display_name: clean,
+        name_updated_at: nowIso,
+        updated_at: nowIso,
+      })
       .eq("id", user.id);
     if (updateErr) throw updateErr;
 
@@ -492,7 +514,11 @@ function getGoogleSignin() {
     const nowIso = new Date().toISOString();
     const { error: updateErr } = await supabase
       .from("profiles")
-      .update({ avatar_url: cleanUrl })
+      .update({
+        avatar_url: cleanUrl,
+        avatar_updated_at: nowIso,
+        updated_at: nowIso,
+      })
       .eq("id", user.id);
     if (updateErr) throw updateErr;
 
@@ -543,7 +569,48 @@ function getGoogleSignin() {
     signOut,
   }), [loading, profile, resendVerification, session, sendRecovery, signInWithGoogle, signIn, signOut, signUp, updatePassword, updateProfile, updateBanner, updateDisplayName, updateAvatar, refreshProfile, updateProfileExpAndLevel]);
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      {profile?.is_banned ? (
+        <Modal visible transparent animationType="fade" statusBarTranslucent>
+          <View style={banStyles.overlay}>
+            <View style={banStyles.card}>
+              <View style={banStyles.iconBox}>
+                <AppIcon name="shield-alert" size={40} color="#EF4444" />
+              </View>
+              <Text style={banStyles.title}>Akun Anda Diblokir</Text>
+              <Text style={banStyles.desc}>
+                Akun Anda telah diblokir oleh administrator. Silakan hubungi developer Nuenime untuk meminta pembukaan blokir akun.
+              </Text>
+              {profile.ban_reason ? (
+                <View style={banStyles.reasonBox}>
+                  <Text style={banStyles.reasonLabel}>Alasan Pemblokiran:</Text>
+                  <Text style={banStyles.reasonText}>{profile.ban_reason}</Text>
+                </View>
+              ) : null}
+              <View style={banStyles.btnCol}>
+                <Pressable
+                  onPress={() => {
+                    try {
+                      router.push("/developer" as any);
+                    } catch {}
+                  }}
+                  style={banStyles.btnContact}
+                >
+                  <AppIcon name="account-wrench" size={17} color="#FFFFFF" />
+                  <Text style={banStyles.btnContactText}>Hubungi Developer</Text>
+                </Pressable>
+                <Pressable onPress={signOut} style={banStyles.btnSignOut}>
+                  <Text style={banStyles.btnSignOutText}>Keluar Akun</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAnirakuAuth() {
@@ -551,3 +618,113 @@ export function useAnirakuAuth() {
   if (!context) throw new Error("useAnirakuAuth must be used inside AuthProvider.");
   return context;
 }
+
+const banStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(3, 7, 18, 0.88)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
+      : {}),
+  },
+  card: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "#0B0E14",
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.35)",
+    alignItems: "center",
+    shadowColor: "#EF4444",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+  iconBox: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.28)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  title: {
+    fontFamily: "Nunito-Black",
+    fontSize: 20,
+    color: "#FFFFFF",
+    letterSpacing: -0.3,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  desc: {
+    fontFamily: "Nunito-Medium",
+    fontSize: 13,
+    color: "#94A3B8",
+    lineHeight: 20,
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  reasonBox: {
+    width: "100%",
+    backgroundColor: "rgba(239, 68, 68, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.2)",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 18,
+  },
+  reasonLabel: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
+    color: "#FCA5A5",
+    marginBottom: 4,
+  },
+  reasonText: {
+    fontFamily: "Nunito-SemiBold",
+    fontSize: 13,
+    color: "#F87171",
+  },
+  btnCol: {
+    width: "100%",
+    gap: 10,
+  },
+  btnContact: {
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: "#EF4444",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  btnContactText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 14,
+    color: "#FFFFFF",
+  },
+  btnSignOut: {
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  btnSignOutText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 13,
+    color: "#94A3B8",
+  },
+});

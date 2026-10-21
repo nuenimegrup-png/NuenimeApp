@@ -23,7 +23,7 @@ import { AppIcon } from "@/components/app-icon";
 import { hapticLight } from "@/lib/haptics";
 
 /** Same slim media fragment lib/anilist.ts ships for schedule rows. */
-const SCHEDULE_MEDIA_FIELDS = `id type title { romaji english native } coverImage { large extraLarge } format status`;
+const SCHEDULE_MEDIA_FIELDS = `id type title { romaji english native } coverImage { large extraLarge } format status averageScore popularity`;
 
 type ArchivePage = {
   pageInfo?: { currentPage?: number; hasNextPage?: boolean; total?: number | null };
@@ -106,20 +106,19 @@ const TimelineScheduleRow = memo(function TimelineScheduleRow({
 
   const isAired = item.airingAt * 1000 <= Date.now();
 
-  // Score & popularity formatting with reliable fallbacks
-  const anyMedia = anime as any;
-  const scoreVal = anyMedia.averageScore
-    ? (anyMedia.averageScore / 10).toFixed(1)
-    : "6.8";
-  const popVal = anyMedia.popularity
-    ? anyMedia.popularity > 1000
-      ? `${(anyMedia.popularity / 1000).toFixed(1)}K`
-      : String(anyMedia.popularity)
-    : "4.8K";
+  // Score & popularity formatting from live AniList metadata (no longer dummy data)
+  const scoreVal = typeof anime.averageScore === "number" && anime.averageScore > 0
+    ? (anime.averageScore / 10).toFixed(1)
+    : "—";
+  const popVal = typeof anime.popularity === "number" && anime.popularity > 0
+    ? anime.popularity >= 1000
+      ? `${(anime.popularity / 1000).toFixed(anime.popularity >= 10000 ? 0 : 1)}K`
+      : String(anime.popularity)
+    : "—";
 
   return (
     <View style={styles.timelineRow}>
-      {/* Left Column: Time & Gold Dot & Vertical Connector */}
+      {/* Left Column: Time & Silver Dot & Vertical Connector */}
       <View style={styles.timelineCol}>
         <Text style={styles.timelineTime}>{timeStr}</Text>
         <View style={styles.timelineDot} />
@@ -472,7 +471,7 @@ const styles = StyleSheet.create({
   },
   timelineTime: {
     fontFamily: "Nunito-Black",
-    color: "#F5C518",
+    color: "#CBD5E1",
     fontSize: 12.5,
     marginBottom: 8,
     textAlign: "center",
@@ -481,7 +480,9 @@ const styles = StyleSheet.create({
     width: 9,
     height: 9,
     borderRadius: 4.5,
-    backgroundColor: "#F5C518",
+    backgroundColor: "#CBD5E1",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
     zIndex: 2,
   },
   timelineLine: {
@@ -489,7 +490,7 @@ const styles = StyleSheet.create({
     top: 40,
     bottom: -18,
     width: 2,
-    backgroundColor: "rgba(245, 197, 24, 0.42)",
+    backgroundColor: "rgba(203, 213, 225, 0.35)",
     zIndex: 1,
   },
 
@@ -558,12 +559,12 @@ const styles = StyleSheet.create({
   },
   cardStarIcon: {
     fontSize: 11,
-    color: "#F5C518",
+    color: "#CBD5E1",
   },
   cardScoreText: {
     fontFamily: "Nunito-Bold",
     fontSize: 11,
-    color: "#F5C518",
+    color: "#CBD5E1",
   },
   bellBtn: {
     width: 32,

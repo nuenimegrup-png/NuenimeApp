@@ -1,7 +1,9 @@
 import React, { useState, useCallback, useEffect } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -22,7 +24,16 @@ import { getTierForLevel } from "@/components/level-progress-modal";
 import { getEquippedBorderId, getEquippedBorderStorageKey } from "@/lib/avatar-borders";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { supabase } from "@/lib/supabase";
-import { hapticLight } from "@/lib/haptics";
+import { hapticLight, hapticSuccess } from "@/lib/haptics";
+import { isSpecialRole } from "@/lib/admin-service";
+import {
+  getFriendshipStatus,
+  sendFriendRequest,
+  acceptFriendRequest,
+  rejectOrCancelFriendRequest,
+  unfriendUser,
+  type FriendshipStatus,
+} from "@/lib/friends-service";
 import {
   getLeaderboard,
   formatXp,
@@ -56,6 +67,7 @@ interface PodiumCardProps {
   localMyBorderId?: string | null;
   currentUserId?: string | null;
   currentUsername?: string | null;
+  onPress?: () => void;
 }
 
 function PodiumCard({
@@ -63,6 +75,7 @@ function PodiumCard({
   localMyBorderId,
   currentUserId,
   currentUsername,
+  onPress,
 }: PodiumCardProps) {
   const isFirst = entry.rank === 1;
   const clr = rankColor(entry.rank);
@@ -79,8 +92,9 @@ function PodiumCard({
   const activeBorder = entry.equippedBorder || (isMe ? localMyBorderId : null);
 
   return (
-    <View
-      style={[
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
         styles.podiumCard,
         isFirst ? styles.podiumCardFirst : styles.podiumCardOther,
         {
@@ -93,6 +107,7 @@ function PodiumCard({
             ? "rgba(245, 158, 11, 0.05)"
             : "rgba(255, 255, 255, 0.03)",
         },
+        pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
       ]}
     >
       {/* ── Avatar Wrapper with Crown & Close Rank Badge ── */}
@@ -169,7 +184,7 @@ function PodiumCard({
           {formatXp(entry.xpGained)}
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -179,6 +194,7 @@ interface LeaderRowProps {
   localMyBorderId?: string | null;
   currentUserId?: string | null;
   currentUsername?: string | null;
+  onPress?: () => void;
 }
 
 function LeaderRow({
@@ -186,6 +202,7 @@ function LeaderRow({
   localMyBorderId,
   currentUserId,
   currentUsername,
+  onPress,
 }: LeaderRowProps) {
   const clr = rankColor(entry.rank);
   const { currentTier } = getTierForLevel(entry.level);
@@ -196,9 +213,20 @@ function LeaderRow({
       currentUsername?.toLowerCase() === entry.username?.toLowerCase());
 
   const activeBorder = entry.equippedBorder || (isMe ? localMyBorderId : null);
+  const isSpecial = isSpecialRole(entry.role);
+  const cleanMemberNum =
+    entry.memberNumber != null
+      ? "#" + (String(entry.memberNumber).replace(/[^0-9]/g, "").replace(/^0+/, "") || "1")
+      : null;
 
   return (
-    <View style={styles.leaderRow}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.leaderRow,
+        pressed && { opacity: 0.82, transform: [{ scale: 0.985 }] },
+      ]}
+    >
       {/* Rank Number */}
       <View style={styles.rowRankBox}>
         <Text style={[styles.rowRank, { color: clr }]}>#{entry.rank}</Text>
@@ -220,11 +248,13 @@ function LeaderRow({
           <Text style={styles.rowName} numberOfLines={1}>
             {entry.displayName}
           </Text>
-          {entry.isVip && (
-            <AppIcon name="check-decagram" size={13} color="#06B6D4" />
-          )}
-          {entry.memberNumber != null && (
-            <Text style={styles.rowMember}>#{entry.memberNumber}</Text>
+          <AppIcon
+            name={isSpecial ? "check-decagram" : "check-circle"}
+            size={13}
+            color={isSpecial ? "#EF4444" : "#38BDF8"}
+          />
+          {cleanMemberNum != null && (
+            <Text style={styles.rowMember}>{cleanMemberNum}</Text>
           )}
         </View>
 
@@ -256,7 +286,7 @@ function LeaderRow({
       <View style={styles.rowXpBox}>
         <Text style={styles.rowXpText}>{formatXp(entry.xpGained)}</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -272,6 +302,87 @@ export default function LeaderboardScreen() {
   const [period, setPeriod] = useState<LeaderboardPeriod>("alltime");
   const { user, profile } = useAnirakuAuth();
   const [localMyBorderId, setLocalMyBorderId] = useState<string | null>(null);
+
+  // User Bottom Sheet Modal State
+  const [selectedEntry, setSelectedEntry] = useState<LeaderboardEntry | null>(null);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [friendStatus, setFriendStatus] = useState<FriendshipStatus>("none");
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Handler buka modal profile saat card diklik
+  const handleSelectEntry = async (entry: LeaderboardEntry) => {
+    hapticLight();
+    setSelectedEntry(entry);
+    setShowUserModal(true);
+    if (user?.id && entry.userId && user.id !== entry.userId) {
+      try {
+        const st = await getFriendshipStatus(user.id, entry.userId);
+        setFriendStatus(st);
+      } catch {
+        setFriendStatus("none");
+      }
+    } else {
+      setFriendStatus("none");
+    }
+  };
+
+  // Handler aksi pertemanan di modal
+  const handleFriendAction = async () => {
+    if (!user?.id || !selectedEntry || actionLoading) return;
+    hapticLight();
+    setActionLoading(true);
+
+    try {
+      if (friendStatus === "accepted") {
+        const doUnfriend = async () => {
+          await unfriendUser(user.id, selectedEntry.userId);
+          setFriendStatus("none");
+        };
+
+        if (Platform.OS === "web") {
+          if (confirm(`Hapus ${selectedEntry.displayName} dari daftar teman?`)) {
+            await doUnfriend();
+          }
+        } else {
+          Alert.alert(
+            "Hapus Teman",
+            `Apakah Anda yakin ingin menghapus ${selectedEntry.displayName} dari daftar teman?`,
+            [
+              { text: "Batal", style: "cancel" },
+              { text: "Hapus", style: "destructive", onPress: doUnfriend },
+            ]
+          );
+        }
+      } else if (friendStatus === "pending_sent") {
+        await rejectOrCancelFriendRequest(user.id, selectedEntry.userId);
+        setFriendStatus("none");
+      } else if (friendStatus === "pending_received") {
+        hapticSuccess();
+        await acceptFriendRequest(
+          user.id,
+          selectedEntry.userId,
+          profile?.display_name || profile?.username
+        );
+        setFriendStatus("accepted");
+      } else {
+        hapticSuccess();
+        const res = await sendFriendRequest(
+          user.id,
+          selectedEntry.userId,
+          profile?.display_name || profile?.username
+        );
+        if (res.success) {
+          setFriendStatus("pending_sent");
+        } else {
+          Alert.alert("Gagal", res.error || "Gagal mengirim permintaan pertemanan.");
+        }
+      }
+    } catch (err) {
+      console.warn("[leaderboard] friend action error:", err);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   // Ambil border aktif dari local storage dan sinkronkan ke database Supabase jika perlu
   useEffect(() => {
@@ -442,6 +553,7 @@ export default function LeaderboardScreen() {
                         localMyBorderId={localMyBorderId}
                         currentUserId={user?.id}
                         currentUsername={profile?.username}
+                        onPress={() => handleSelectEntry(entry)}
                       />
                     ) : (
                       <View key={`empty-${idx}`} style={styles.podiumEmpty} />
@@ -464,12 +576,148 @@ export default function LeaderboardScreen() {
               localMyBorderId={localMyBorderId}
               currentUserId={user?.id}
               currentUsername={profile?.username}
+              onPress={() => handleSelectEntry(item)}
             />
           )}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           contentContainerStyle={{ paddingBottom: 40 }}
         />
       )}
+
+      {/* ─── BOTTOM SHEET MODAL: USER OPTIONS (PERSIS SCREENSHOT) ─── */}
+      <Modal
+        visible={showUserModal && Boolean(selectedEntry)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowUserModal(false)}
+      >
+        <Pressable
+          style={styles.sheetOverlay}
+          onPress={() => setShowUserModal(false)}
+        >
+          <Pressable style={styles.bottomSheetCard} onPress={(e) => e.stopPropagation()}>
+            {/* Grab Handle */}
+            <View style={styles.sheetGrabHandle} />
+
+            {/* Friend Header Preview */}
+            {selectedEntry && (() => {
+              const seTier = getTierForLevel(selectedEntry.level).currentTier;
+              const seSpecial = isSpecialRole(selectedEntry.role);
+              const seCleanNum =
+                selectedEntry.memberNumber != null
+                  ? "#" + (String(selectedEntry.memberNumber).replace(/[^0-9]/g, "").replace(/^0+/, "") || "1")
+                  : "#1";
+              const seBorder =
+                selectedEntry.equippedBorder ||
+                (selectedEntry.userId === user?.id ? localMyBorderId : null);
+
+              return (
+                <View style={styles.sheetFriendHeader}>
+                  <BorderAvatar
+                    size={46}
+                    borderId={seBorder}
+                    avatarUrl={selectedEntry.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
+                  />
+                  <View style={styles.sheetFriendInfo}>
+                    <View style={styles.sheetNameRow}>
+                      <Text style={styles.sheetDisplayNameText} numberOfLines={1}>
+                        {selectedEntry.displayName}
+                      </Text>
+                      <AppIcon
+                        name={seSpecial ? "check-decagram" : "check-circle"}
+                        size={14}
+                        color={seSpecial ? "#EF4444" : "#38BDF8"}
+                      />
+                    </View>
+                    <View style={styles.sheetBadgesRow}>
+                      <View style={styles.sheetLevelPill}>
+                        {seTier?.imageUrl && (
+                          <Image
+                            source={{ uri: seTier.imageUrl }}
+                            style={styles.sheetTierPillIcon}
+                            contentFit="contain"
+                            cachePolicy="memory-disk"
+                          />
+                        )}
+                        <Text style={styles.sheetLevelPillText}>
+                          Lvl {selectedEntry.level.toLocaleString("id-ID")}
+                        </Text>
+                      </View>
+                      <View style={styles.sheetTierPill}>
+                        <Text style={styles.sheetTierPillText}>
+                          {seTier.name.toUpperCase()}
+                        </Text>
+                      </View>
+                      <Text style={styles.sheetMemberNumberText}>{seCleanNum}</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })()}
+
+            <View style={styles.sheetDivider} />
+
+            {/* Opsi 1: Lihat Profil */}
+            <Pressable
+              onPress={() => {
+                if (!selectedEntry) return;
+                setShowUserModal(false);
+                hapticLight();
+                router.push(`/user/${selectedEntry.userId}` as never);
+              }}
+              style={({ pressed }) => [styles.sheetActionRow, pressed && { opacity: 0.7 }]}
+            >
+              <AppIcon name="account" size={20} color="#CBD5E1" />
+              <Text style={styles.sheetActionText}>Lihat Profil</Text>
+            </Pressable>
+
+            {/* Opsi 2: Aksi Pertemanan (Hanya jika BUKAN akun sendiri) */}
+            {selectedEntry && user?.id && selectedEntry.userId !== user.id && (
+              <>
+                <View style={styles.sheetDivider} />
+
+                <Pressable
+                  disabled={actionLoading}
+                  onPress={handleFriendAction}
+                  style={({ pressed }) => [styles.sheetActionRow, pressed && { opacity: 0.7 }]}
+                >
+                  {actionLoading ? (
+                    <ActivityIndicator size="small" color="#38BDF8" />
+                  ) : friendStatus === "accepted" ? (
+                    <>
+                      <AppIcon name="trash-can-outline" size={20} color="#F87171" />
+                      <Text style={[styles.sheetActionText, { color: "#F87171" }]}>
+                        Hapus Teman
+                      </Text>
+                    </>
+                  ) : friendStatus === "pending_sent" ? (
+                    <>
+                      <AppIcon name="clock-outline" size={20} color="#94A3B8" />
+                      <Text style={[styles.sheetActionText, { color: "#94A3B8" }]}>
+                        Permintaan Terkirim (Batalkan)
+                      </Text>
+                    </>
+                  ) : friendStatus === "pending_received" ? (
+                    <>
+                      <AppIcon name="account-check" size={20} color="#34D399" />
+                      <Text style={[styles.sheetActionText, { color: "#34D399" }]}>
+                        Terima Permintaan
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <AppIcon name="account-plus" size={20} color="#38BDF8" />
+                      <Text style={[styles.sheetActionText, { color: "#38BDF8" }]}>
+                        Tambah Teman
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -806,5 +1054,113 @@ const styles = StyleSheet.create({
     color: "#334155",
     textAlign: "center",
     lineHeight: 20,
+  },
+
+  // ─── BOTTOM SHEET MODAL (MATCHES SCREENSHOT) ───
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    justifyContent: "flex-end",
+  },
+  bottomSheetCard: {
+    backgroundColor: "#111622",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === "ios" ? 34 : 20,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  sheetGrabHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  sheetFriendHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    gap: 14,
+    marginBottom: 14,
+  },
+  sheetFriendInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  sheetNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  sheetDisplayNameText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 16,
+    color: "#FFFFFF",
+    letterSpacing: -0.2,
+  },
+  sheetBadgesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  sheetLevelPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(16, 185, 129, 0.16)",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.3)",
+  },
+  sheetTierPillIcon: {
+    width: 13,
+    height: 13,
+  },
+  sheetLevelPillText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 10,
+    color: "#34D399",
+  },
+  sheetTierPill: {
+    backgroundColor: "rgba(168, 85, 247, 0.16)",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(168, 85, 247, 0.3)",
+  },
+  sheetTierPillText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 9.5,
+    color: "#C084FC",
+    letterSpacing: 0.5,
+  },
+  sheetMemberNumberText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
+    color: "#64748B",
+  },
+  sheetDivider: {
+    height: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.07)",
+    marginVertical: 4,
+  },
+  sheetActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingHorizontal: 22,
+    paddingVertical: 14,
+  },
+  sheetActionText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 14,
+    color: "#FFFFFF",
   },
 });

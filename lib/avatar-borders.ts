@@ -35,6 +35,8 @@ export interface AvatarBorder {
   scale?: number;
   description?: string;
   isReleased?: boolean;
+  priceCrystal?: number | null;
+  isActive?: boolean;
 }
 
 export const RARITY_THEME: Record<
@@ -90,509 +92,163 @@ export const RARITY_THEME: Record<
   },
 };
 
+export const BORDER_RARITY_PRICES: Record<BorderRarity, number> = {
+  Normal: 1000,
+  Rare: 2000,
+  Epic: 3000,
+  Legends: 4000,
+  Mythic: 5000,
+};
+
 /**
- * ─── KATALOG 45 BORDER AVATAR NUENIME ───
- * - Mythic: 5 border
- * - Legends: 7 border
- * - Epic: 9 border
- * - Rare: 10 border (10 asset URL resmi dari user terintegrasi)
- * - Normal: 14 border
- * Total: 45 border
+ * Dynamic Border Catalog
+ * All borders are sourced dynamically from Supabase (public.avatar_borders_config).
+ * No hardcoded static borders are stored in code.
  */
-export const AVATAR_BORDERS: AvatarBorder[] = [
-  // ─── 1. MYTHIC (5 border) ───
-  {
-    id: "mythic_01",
-    name: "Divine Celestial",
-    rarity: "Mythic",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Border berkekuatan kosmik tingkat Mythic (Akan segera hadir).",
-  },
-  {
-    id: "mythic_02",
-    name: "Dragon Emperor",
-    rarity: "Mythic",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Border mahkota naga suci tingkat Mythic (Akan segera hadir).",
-  },
-  {
-    id: "mythic_03",
-    name: "Void Archon",
-    rarity: "Mythic",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Kekuatan kehampaan abadi tingkat Mythic (Akan segera hadir).",
-  },
-  {
-    id: "mythic_04",
-    name: "Genesis Aura",
-    rarity: "Mythic",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Pancaran awal semesta tingkat Mythic (Akan segera hadir).",
-  },
-  {
-    id: "mythic_05",
-    name: "Eternal Chrono",
-    rarity: "Mythic",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Penjaga dimensi waktu tingkat Mythic (Akan segera hadir).",
-  },
+export const AVATAR_BORDERS: AvatarBorder[] = [];
 
-  // ─── 2. LEGENDS (7 border) ───
-  {
-    id: "legends_01",
-    name: "Solar Monarch",
-    rarity: "Legends",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Mahkota emas penguasa surya tingkat Legends (Akan segera hadir).",
-  },
-  {
-    id: "legends_02",
-    name: "Phoenix Rebirth",
-    rarity: "Legends",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Sayap burung api abadi tingkat Legends (Akan segera hadir).",
-  },
-  {
-    id: "legends_03",
-    name: "Valkyrie Grace",
-    rarity: "Legends",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Pelindung suci asgard tingkat Legends (Akan segera hadir).",
-  },
-  {
-    id: "legends_04",
-    name: "Thunder Sovereign",
-    rarity: "Legends",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Kilatan petir sang raja petir tingkat Legends (Akan segera hadir).",
-  },
-  {
-    id: "legends_05",
-    name: "Aether Sentinel",
-    rarity: "Legends",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Penjaga batas ether tingkat Legends (Akan segera hadir).",
-  },
-  {
-    id: "legends_06",
-    name: "Abyssal Leviathan",
-    rarity: "Legends",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Penguasa samudra terdalam tingkat Legends (Akan segera hadir).",
-  },
-  {
-    id: "legends_07",
-    name: "Starlight Knight",
-    rarity: "Legends",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Bintang pelindung kesatria malam tingkat Legends (Akan segera hadir).",
-  },
+// ─── LIVE IN-MEMORY & PERSISTENT CACHE ─────────────────────────────────────
+const _liveCatalogMap = new Map<string, AvatarBorder>();
+let _liveCatalogList: AvatarBorder[] = [];
 
-  // ─── 3. EPIC (9 border) ───
-  {
-    id: "epic_01",
-    name: "Phantom Mirage",
-    rarity: "Epic",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Bayangan misterius dunia bayangan tingkat Epic (Akan segera hadir).",
-  },
-  {
-    id: "epic_02",
-    name: "Frostbite Sigil",
-    rarity: "Epic",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Kristal es abadi kutub utara tingkat Epic (Akan segera hadir).",
-  },
-  {
-    id: "epic_03",
-    name: "Infernal Blaze",
-    rarity: "Epic",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Kobaran magma berkobar tingkat Epic (Akan segera hadir).",
-  },
-  {
-    id: "epic_04",
-    name: "Storm Bringer",
-    rarity: "Epic",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Pusaran angin badai tingkat Epic (Akan segera hadir).",
-  },
-  {
-    id: "epic_05",
-    name: "Venomous Shadow",
-    rarity: "Epic",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Racun mematikan malam hari tingkat Epic (Akan segera hadir).",
-  },
-  {
-    id: "epic_06",
-    name: "Rune Guardian",
-    rarity: "Epic",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Aksara kuno pelindung jiwa tingkat Epic (Akan segera hadir).",
-  },
-  {
-    id: "epic_07",
-    name: "Blood Moon",
-    rarity: "Epic",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Pancaran bulan merah tingkat Epic (Akan segera hadir).",
-  },
-  {
-    id: "epic_08",
-    name: "Arcane Nova",
-    rarity: "Epic",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Ledakan energi magis tingkat Epic (Akan segera hadir).",
-  },
-  {
-    id: "epic_09",
-    name: "Golden Aegis",
-    rarity: "Epic",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Perisai emas kehormatan tingkat Epic (Akan segera hadir).",
-  },
+// Kunci cache persistent untuk kecepatan buka aplikasi 0ms (Stale-While-Revalidate)
+export const CACHED_BORDER_CATALOG_KEY = "nuenime.cached_border_catalog";
 
-  // ─── 4. RARE (10 border — SEMUA ASET RESMI TERINTEGRASI) ───
-  {
-    id: "rare_01",
-    name: "Azure Dragon",
-    rarity: "Rare",
-    assetUrl: "https://i.ibb.co.com/sdfKwzT2/1.png",
-    innerRatio: 0.74,
-    offsetX: 0.0,
-    offsetY: 0.0,
-    isReleased: true,
-    description: "Bingkai berornamen naga biru samudra mistis dengan lingkar kristal.",
-  },
-  {
-    id: "rare_02",
-    name: "Crimson Flame",
-    rarity: "Rare",
-    assetUrl: "https://i.ibb.co.com/ZzvLgMch/2.png",
-    innerRatio: 0.74,
-    offsetX: 0.0,
-    offsetY: 0.0,
-    isReleased: true,
-    description: "Bingkai kobaran api merah membara yang mengelilingi avatar.",
-  },
-  {
-    id: "rare_03",
-    name: "Emerald Bloom",
-    rarity: "Rare",
-    assetUrl: "https://i.ibb.co.com/ZzmjPPHB/3.png",
-    innerRatio: 0.74,
-    offsetX: 0.0,
-    offsetY: 0.0,
-    isReleased: true,
-    description: "Sentuhan zamrud alami berpadu aura hijau hutan magis.",
-  },
-  {
-    id: "rare_04",
-    name: "Golden Sovereign",
-    rarity: "Rare",
-    assetUrl: "https://i.ibb.co.com/x8Ysr5cq/4.png",
-    innerRatio: 0.74,
-    offsetX: 0.0,
-    offsetY: 0.0,
-    isReleased: true,
-    description: "Ornamen emas bangsawan dengan ukiran sayap yang anggun.",
-  },
-  {
-    id: "rare_05",
-    name: "Abyssal Shadow",
-    rarity: "Rare",
-    assetUrl: "https://i.ibb.co.com/zwxRY8Y/5.png",
-    innerRatio: 0.74,
-    offsetX: 0.0,
-    offsetY: 0.0,
-    isReleased: true,
-    description: "Sentuhan energi ungu malam gelap dengan aksen kristal tajam.",
-  },
-  {
-    id: "rare_06",
-    name: "Celestial Violet",
-    rarity: "Rare",
-    assetUrl: "https://i.ibb.co.com/k6htGsZL/6.png",
-    innerRatio: 0.74,
-    offsetX: 0.0,
-    offsetY: 0.0,
-    isReleased: true,
-    description: "Bingkai kosmik ungu bertahtakan ornamen mahkota bintang.",
-  },
-  {
-    id: "rare_07",
-    name: "Silver Crest",
-    rarity: "Rare",
-    assetUrl: "https://i.ibb.co.com/Nn1PXwqB/7.png",
-    innerRatio: 0.74,
-    offsetX: 0.0,
-    offsetY: 0.0,
-    isReleased: true,
-    description: "Lingkar perak berkilau dengan proporsi lubang avatar sempurna.",
-  },
-  {
-    id: "rare_08",
-    name: "Gilded Phoenix",
-    rarity: "Rare",
-    assetUrl: "https://i.ibb.co.com/1fhNKGFL/8.png",
-    innerRatio: 0.74,
-    offsetX: 0.0,
-    offsetY: 0.0,
-    isReleased: true,
-    description: "Ukiran bulu phoenix emas yang memancarkan aura kebangkitan.",
-  },
-  {
-    id: "rare_09",
-    name: "Frozen Mirage",
-    rarity: "Rare",
-    assetUrl: "https://i.ibb.co.com/Zzr9Svyq/9.png",
-    innerRatio: 0.74,
-    offsetX: 0.0,
-    offsetY: 0.0,
-    isReleased: true,
-    description: "Kristal es dingin berkilau dengan efek refleksi embun salju.",
-  },
-  {
-    id: "rare_10",
-    name: "Solar Flare",
-    rarity: "Rare",
-    assetUrl: "https://i.ibb.co.com/RMNmBBk/10.png",
-    innerRatio: 0.74,
-    offsetX: 0.0,
-    offsetY: 0.0,
-    isReleased: true,
-    description: "Ledakan cahaya matahari dengan dekorasi suci bermotif surya.",
-  },
+// Inisialisasi cepat dari AsyncStorage saat modul dimuat agar tidak ada jeda loading
+AsyncStorage.getItem(CACHED_BORDER_CATALOG_KEY)
+  .then((raw) => {
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const seen = new Set<string>();
+        const unique: AvatarBorder[] = [];
+        parsed.forEach((b: AvatarBorder) => {
+          if (b && b.id && !seen.has(b.id)) {
+            seen.add(b.id);
+            _liveCatalogMap.set(b.id, b);
+            unique.push(b);
+          }
+        });
+        _liveCatalogList = unique;
+      }
+    }
+  })
+  .catch(() => {});
 
-  // ─── 5. NORMAL (14 border) ───
-  {
-    id: "normal_01",
-    name: "Iron Ring",
-    rarity: "Normal",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Bingkai besi sederhana tingkat Normal (Akan segera hadir).",
-  },
-  {
-    id: "normal_02",
-    name: "Bronze Edge",
-    rarity: "Normal",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Bingkai perunggu petualang tingkat Normal (Akan segera hadir).",
-  },
-  {
-    id: "normal_03",
-    name: "Wooden Oak",
-    rarity: "Normal",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Bingkai kayu hutan tingkat Normal (Akan segera hadir).",
-  },
-  {
-    id: "normal_04",
-    name: "Stone Border",
-    rarity: "Normal",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Bingkai batu kokoh tingkat Normal (Akan segera hadir).",
-  },
-  {
-    id: "normal_05",
-    name: "Novice Circle",
-    rarity: "Normal",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Lingkar dasar pemula tingkat Normal (Akan segera hadir).",
-  },
-  {
-    id: "normal_06",
-    name: "Green Leaf",
-    rarity: "Normal",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Aksen dedaunan hijau tingkat Normal (Akan segera hadir).",
-  },
-  {
-    id: "normal_07",
-    name: "Copper Ring",
-    rarity: "Normal",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Lingkar tembaga berkilau tingkat Normal (Akan segera hadir).",
-  },
-  {
-    id: "normal_08",
-    name: "Bamboo Rim",
-    rarity: "Normal",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Anyaman bambu alami tingkat Normal (Akan segera hadir).",
-  },
-  {
-    id: "normal_09",
-    name: "River Pebble",
-    rarity: "Normal",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Susunan batu kali tingkat Normal (Akan segera hadir).",
-  },
-  {
-    id: "normal_10",
-    name: "Leather Strap",
-    rarity: "Normal",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Ikat kulit pengelana tingkat Normal (Akan segera hadir).",
-  },
-  {
-    id: "normal_11",
-    name: "Simple Steel",
-    rarity: "Normal",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Baja polos rapi tingkat Normal (Akan segera hadir).",
-  },
-  {
-    id: "normal_12",
-    name: "Clay Mold",
-    rarity: "Normal",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Ukiran tembikar tingkat Normal (Akan segera hadir).",
-  },
-  {
-    id: "normal_13",
-    name: "Forest Twig",
-    rarity: "Normal",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Ranting pohon pelindung tingkat Normal (Akan segera hadir).",
-  },
-  {
-    id: "normal_14",
-    name: "Plain Ribbon",
-    rarity: "Normal",
-    assetUrl: null,
-    innerRatio: 0.74,
-    isReleased: false,
-    description: "Pita sederhana penyambut petualang tingkat Normal (Akan segera hadir).",
-  },
-];
-
-// Helper lookup
+// Lookup sinkronus cepat (0ms akses langsung dari memori)
 export function getBorderById(id: string | null | undefined): AvatarBorder | undefined {
   if (!id) return undefined;
-  return AVATAR_BORDERS.find((b) => b.id === id);
+  return _liveCatalogMap.get(id);
+}
+
+// Lookup asinkronus (query langsung ke Supabase jika item belum ada di memori lokal)
+export async function getBorderByIdAsync(id: string | null | undefined): Promise<AvatarBorder | undefined> {
+  if (!id) return undefined;
+  const existing = getBorderById(id);
+  if (existing && existing.assetUrl) return existing;
+
+  try {
+    const { data } = await supabase
+      .from("avatar_borders_config")
+      .select("id, name, rarity, asset_url, inner_ratio, offset_x, offset_y, scale, is_released, description, price_crystal, is_active")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (data) {
+      const border: AvatarBorder = {
+        id: data.id,
+        name: data.name,
+        rarity: (data.rarity as BorderRarity) || "Normal",
+        assetUrl: data.asset_url ?? null,
+        innerRatio: data.inner_ratio ? Number(data.inner_ratio) : 0.74,
+        offsetX: data.offset_x ? Number(data.offset_x) : 0.0,
+        offsetY: data.offset_y ? Number(data.offset_y) : 0.0,
+        scale: data.scale ? Number(data.scale) : 1.0,
+        isReleased: data.is_released ?? true,
+        description: data.description,
+        priceCrystal: data.price_crystal ? Number(data.price_crystal) : null,
+        isActive: data.is_active ?? true,
+      };
+      _liveCatalogMap.set(border.id, border);
+      return border;
+    }
+  } catch {}
+
+  return existing;
+}
+
+export function updateLiveBorderInCache(border: AvatarBorder) {
+  _liveCatalogMap.set(border.id, border);
+  const idx = _liveCatalogList.findIndex((b) => b.id === border.id);
+  if (idx >= 0) {
+    _liveCatalogList[idx] = border;
+  } else {
+    _liveCatalogList = [border, ..._liveCatalogList.filter((b) => b.id !== border.id)];
+  }
+  AsyncStorage.setItem(CACHED_BORDER_CATALOG_KEY, JSON.stringify(_liveCatalogList)).catch(() => {});
+}
+
+export function removeLiveBorderFromCache(id: string) {
+  _liveCatalogMap.delete(id);
+  _liveCatalogList = _liveCatalogList.filter((b) => b.id !== id);
+  AsyncStorage.setItem(CACHED_BORDER_CATALOG_KEY, JSON.stringify(_liveCatalogList)).catch(() => {});
 }
 
 export function getBordersByRarity(rarity: BorderRarity): AvatarBorder[] {
-  return AVATAR_BORDERS.filter((b) => b.rarity === rarity);
+  return _liveCatalogList.filter((b) => b.rarity === rarity);
 }
 
 /**
- * ─── FETCH KATALOG BORDER DINAMIS DARI SUPABASE ───
+ * ─── FETCH KATALOG BORDER FRESH 100% DARI SUPABASE ───
  *
- * Mengambil data border dari tabel `avatar_borders_config` di Supabase
- * dan menggabungkannya (merge/override) ke AVATAR_BORDERS static.
- *
- * Logika override:
- * - Jika admin set is_released = true + asset_url → border langsung aktif di Shop
- * - Jika admin masih kosong / is_released = false → border tetap "Segera Hadir"
- *
- * Hasil dikembalikan sebagai array baru (tidak mutasi AVATAR_BORDERS).
- * Fallback: kembalikan AVATAR_BORDERS asli jika offline / tabel kosong.
+ * Mengambil data segar langsung dari tabel `avatar_borders_config` di Supabase.
+ * Tidak ada data bawaan hardcoded di kode.
+ * Hasil di-cache ke memori & disk untuk mempertahankan performa super cepat (0ms).
  */
 export async function fetchLiveBorderCatalog(): Promise<AvatarBorder[]> {
   try {
     const { data, error } = await supabase
       .from("avatar_borders_config")
-      .select("id, name, rarity, asset_url, inner_ratio, offset_x, offset_y, scale, is_released, description, sort_order")
+      .select("id, name, rarity, asset_url, inner_ratio, offset_x, offset_y, scale, is_released, description, sort_order, price_crystal, is_active")
       .order("sort_order", { ascending: true });
 
     if (!error && Array.isArray(data) && data.length > 0) {
-      // Buat map dari data DB untuk lookup cepat
-      const dbMap = new Map<string, any>();
-      data.forEach((row: any) => dbMap.set(row.id, row));
+      const seen = new Set<string>();
+      const fullCatalog: AvatarBorder[] = [];
 
-      // Override data static dengan data dari DB
-      return AVATAR_BORDERS.map((border) => {
-        const dbRow = dbMap.get(border.id);
-        if (!dbRow) return border;
+      for (const row of data) {
+        if (!row || !row.id || seen.has(row.id)) continue;
+        seen.add(row.id);
+        fullCatalog.push({
+          id: row.id,
+          name: row.name,
+          rarity: (row.rarity as BorderRarity) || "Normal",
+          assetUrl: row.asset_url ?? null,
+          innerRatio: row.inner_ratio ? Number(row.inner_ratio) : 0.74,
+          offsetX: row.offset_x ? Number(row.offset_x) : 0.0,
+          offsetY: row.offset_y ? Number(row.offset_y) : 0.0,
+          scale: row.scale ? Number(row.scale) : 1.0,
+          isReleased: row.is_released ?? false,
+          description: row.description,
+          priceCrystal: row.price_crystal ? Number(row.price_crystal) : null,
+          isActive: row.is_active ?? true,
+        });
+      }
 
-        return {
-          ...border,
-          // Override field yang bisa diubah admin:
-          assetUrl: dbRow.asset_url ?? border.assetUrl,
-          isReleased: dbRow.is_released ?? border.isReleased,
-          innerRatio: dbRow.inner_ratio ?? border.innerRatio,
-          offsetX: dbRow.offset_x ?? border.offsetX,
-          offsetY: dbRow.offset_y ?? border.offsetY,
-          scale: dbRow.scale ?? border.scale,
-          description: dbRow.description ?? border.description,
-        };
-      });
+      // Update in-memory map & list (0ms sync lookup)
+      _liveCatalogMap.clear();
+      fullCatalog.forEach((b) => _liveCatalogMap.set(b.id, b));
+      _liveCatalogList = fullCatalog;
+
+      // Persist to AsyncStorage for instant 0ms app boot
+      AsyncStorage.setItem(CACHED_BORDER_CATALOG_KEY, JSON.stringify(fullCatalog)).catch(() => {});
+
+      return fullCatalog;
     }
   } catch {}
 
-  // Fallback: kembalikan data static jika offline atau tabel kosong
-  return AVATAR_BORDERS;
+  // Fallback: kembalikan cached list yang ada di memori/storage
+  return _liveCatalogList;
 }
 
 // ─── STORAGE MANAGEMENT PER-USER ACCOUNT ───
@@ -608,6 +264,27 @@ export function getOwnedBordersStorageKey(userId?: string | null): string {
     return `nuenime.owned_borders.${userId.trim()}`;
   }
   return "nuenime.owned_borders.guest";
+}
+
+/**
+ * Listener sistem untuk perubahan border aktif (0ms event-driven reactive sync)
+ */
+export type BorderEquipListener = (borderId: string | null, userId?: string | null) => void;
+const _equipListeners = new Set<BorderEquipListener>();
+
+export function subscribeEquippedBorder(listener: BorderEquipListener): () => void {
+  _equipListeners.add(listener);
+  return () => {
+    _equipListeners.delete(listener);
+  };
+}
+
+export function notifyEquippedBorderChanged(borderId: string | null, userId?: string | null) {
+  _equipListeners.forEach((fn) => {
+    try {
+      fn(borderId, userId);
+    } catch {}
+  });
 }
 
 /**
@@ -659,6 +336,9 @@ export async function setEquippedBorderId(
     await AsyncStorage.removeItem(key);
     await AsyncStorage.removeItem("nuenime.equipped.border");
   }
+
+  // Notifikasi instan ke seluruh komponen yang aktif di memori (0ms)
+  notifyEquippedBorderChanged(borderId, userId);
 
   // Sinkronkan ke database Supabase profiles.equipped_border secara background
   if (userId && userId.trim().length > 0 && userId !== "guest") {

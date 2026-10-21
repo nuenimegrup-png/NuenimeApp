@@ -81,7 +81,7 @@ import { NativeScreen } from "@/components/screen";
 import { SubtitleRenderer } from "@/components/subtitle-renderer";
 import { SleepTimerPill } from "@/components/sleep-timer";
 import { chrome } from "@/components/player/chrome-styles";
-import { parseSubtitle, detectSubtitleFormat, detectSubtitleFormatFromContent, findActiveCues, matchSubtitleTrack, type SubtitleCue } from "@/lib/subtitle-parser";
+import { parseSubtitle, detectSubtitleFormat, detectSubtitleFormatFromContent, findActiveCues, matchSubtitleTrack, isActualSubtitleTrack, type SubtitleCue } from "@/lib/subtitle-parser";
 import { loadSubtitlePreferences, saveSubtitlePreferences, SUBTITLE_FONTS, BG_OPACITY_PRESETS, OUTLINE_PRESETS, clampSubtitleOffset, formatSubtitleOffset, SUBTITLE_OFFSET_MIN, SUBTITLE_OFFSET_MAX, SUBTITLE_OFFSET_STEP, type SubtitlePreferences } from "@/lib/subtitle-preferences";
 import { loadPlaybackSettings, savePlaybackSetting } from "@/lib/user-settings";
 import { resolveNextEpisode, resolvePrevEpisode } from "@/lib/up-next";
@@ -107,7 +107,7 @@ const TAP_ACTION_COOLDOWN_MS = 150; // min gap between any action (seek/toggle) 
 const EDGE_ZONE = 0.35; // x < 35% = brightness · x > 65% = volume · middle = 2x zone
 const SEEK_ZONE = 0.4; // x < 40% = rewind · x > 60% = forward · middle = play/pause
 const STREAM_CACHE_TTL_MS = 30_000;
-const STARTUP_WATCHDOG_MS = 6_000;
+const STARTUP_WATCHDOG_MS = 3_000;
 const SKIP_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const ANISKIP_TIMEOUT_MS = 8_000;
 const UP_NEXT_AUTOPLAY_SECONDS = 5;
@@ -575,10 +575,10 @@ export default function WatchScreen() {
 
   useEffect(() => {
     if (!source?.subtitles?.length || !subtitlePrefs) { parsedCuesRef.current = []; setActiveSubtitles([]); return; }
-    const preferred = matchSubtitleTrack(source.subtitles, subtitlePrefs.preferredLanguage) ?? source.subtitles[0];
+    const preferred = matchSubtitleTrack(source.subtitles, subtitlePrefs.preferredLanguage);
     if (!preferred?.url) { parsedCuesRef.current = []; setActiveSubtitles([]); return; }
     const urlFormat = detectSubtitleFormat(preferred.url);
-    const subtitleUrl = preferred.url.includes("/api/v1/proxy?") ? preferred.url : anirakuProxyUrl(preferred.url, nativePlaybackHeaders(playbackHeaders));
+    const subtitleUrl = preferred.url.includes("/api/v1/proxy?") ? anirakuProxyUrl(preferred.url) : anirakuProxyUrl(preferred.url, nativePlaybackHeaders(playbackHeaders));
     let cancelled = false;
     const directHeaders = nativePlaybackHeaders(playbackHeaders);
     fetch(subtitleUrl, directHeaders && !preferred.url.includes("/api/v1/proxy?") ? { headers: { ...directHeaders, Accept: "*/*" } } : undefined)
@@ -785,45 +785,74 @@ export default function WatchScreen() {
     // Cold backend scrapes (hentai / heavy titles) often return empty on the
     // first hits while providers spin up — poll with backoff the way the
     // website does instead of erroring after one quick retry.
+    // Cold backend scrapes often take time. Optimize initial load by querying
+    // preferred language first and mounting immediately without waiting for secondary lang.
     const SERVER_RETRY_DELAYS_MS = [2000, 5000, 10000];
     const fetchServers = async (attempt: number) => {
       setServerAttempt(attempt + 1);
-      const [subs, dubs] = await Promise.all([
-        getServers(animeId, episode, "sub").catch(() => [] as Server[]),
-        getServers(animeId, episode, "dub").catch(() => [] as Server[]),
-      ]);
-      if (cancelled) return;
-      if (!subs.length && !dubs.length && attempt < SERVER_RETRY_DELAYS_MS.length) {
-        await new Promise((resolve) => setTimeout(resolve, SERVER_RETRY_DELAYS_MS[attempt]));
-        if (cancelled) return;
-        return fetchServers(attempt + 1);
-      }
-      setProviders({ sub: subs, dub: dubs });
-      setLoadingServers(false);
-      // Auto-select: preferred language > available language
       const langKey = `aniraku.lang.${animeId}`;
       const preferred = await AsyncStorage.getItem(langKey).catch(() => null) as Language | null;
       if (cancelled) return;
-      if (preferred === "dub" && dubs.length) { setLanguage("dub"); }
-      else if (preferred === "sub" && subs.length) { setLanguage("sub"); }
-      else if (!subs.length && dubs.length) { setLanguage("dub"); }
-      // Embed-only catalog (hentai): point the player at the first server
-      // that actually carries an embed so it mounts on the first pass.
+
+      const primaryLang: Language = preferred === "dub" ? "dub" : "sub";
+      const secondaryLang: Language = primaryLang === "dub" ? "sub" : "dub";
+
+      // Fire both requests concurrently so backend starts scraping immediately
+      const primaryPromise = getServers(animeId, episode, primaryLang).catch(() => [] as Server[]);
+      const secondaryPromise = getServers(animeId, episode, secondaryLang).catch(() => [] as Server[]);
+
+      // Await primary language first for instant playback mount
+      const primaryServers = await primaryPromise;
+      if (cancelled) return;
+
       const hasNativeInitial = (list: Server[]) => list.some((item) => {
         const initial = { sources: item.sources ?? [] };
         return directSources(initial).length > 0 || proxySources(initial).length > 0;
       });
       const hasEmbedInitial = (item: Server) => embedSources({ sources: item.sources ?? [] }).length > 0;
-      if ((subs.length > 0 || dubs.length > 0) && !hasNativeInitial(subs) && !hasNativeInitial(dubs)) {
-        const subIdx = subs.findIndex(hasEmbedInitial);
-        const dubIdx = dubs.findIndex(hasEmbedInitial);
-        if (subIdx >= 0 && (preferred !== "dub" || dubIdx < 0)) { setLanguage("sub"); setServerIndex(subIdx); }
-        else if (dubIdx >= 0) { setLanguage("dub"); setServerIndex(dubIdx); }
+
+      if (primaryServers.length > 0) {
+        setProviders((prev) => ({ ...prev, [primaryLang]: primaryServers }));
+        setLanguage(primaryLang);
+        setLoadingServers(false);
+
+        if (!hasNativeInitial(primaryServers)) {
+          const embedIdx = primaryServers.findIndex(hasEmbedInitial);
+          if (embedIdx >= 0) setServerIndex(embedIdx);
+        }
+
+        // Merge secondary language asynchronously in background without blocking player
+        void secondaryPromise.then((secServers) => {
+          if (cancelled || !secServers.length) return;
+          setProviders((prev) => ({ ...prev, [secondaryLang]: secServers }));
+        });
+        return;
       }
-      // Providers come from the backend only — no fixed fallback names. When
-      // it lists nothing (hentai tags often list zero servers), the honest
-      // error below stands and no phantom rows ever appear.
-      else if (!subs.length && !dubs.length) { setError("We don't have streaming for this episode."); }
+
+      // If primary language was empty, check secondary language
+      const secondaryServers = await secondaryPromise;
+      if (cancelled) return;
+
+      if (secondaryServers.length > 0) {
+        setProviders({ [primaryLang]: [], [secondaryLang]: secondaryServers } as { sub: Server[]; dub: Server[] });
+        setLanguage(secondaryLang);
+        setLoadingServers(false);
+        if (!hasNativeInitial(secondaryServers)) {
+          const embedIdx = secondaryServers.findIndex(hasEmbedInitial);
+          if (embedIdx >= 0) setServerIndex(embedIdx);
+        }
+        return;
+      }
+
+      // Both languages empty: retry with backoff if attempts remain
+      if (attempt < SERVER_RETRY_DELAYS_MS.length) {
+        await new Promise((resolve) => setTimeout(resolve, SERVER_RETRY_DELAYS_MS[attempt]));
+        if (cancelled) return;
+        return fetchServers(attempt + 1);
+      }
+
+      setLoadingServers(false);
+      setError("We don't have streaming for this episode.");
     };
     void fetchServers(0);
     return () => { cancelled = true; };
@@ -1273,9 +1302,9 @@ export default function WatchScreen() {
   // with 403 ("proxy target not allowed") → Exo BAD_HTTP_STATUS.
   const videoSourceUri = useMemo(() => {
     if (!source) return undefined;
-    if (isAnirakuProxyUrl(source.url)) return source.url;
+    if (isAnirakuProxyUrl(source.url)) return anirakuProxyUrl(source.url);
     const directHeaders = nativePlaybackHeaders(playbackHeaders);
-    if (useSourceProxy) return anirakuProxyUrl(source.url, directHeaders);
+    if (useSourceProxy || Platform.OS === "web") return anirakuProxyUrl(source.url, directHeaders);
     return source.url;
   }, [source?.url, useSourceProxy, playbackHeaders]);
 
@@ -1428,13 +1457,14 @@ export default function WatchScreen() {
     return t === "hls" ? "m3u8" : t === "dash" ? "mpd" : undefined;
   }, [source?.url]);
 
-  // Real ExoPlayer LoadControl — replaces the old "120s reserve / 20s cushion"
-  // claims with actual buffering behavior on the shipped player.
+  // Real ExoPlayer LoadControl — low latency fast-start configuration
+  // bufferForPlaybackMs reduced from 2500ms to 500ms for instant playback start
+  // bufferForPlaybackAfterRebufferMs reduced from 5000ms to 1000ms for fast recovery
   const videoBufferConfig = useMemo(() => ({
-    minBufferMs: 15_000,
-    maxBufferMs: 120_000,
-    bufferForPlaybackMs: 2_500,
-    bufferForPlaybackAfterRebufferMs: 5_000,
+    minBufferMs: 5_000,
+    maxBufferMs: 30_000,
+    bufferForPlaybackMs: 500,
+    bufferForPlaybackAfterRebufferMs: 1_000,
   }), []);
 
   // ── Actions ──
@@ -2523,6 +2553,10 @@ export default function WatchScreen() {
     <View style={[styles.videoShell, manualFullscreen && ps.videoShellFullscreen]}>
       {embedSource && !source ? <EmbedPlayer uri={embedSource.url} headers={nativePlaybackHeaders(playbackHeaders)} onError={() => handleProviderBlockedRef.current("player")} onLoaded={() => { embedReadyRef.current = true; setShowControls(true); }} /> : null}
       {source ? <Video key={activeProvider?.id ?? "default"} ref={videoRef} style={StyleSheet.absoluteFill} source={{ uri: videoSourceUri, headers: videoSourceHeaders, type: videoContentType, bufferConfig: videoBufferConfig }}
+        hideShutterView={true}
+        poster={selectedEpisode?.thumbnail || watchBackdrop || image || undefined}
+        posterResizeMode="cover"
+        preventsDisplaySleepDuringVideoPlayback={true}
         paused={!isPlaying} rate={is2xSeeking ? 2.0 : speed} resizeMode={fillMode} muted={muted} volume={volume}
         maxBitRate={adaptiveBitrateCap ?? undefined}
         onLoad={(data: OnLoadData) => { if (__DEV__) console.log(`[watch] first-frame t=${Date.now() - _watchMountTime}ms provider=${activeProvider?.id ?? "?"}`); setDuration(data.duration); sourceFirstFrame.current = true; sourceStarted.current = true; setPlayerStatus("playing"); setIsPlaying(true); setLastPlayerError(null); setShowControls(true); }}
@@ -2919,11 +2953,11 @@ export default function WatchScreen() {
         <ScrollView contentContainerStyle={ps.settingsContent} showsVerticalScrollIndicator={false}>
           <Text style={ps.sectionLabel}>{t("player.subtitles")}</Text>
           <View style={ps.chipRow}>
-            {source.subtitles?.length ? <>
+            {source.subtitles?.filter(isActualSubtitleTrack).length ? <>
               <Pressable onPress={() => updateSubtitlePrefs({ enabled: false })} style={[ps.chip, subtitlePrefs && !subtitlePrefs.enabled && ps.chipActive]}>
                 <Text style={[ps.chipText, subtitlePrefs && !subtitlePrefs.enabled && ps.chipTextActive]}>{t("player.off")}</Text>
               </Pressable>
-              {source.subtitles.map((sub) => { const active = subtitlePrefs?.enabled && selectedSubtitleUrl === sub.url; return <Pressable key={sub.url} onPress={() => updateSubtitlePrefs({ enabled: true, preferredLanguage: sub.lang || sub.label || "en" })} style={[ps.chip, active && ps.chipActive]}><Text numberOfLines={1} style={[ps.chipText, active && ps.chipTextActive]}>{sub.label || sub.lang || "Track"}</Text></Pressable>; })}
+              {source.subtitles.filter(isActualSubtitleTrack).map((sub) => { const active = subtitlePrefs?.enabled && selectedSubtitleUrl === sub.url; return <Pressable key={sub.url} onPress={() => updateSubtitlePrefs({ enabled: true, preferredLanguage: sub.lang || sub.label || "en" })} style={[ps.chip, active && ps.chipActive]}><Text numberOfLines={1} style={[ps.chipText, active && ps.chipTextActive]}>{sub.label || sub.lang || "Track"}</Text></Pressable>; })}
             </> : <Text style={ps.emptyLine}>{t("player.noTracks")}</Text>}
           </View>
 

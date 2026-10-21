@@ -12,7 +12,12 @@ export function AppIcon({
   color: string;
   style?: StyleProp<ViewStyle>;
 }) {
-  const d = SVG_PATHS[name] || SVG_PATHS["help-circle-outline"] || SVG_PATHS["circle-outline"];
+  const normalized = name ? name.trim() : "";
+  const d =
+    SVG_PATHS[normalized] ||
+    SVG_PATHS[normalized.replace(/-outline$/, "")] ||
+    SVG_PATHS[normalized + "-outline"] ||
+    SVG_PATHS["circle-outline"];
   return (
     <svg
       width={size}

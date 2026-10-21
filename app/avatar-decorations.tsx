@@ -19,7 +19,6 @@ import { avatarUrl } from "@/lib/aniraku-avatars";
 import { AppIcon } from "@/components/app-icon";
 import { hapticLight, hapticSuccess, hapticWarning } from "@/lib/haptics";
 import {
-  AVATAR_BORDERS,
   AvatarBorder,
   BorderRarity,
   RARITY_THEME,
@@ -74,8 +73,9 @@ export default function AvatarDecorationsScreen() {
   const [checkoutState, setCheckoutState] = useState<"review" | "processing" | "success" | "error">("review");
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
-  // ─── Katalog border live (dari Supabase, override data static) ───
-  const [liveBorders, setLiveBorders] = useState<AvatarBorder[]>(AVATAR_BORDERS);
+  // ─── Katalog border live (dari Supabase fresh) ───
+  const [liveBorders, setLiveBorders] = useState<AvatarBorder[]>([]);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
@@ -100,12 +100,30 @@ export default function AvatarDecorationsScreen() {
     setOwnedBorderIdsState(owned);
   }, [userId]);
 
-  // Initial load
+  // Initial load dengan loading state mulus agar performa stabil & tidak crash di APK
   useEffect(() => {
-    loadCrystalBalance();
-    loadOwnedBorders();
-    // Fetch katalog border live dari Supabase
-    fetchLiveBorderCatalog().then((catalog) => setLiveBorders(catalog));
+    let mounted = true;
+    const init = async () => {
+      try {
+        await Promise.allSettled([
+          loadCrystalBalance(),
+          loadOwnedBorders(),
+          fetchLiveBorderCatalog().then((catalog) => {
+            if (mounted) setLiveBorders(catalog);
+          }),
+        ]);
+      } catch (err) {
+        console.warn("Init borders error:", err);
+      } finally {
+        setTimeout(() => {
+          if (mounted) setIsInitialLoading(false);
+        }, 350);
+      }
+    };
+    init();
+    return () => {
+      mounted = false;
+    };
   }, [loadCrystalBalance, loadOwnedBorders]);
 
   // Refresh crystal balance when screen comes into focus
@@ -231,7 +249,9 @@ export default function AvatarDecorationsScreen() {
   // Konfirmasi pembayaran di Mode Checkout (CO): Langsung aktif tanpa verifikasi admin
   const handleConfirmPurchase = async () => {
     if (!checkoutBorder || !userId || isPurchasing) return;
-    const price = BORDER_RARITY_PRICES[checkoutBorder.rarity];
+    const price = (checkoutBorder.priceCrystal && checkoutBorder.priceCrystal > 0)
+      ? checkoutBorder.priceCrystal
+      : BORDER_RARITY_PRICES[checkoutBorder.rarity];
 
     setIsPurchasing(true);
     setCheckoutState("processing");
@@ -334,11 +354,13 @@ export default function AvatarDecorationsScreen() {
   };
 
   // Find equipped border data for header preview
-  const equippedItem = getBorderById(equippedBorderIdState);
+  const equippedItem = liveBorders.find((b) => b.id === equippedBorderIdState) || getBorderById(equippedBorderIdState);
 
   // ─── TAMPILAN MODE CHECKOUT (CO) — ALUR PEMBELIAN LANGSUNG SEPERTI TOPUP ───
   if (checkoutBorder) {
-    const price = BORDER_RARITY_PRICES[checkoutBorder.rarity];
+    const price = (checkoutBorder.priceCrystal && checkoutBorder.priceCrystal > 0)
+      ? checkoutBorder.priceCrystal
+      : BORDER_RARITY_PRICES[checkoutBorder.rarity];
     const theme = RARITY_THEME[checkoutBorder.rarity];
     const hasEnough = crystalBalance >= price;
     const remainingBalance = Math.max(0, crystalBalance - price);
@@ -622,6 +644,42 @@ export default function AvatarDecorationsScreen() {
     );
   }
 
+  // ─── LOADING STATE SEBELUM RENDER KATALOG UNTUK MENCEGAH CRASH/LAG DI APK ───
+  if (isInitialLoading) {
+    return (
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.safeContainer}>
+        {/* Header Bar */}
+        <View style={styles.headerBar}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Kembali"
+            onPress={() => {
+              hapticLight();
+              router.back();
+            }}
+            style={({ pressed }) => [styles.backBtn, pressed && styles.btnPressed]}
+            hitSlop={12}
+          >
+            <AppIcon name="chevron-left" size={26} color="#FFFFFF" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Avatar Borders</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+
+        {/* Loading Spinner & Status */}
+        <View style={styles.loadingContainer}>
+          <View style={styles.loadingGlowBox}>
+            <ActivityIndicator size="large" color="#38BDF8" />
+          </View>
+          <Text style={styles.loadingTitle}>Memuat Katalog Border...</Text>
+          <Text style={styles.loadingSubtitle}>
+            Menyiapkan koleksi border avatar dan saldo Daylan Crystal...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.safeContainer}>
       {/* ─── 1. HEADER UTAMA ─── */}
@@ -717,7 +775,7 @@ export default function AvatarDecorationsScreen() {
               color={activeTab === "shop" ? "#FFFFFF" : "#94A3B8"}
             />
             <Text style={[styles.tabText, activeTab === "shop" && styles.tabTextActive]}>
-              Shop ({AVATAR_BORDERS.length})
+              Shop ({liveBorders.length})
             </Text>
           </Pressable>
 
@@ -774,8 +832,8 @@ export default function AvatarDecorationsScreen() {
               const isSelected = selectedCategory === cat;
               const count =
                 cat === "Semua"
-                  ? AVATAR_BORDERS.length
-                  : RARITY_THEME[cat]?.targetCount || 0;
+                  ? liveBorders.length
+                  : liveBorders.filter((b) => b.rarity === cat).length;
 
               return (
                 <Pressable
@@ -820,7 +878,9 @@ export default function AvatarDecorationsScreen() {
               const isOwned = ownedBorderIds.includes(border.id);
               const isEquipped = equippedBorderIdState === border.id;
               const theme = RARITY_THEME[border.rarity];
-              const price = BORDER_RARITY_PRICES[border.rarity];
+              const price = (border.priceCrystal && border.priceCrystal > 0)
+                ? border.priceCrystal
+                : BORDER_RARITY_PRICES[border.rarity];
 
               return (
                 <View
@@ -1821,5 +1881,37 @@ const styles = StyleSheet.create({
     fontFamily: "Nunito-Bold",
     fontSize: 13,
     color: "#CBD5E1",
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 28,
+  },
+  loadingGlowBox: {
+    width: 68,
+    height: 68,
+    borderRadius: 22,
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  loadingTitle: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 16,
+    color: "#FFFFFF",
+    marginBottom: 6,
+    textAlign: "center",
+  },
+  loadingSubtitle: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 13,
+    color: "#94A3B8",
+    textAlign: "center",
+    lineHeight: 18,
+    maxWidth: 280,
   },
 });

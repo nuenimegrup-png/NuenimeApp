@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ImageStyle,
   StyleProp,
@@ -8,7 +8,7 @@ import {
   ViewStyle,
 } from "react-native";
 import { Image } from "expo-image";
-import { AvatarBorder, getBorderById } from "@/lib/avatar-borders";
+import { AvatarBorder, getBorderById, getBorderByIdAsync } from "@/lib/avatar-borders";
 
 // Backward-compatibility local assets
 const LEGACY_BORDER_ASSETS: Record<string, any> = {
@@ -60,7 +60,11 @@ export const BorderAvatar: React.FC<BorderAvatarProps> = ({
 
   // Cari data border dari ID, direct URL, atau prop
   const isDirectUrl = typeof borderId === "string" && (borderId.startsWith("http://") || borderId.startsWith("https://"));
-  const borderData =
+  
+  // State untuk border dinamis jika baru di-input admin dan belum termuat di cache in-memory
+  const [asyncBorder, setAsyncBorder] = useState<AvatarBorder | null>(null);
+
+  const synchronousBorder =
     borderProp ||
     (isDirectUrl
       ? {
@@ -74,6 +78,24 @@ export const BorderAvatar: React.FC<BorderAvatarProps> = ({
       : borderId
       ? getBorderById(borderId)
       : undefined);
+
+  const borderData = synchronousBorder || asyncBorder;
+
+  // Fallback async fetch jika borderId adalah border baru hasil input admin
+  useEffect(() => {
+    if (borderId && !synchronousBorder && !isDirectUrl) {
+      let isMounted = true;
+      getBorderByIdAsync(borderId).then((b) => {
+        if (isMounted && b) {
+          setAsyncBorder(b);
+        }
+      });
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [borderId, synchronousBorder, isDirectUrl]);
+
   const legacyAsset = borderId ? LEGACY_BORDER_ASSETS[borderId] : undefined;
   const hasActiveBorder = Boolean((borderData && borderData.assetUrl) || legacyAsset);
 

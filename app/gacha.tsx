@@ -13,7 +13,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -27,7 +27,6 @@ import {
   GACHA_SETTINGS,
   GACHA_ANIMATION_GIF,
   RARITY_CONFIG,
-  WALLPAPER_CATALOG,
   WallpaperItem,
   WallpaperRarity,
 } from "@/lib/gacha-data";
@@ -41,11 +40,38 @@ import {
   getAllGachaBanners,
   getEquippedExpBonus,
   awardDirectUserXp,
+  verifyAndSaveSummonResults,
   GACHA_XP_REWARD,
   type DynamicGachaConfig,
 } from "@/lib/gacha-service";
+import { useCachedGachaAsset, cleanupOrphanedGachaAssets } from "@/lib/gacha-asset-cache";
 import { useExp } from "@/providers/exp-toast-provider";
 import { supabase } from "@/lib/supabase";
+
+// ─── KOMPONEN GAMBAR CACHED ANDROID ───
+// Mengambil aset dari disk lokal Android jika sudah di-cache, atau streaming sembari mengunduh ke storage
+function CachedGachaImage({
+  uri,
+  style,
+  contentFit = "cover",
+  transition = 200,
+}: {
+  uri?: string | null;
+  style?: any;
+  contentFit?: any;
+  transition?: number;
+}) {
+  const { assetUri } = useCachedGachaAsset(uri);
+  return (
+    <Image
+      source={{ uri: assetUri || uri || "" }}
+      style={style}
+      contentFit={contentFit}
+      transition={transition}
+      cachePolicy="disk"
+    />
+  );
+}
 
 // ─── DAFTAR PRESET AKTIVITAS UNTUK SIMULASI BONUS EXP ───
 export const SIMULATION_ACTIVITIES = [
@@ -68,14 +94,20 @@ export default function GachaScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // ─── STATE ───
+  // ─── STATE (100% DATABASE DRIVEN) ───
   const [crystalBalance, setCrystalBalance] = useState<number>(0);
   const [ownedIds, setOwnedIds] = useState<string[]>([]);
   const [activeWallpaperId, setActiveWallpaperIdState] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showLocked, setShowLocked] = useState(true);
-  const [allBanners, setAllBanners] = useState<WallpaperItem[]>(WALLPAPER_CATALOG);
+  const [allBanners, setAllBanners] = useState<WallpaperItem[]>([]);
+  const [isLoadingBanners, setIsLoadingBanners] = useState<boolean>(true);
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [gachaConfigState, setGachaConfigState] = useState<DynamicGachaConfig | null>(null);
+
+  // ─── STATE TOMBOL SIMPAN 10X (IDEMPOTENT & ANTI-DOUBLE CLICK) ───
+  const [isSaving10x, setIsSaving10x] = useState<boolean>(false);
+  const [isSaved10xSuccess, setIsSaved10xSuccess] = useState<boolean>(false);
 
   // ─── EXP & BONUS SIMULATION STATES ───
   const [lastXpAwarded, setLastXpAwarded] = useState<number>(0);
@@ -120,8 +152,9 @@ export default function GachaScreen() {
   const cost1x = gachaConfigState?.costSingle ?? GACHA_SETTINGS.cost1x;
   const cost10x = gachaConfigState?.costMulti ?? GACHA_SETTINGS.cost10x;
 
-  // ─── INITIAL LOAD ───
+  // ─── INITIAL LOAD (MURNI DATABASE & CACHE OFFLINE SAH) ───
   const loadData = useCallback(async () => {
+    setIsLoadingBanners(true);
     try {
       const [balance, owned, cfg, bannerList] = await Promise.all([
         getCrystalBalance(auth.user?.id),
@@ -133,14 +166,11 @@ export default function GachaScreen() {
       setCrystalBalance(balance);
       setGachaConfigState(cfg);
       setAllBanners(bannerList);
+      setOwnedIds(owned);
 
-      // If user has no wallpapers yet, grant default normal wallpaper as starter
-      if (owned.length === 0) {
-        const starter = ["naruto_ramen"];
-        await AsyncStorage.setItem("nuenime.owned.wallpapers", JSON.stringify(starter));
-        setOwnedIds(starter);
-      } else {
-        setOwnedIds(owned);
+      // Sinkronisasi otomatis cache disk Android: bersihkan aset yang sudah dihapus oleh admin
+      if (bannerList && bannerList.length > 0) {
+        cleanupOrphanedGachaAssets(bannerList.map((b) => b.image)).catch(() => {});
       }
 
       // Sync active equipped wallpaper (either from profile.banner_url or storage)
@@ -160,11 +190,57 @@ export default function GachaScreen() {
         activeItem = bannerList.find((w) => w.id === localActive);
       }
       setEquippedBonusPercent(activeItem?.expBonus ?? 0);
-    } catch {}
+    } catch (err) {
+      console.warn("[gacha] Gagal memuat data gacha:", err);
+    } finally {
+      setIsLoadingBanners(false);
+      setTimeout(() => setIsInitialLoading(false), 300);
+    }
   }, [auth.user?.id, auth.profile?.banner_url]);
 
   useEffect(() => {
     loadData();
+  }, [loadData]);
+
+  // Refresh data saat layar mendapatkan fokus
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
+  // Real-time synchronization dengan Supabase jika banner & config diubah oleh admin
+  useEffect(() => {
+    const channel = supabase
+      .channel(`gacha-db-sync-${Date.now()}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "gacha_banners",
+        },
+        () => {
+          loadData();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "system_configs",
+          filter: "key=eq.gacha_config",
+        },
+        () => {
+          loadData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [loadData]);
 
   // Real-time synchronization dengan Supabase jika balance di-update via admin / topup
@@ -196,6 +272,33 @@ export default function GachaScreen() {
       supabase.removeChannel(channel);
     };
   }, [auth.user?.id, loadData]);
+
+  // ─── HANDLER SIMPAN HASIL SPIN 10X (IDEMPOTENT & ANTI-DOUBLE CLICK) ───
+  const handleSave10xResults = async () => {
+    if (isSaving10x) return;
+    setIsSaving10x(true);
+    try {
+      const res = await verifyAndSaveSummonResults(auth.user?.id, gachaResults);
+      if (!res.success) {
+        hapticWarning();
+        Alert.alert("Perhatian", res.error || "Gagal memverifikasi penyimpanan hadiah ke koleksi.");
+      } else {
+        setIsSaved10xSuccess(true);
+        hapticSuccess();
+        showToast("10 Hadiah summon berhasil diamankan & tersimpan di koleksi akun!", "success");
+        setTimeout(() => {
+          setShowResultModal(false);
+          setIsSaving10x(false);
+          setIsSaved10xSuccess(false);
+        }, 500);
+      }
+    } catch (err: any) {
+      hapticWarning();
+      Alert.alert("Gagal Menyimpan", err?.message || "Terjadi kendala saat menyimpan hadiah.");
+    } finally {
+      setIsSaving10x(false);
+    }
+  };
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setFeedbackToast({ message, type });
@@ -374,6 +477,44 @@ export default function GachaScreen() {
 
   // Group wallpapers by rarity in order: Mythic, Legendary, Epic, Rare, Normal
   const rarityGroups: WallpaperRarity[] = ["Mythic", "Legendary", "Epic", "Rare", "Normal"];
+
+  // ─── LOADING SCREEN SEBELUM RENDER KATALOG GACHA UNTUK MENCEGAH CRASH DI ANDROID ───
+  if (isInitialLoading) {
+    return (
+      <View style={styles.container}>
+        <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
+          {/* Header Bar */}
+          <View style={styles.headerBar}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Kembali"
+              onPress={() => {
+                hapticLight();
+                router.back();
+              }}
+              style={({ pressed }) => [styles.backBtn, pressed && styles.btnPressed]}
+              hitSlop={12}
+            >
+              <AppIcon name="arrow-left" size={24} color="#FFFFFF" />
+            </Pressable>
+            <Text style={styles.headerTitle}>Nuenime Gacha</Text>
+            <View style={{ width: 40 }} />
+          </View>
+
+          {/* Loading Glow & Message */}
+          <View style={styles.loadingContainer}>
+            <View style={styles.loadingGlowBox}>
+              <ActivityIndicator size="large" color="#38BDF8" />
+            </View>
+            <Text style={styles.loadingTitle}>Memuat Nuenime Gacha...</Text>
+            <Text style={styles.loadingSubtitle}>
+              Menyiapkan koleksi banner wallpaper dan saldo Daylan Crystal...
+            </Text>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -658,70 +799,96 @@ export default function GachaScreen() {
             )}
           </View>
 
-          {/* ─── 8. WALLPAPER GROUPS BY RARITY ─── */}
-          {rarityGroups.map((rarityKey) => {
-            const config = RARITY_CONFIG[rarityKey];
-            const groupAllItems = allBanners.filter((w) => w.rarity === rarityKey);
-            const groupVisibleItems = filteredWallpapers.filter((w) => w.rarity === rarityKey);
+          {/* ─── 8. WALLPAPER GROUPS BY RARITY (100% DATABASE DRIVEN) ─── */}
+          {isLoadingBanners ? (
+            <View style={styles.emptyCatalogContainer}>
+              <ActivityIndicator size="large" color="#38BDF8" />
+              <Text style={styles.emptyCatalogTitle}>Memuat Koleksi Gacha...</Text>
+              <Text style={styles.emptyCatalogSubtitle}>
+                Mengambil data katalog banner langsung dari database utama Nuenime.
+              </Text>
+            </View>
+          ) : allBanners.length === 0 ? (
+            <View style={styles.emptyCatalogContainer}>
+              <AppIcon name="cube-outline" size={38} color="#64748B" />
+              <Text style={styles.emptyCatalogTitle}>Koleksi Gacha Belum Tersedia</Text>
+              <Text style={styles.emptyCatalogSubtitle}>
+                Saat ini belum ada banner yang aktif di pool gacha dari database. Silakan coba muat ulang atau periksa kembali nanti.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={loadData}
+                style={({ pressed }) => [styles.reloadCatalogBtn, pressed && { opacity: 0.8 }]}
+              >
+                <AppIcon name="refresh" size={15} color="#38BDF8" />
+                <Text style={styles.reloadCatalogBtnText}>Muat Ulang Katalog</Text>
+              </Pressable>
+            </View>
+          ) : (
+            rarityGroups.map((rarityKey) => {
+              const config = RARITY_CONFIG[rarityKey];
+              const groupAllItems = allBanners.filter((w) => w.rarity === rarityKey);
+              const groupVisibleItems = filteredWallpapers.filter((w) => w.rarity === rarityKey);
 
-            if (groupVisibleItems.length === 0) return null;
+              if (groupVisibleItems.length === 0) return null;
 
-            const ownedInGroup = groupAllItems.filter((w) => ownedIds.includes(w.id)).length;
-            const totalInGroup = groupAllItems.length;
+              const ownedInGroup = groupAllItems.filter((w) => ownedIds.includes(w.id)).length;
+              const totalInGroup = groupAllItems.length;
 
-            return (
-              <View key={rarityKey} style={styles.rarityGroupContainer}>
-                {/* Rarity Section Header Bar */}
-                <View
-                  style={[
-                    styles.rarityGroupHeader,
-                    { borderColor: config.borderColor },
-                  ]}
-                >
-                  <View style={styles.rarityGroupLeft}>
-                    <View
-                      style={[
-                        styles.rarityVerticalBar,
-                        { backgroundColor: config.color },
-                      ]}
-                    />
-                    <Text style={styles.rarityGroupTitle}>{config.label}</Text>
-                  </View>
-
+              return (
+                <View key={rarityKey} style={styles.rarityGroupContainer}>
+                  {/* Rarity Section Header Bar */}
                   <View
                     style={[
-                      styles.rarityGroupBadge,
+                      styles.rarityGroupHeader,
                       { borderColor: config.borderColor },
                     ]}
                   >
-                    <Text style={[styles.rarityGroupBadgeText, { color: config.color }]}>
-                      +{config.expBonus}% EXP · {ownedInGroup}/{totalInGroup} items
-                    </Text>
-                  </View>
-                </View>
-
-                {/* 2-Column Grid */}
-                <View style={styles.wallpaperGrid}>
-                  {groupVisibleItems.map((item) => {
-                    const isOwned = ownedIds.includes(item.id);
-                    const isEquipped = activeWallpaperId === item.id;
-
-                    return (
+                    <View style={styles.rarityGroupLeft}>
                       <View
-                        key={item.id}
                         style={[
-                          styles.wallpaperCard,
-                          { width: cardWidth },
-                          !isOwned && styles.wallpaperCardLocked,
+                          styles.rarityVerticalBar,
+                          { backgroundColor: config.color },
                         ]}
-                      >
-                        {/* Wallpaper Image */}
-                        <Image
-                          source={{ uri: item.image }}
-                          style={styles.wallpaperThumbnail}
-                          contentFit="cover"
-                          transition={200}
-                        />
+                      />
+                      <Text style={styles.rarityGroupTitle}>{config.label}</Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.rarityGroupBadge,
+                        { borderColor: config.borderColor },
+                      ]}
+                    >
+                      <Text style={[styles.rarityGroupBadgeText, { color: config.color }]}>
+                        +{config.expBonus}% EXP · {ownedInGroup}/{totalInGroup} items
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* 2-Column Grid */}
+                  <View style={styles.wallpaperGrid}>
+                    {groupVisibleItems.map((item) => {
+                      const isOwned = ownedIds.includes(item.id);
+                      const isEquipped = activeWallpaperId === item.id;
+
+                      return (
+                        <View
+                          key={item.id}
+                          style={[
+                            styles.wallpaperCard,
+                            { width: cardWidth },
+                            !isOwned && styles.wallpaperCardLocked,
+                          ]}
+                        >
+                          {/* Wallpaper Image (Cached di Android) */}
+                          <CachedGachaImage
+                            uri={item.image}
+                            style={styles.wallpaperThumbnail}
+                            contentFit="cover"
+                            transition={200}
+                          />
+
 
                         {/* Top dark gradient */}
                         <LinearGradient
@@ -769,9 +936,10 @@ export default function GachaScreen() {
                 </View>
               </View>
             );
-          })}
+          })
+        )}
 
-          <View style={{ height: 100 }} />
+        <View style={{ height: 100 }} />
         </ScrollView>
 
         {/* ─── 9. FLOATING BOTTOM CONTROLS (SESUAI SCREENSHOT) ─── */}
@@ -842,8 +1010,8 @@ export default function GachaScreen() {
                   return (
                     <View style={styles.singleResultCard}>
                       <View style={[styles.singleImageWrapper, { borderColor: cfg.borderColor }]}>
-                        <Image
-                          source={{ uri: item.image }}
+                        <CachedGachaImage
+                          uri={item.image}
                           style={styles.singleResultImage}
                           contentFit="cover"
                         />
@@ -922,8 +1090,8 @@ export default function GachaScreen() {
                         { borderColor: cfg.borderColor, width: Math.floor((Math.min(windowWidth, 540) - 48 - 10) / 2) },
                       ]}
                     >
-                      <Image
-                        source={{ uri: item.image }}
+                      <CachedGachaImage
+                        uri={item.image}
                         style={styles.multiResultThumb}
                         contentFit="cover"
                       />
@@ -944,14 +1112,40 @@ export default function GachaScreen() {
             </>
           )}
 
+            {/* ─── TOMBOL SIMPAN 10X (DESAIN PREMIUM OBSIDIAN-GLASS & EMERALD) ─── */}
             {lastSummonType === 10 && (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setShowResultModal(false)}
-                style={[styles.resultActionBtn, styles.resultApplyBtn, { marginTop: 14 }]}
-              >
-                <Text style={styles.resultApplyBtnText}>Simpan & Tutup</Text>
-              </Pressable>
+              <View style={styles.multiResultFooterBox}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isSaving10x}
+                  onPress={handleSave10xResults}
+                  style={({ pressed }) => [
+                    styles.multiSaveBtn,
+                    isSaving10x && styles.multiSaveBtnDisabled,
+                    isSaved10xSuccess && styles.multiSaveBtnSuccess,
+                    pressed && !isSaving10x && { opacity: 0.85, transform: [{ scale: 0.99 }] },
+                  ]}
+                >
+                  {isSaving10x ? (
+                    <>
+                      <ActivityIndicator size="small" color="#10B981" />
+                      <Text style={styles.multiSaveBtnText}>Menyimpan ke Koleksi...</Text>
+                    </>
+                  ) : isSaved10xSuccess ? (
+                    <>
+                      <AppIcon name="checkmark-circle" size={19} color="#10B981" />
+                      <Text style={[styles.multiSaveBtnText, { color: "#10B981" }]}>
+                        Tersimpan di Koleksi ✓
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <AppIcon name="save-outline" size={19} color="#FFFFFF" />
+                      <Text style={styles.multiSaveBtnText}>Simpan ke Koleksi & Selesai</Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
             )}
           </View>
         </View>
@@ -970,8 +1164,8 @@ export default function GachaScreen() {
               <>
                 {/* 16:9 Banner Preview */}
                 <View style={styles.previewBannerFrame}>
-                  <Image
-                    source={{ uri: previewItem.image }}
+                  <CachedGachaImage
+                    uri={previewItem.image}
                     style={styles.previewBannerImage}
                     contentFit="cover"
                   />
@@ -1968,6 +2162,115 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  multiResultFooterBox: {
+    width: "100%",
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.08)",
+  },
+  multiSaveBtn: {
+    width: "100%",
+    minHeight: 50,
+    backgroundColor: "rgba(16, 185, 129, 0.16)",
+    borderColor: "#10B981",
+    borderWidth: 1.2,
+    borderRadius: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  multiSaveBtnDisabled: {
+    opacity: 0.6,
+  },
+  multiSaveBtnSuccess: {
+    backgroundColor: "rgba(16, 185, 129, 0.25)",
+    borderColor: "#10B981",
+  },
+  multiSaveBtnText: {
+    fontSize: 14.5,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
+  },
+
+  // ─── EMPTY & LOADING CATALOG STATES ───
+  emptyCatalogContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 32,
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    marginVertical: 16,
+    gap: 10,
+  },
+  emptyCatalogTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    textAlign: "center",
+  },
+  emptyCatalogSubtitle: {
+    fontSize: 13,
+    color: "#94A3B8",
+    textAlign: "center",
+    lineHeight: 18,
+    maxWidth: 380,
+  },
+  reloadCatalogBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
+    borderColor: "#38BDF8",
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginTop: 6,
+  },
+  reloadCatalogBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#38BDF8",
+  },
+
+  // ─── FULL SCREEN INITIAL LOADING STATE (ANTI-CRASH) ───
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 28,
+  },
+  loadingGlowBox: {
+    width: 68,
+    height: 68,
+    borderRadius: 22,
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  loadingTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    marginBottom: 6,
+    textAlign: "center",
+  },
+  loadingSubtitle: {
+    fontSize: 13,
+    color: "#94A3B8",
+    textAlign: "center",
+    lineHeight: 18,
+    maxWidth: 280,
   },
 
   // ─── PREVIEW / CONFIRMATION MODAL ───

@@ -130,17 +130,39 @@ async function startServer() {
 
     try {
       const method = req.method.toUpperCase();
+      const reqAccept = req.headers.accept || "*/*";
       const upstream = await fetch(target, {
         method,
         headers: {
-          Accept: "application/json",
+          Accept: reqAccept,
+          ...(req.headers.range ? { Range: String(req.headers.range) } : {}),
           ...(req.headers["content-type"] ? { "Content-Type": String(req.headers["content-type"]) } : {}),
         },
         body: method === "GET" || method === "HEAD" ? undefined : JSON.stringify(req.body ?? {}),
       });
+
       const contentType = upstream.headers.get("content-type");
       if (contentType) res.setHeader("Content-Type", contentType);
-      res.status(upstream.status).send(Buffer.from(await upstream.arrayBuffer()));
+      const contentRange = upstream.headers.get("content-range");
+      if (contentRange) res.setHeader("Content-Range", contentRange);
+      const acceptRanges = upstream.headers.get("accept-ranges");
+      if (acceptRanges) res.setHeader("Accept-Ranges", acceptRanges);
+
+      let buffer = Buffer.from(await upstream.arrayBuffer());
+      if (
+        (contentType?.includes("mpegurl") ||
+         contentType?.includes("text") ||
+         upstreamPath.includes("proxy")) &&
+        buffer.includes("https://api.aniraku.tech")
+      ) {
+        const host = req.get("host") || "localhost:3000";
+        const protocol = req.protocol;
+        const proxyPrefix = `${protocol}://${host}/api/aniraku`;
+        const text = buffer.toString("utf8");
+        const rewritten = text.replaceAll("https://api.aniraku.tech", proxyPrefix);
+        buffer = Buffer.from(rewritten, "utf8");
+      }
+      res.status(upstream.status).send(buffer);
     } catch {
       res.status(502).json({ error: "The production Aniraku backend could not be reached from this preview." });
     }

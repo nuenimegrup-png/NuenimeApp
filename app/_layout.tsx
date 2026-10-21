@@ -62,10 +62,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (fontsLoaded) {
-      const timer = setTimeout(() => {
-        setSplashVisible(false);
-      }, 1000);
-      return () => clearTimeout(timer);
+      setSplashVisible(false);
     }
   }, [fontsLoaded]);
 

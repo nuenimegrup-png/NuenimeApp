@@ -39,7 +39,9 @@ import {
   extractDirectImageUrl,
 } from "@/lib/profile-cooldown";
 import { BorderAvatar } from "@/components/border-avatar";
-import { getEquippedBorderId } from "@/lib/avatar-borders";
+import { getEquippedBorderId, subscribeEquippedBorder } from "@/lib/avatar-borders";
+import { isSpecialRole } from "@/lib/admin-service";
+import { getFriends } from "@/lib/friends-service";
 
 const DEFAULT_BANNER =
   "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1200";
@@ -48,6 +50,10 @@ const BORDER_IMAGES: Record<string, any> = {
   white_mage: require("@/assets/images/inventory/border-white-mage.png"),
   magic_book: require("@/assets/images/inventory/border-magic-book.png"),
 };
+
+const INVENTORY_STAR_IMG = require("@/assets/images/inventory/crystal-star.png");
+const BORDER_WHITE_MAGE_IMG = require("@/assets/images/inventory/border-white-mage.png");
+const GACHA_BOOK_IMG = require("@/assets/images/inventory/border-magic-book.png");
 
 function formatJoinDuration(createdAt?: string | null): string {
   if (!createdAt) return "1 bulan";
@@ -87,7 +93,9 @@ export default function ProfileScreen() {
   const { displayRows } = useWatchHistory();
   const { bookmarks } = useBookmarks();
   const navigation = useNavigation();
-  const searchParams = useLocalSearchParams<{ detail?: string; view?: string }>();
+  const searchParams = useLocalSearchParams<{ detail?: string; view?: string; userId?: string; id?: string }>();
+  const targetUserId = searchParams.userId || searchParams.id;
+  const isOwnProfile = !targetUserId || targetUserId === auth.user?.id;
 
   // Selalu mulai di layar awal (overview/social screen dari screenshot user), atau detail jika diminta query param
   const [showDetailProfile, setShowDetailProfile] = useState(
@@ -100,6 +108,15 @@ export default function ProfileScreen() {
   // Floating Toast State for Coming Soon features
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [bannerLoadError, setBannerLoadError] = useState(false);
+  const [friendCount, setFriendCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (auth.user?.id) {
+      getFriends(auth.user.id)
+        .then((list) => setFriendCount(list.length))
+        .catch(() => {});
+    }
+  }, [auth.user?.id]);
 
   useEffect(() => {
     setBannerLoadError(false);
@@ -206,8 +223,16 @@ export default function ProfileScreen() {
         .catch(() => {});
     };
     syncBorder();
-    const unsubscribe = navigation.addListener("focus" as any, syncBorder);
-    return unsubscribe;
+    const unsubFocus = navigation.addListener("focus" as any, syncBorder);
+    const unsubEquip = subscribeEquippedBorder((newBorderId, targetUserId) => {
+      if (!targetUserId || targetUserId === auth.user?.id) {
+        setEquippedBorderId(newBorderId);
+      }
+    });
+    return () => {
+      unsubFocus();
+      unsubEquip();
+    };
   }, [navigation, auth.user?.id]);
 
   const showToast = (message: string) => {
@@ -304,6 +329,10 @@ export default function ProfileScreen() {
   const memberNumber = auth.profile?.member_number ?? 1;
   const userTag = `#${memberNumber}`;
 
+  // Role pengguna & verifikasi centang (Merah untuk role khusus, Biru untuk member)
+  const userRole = auth.profile?.role || "Member";
+  const isSpecial = isSpecialRole(userRole);
+
   // Individual User Level & EXP from database
   const userExp = Math.max(0, Number(auth.profile?.exp || 0));
   const levelInfo = getLevelProgressInfo(userExp);
@@ -386,49 +415,65 @@ export default function ProfileScreen() {
                 >
                   {userTag}
                 </Text>
+                <View style={styles.socialVerifiedBadge}>
+                  <AppIcon
+                    name={isSpecial ? "check-decagram" : "check-circle"}
+                    size={15}
+                    color={isSpecial ? "#EF4444" : "#38BDF8"}
+                  />
+                </View>
               </Pressable>
 
-              {/* 3. Tombol Level Pill -> Buka Pop-Up Level Modal secara mandiri */}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Lihat Level Progress (Lvl ${userLevel})`}
-                onPress={() => {
-                  hapticLight();
-                  setShowLevelProgressModal(true);
-                }}
-                // @ts-ignore
-                onClick={() => {
-                  hapticLight();
-                  setShowLevelProgressModal(true);
-                }}
-                style={({ pressed }) => [
-                  styles.socialLevelPill,
-                  pressed && styles.btnPressed,
-                  Platform.OS === "web" && ({ cursor: "pointer", userSelect: "none" } as any),
-                ]}
-                hitSlop={{ top: 4, bottom: 8, left: 4, right: 16 }}
-              >
-                {activeTier?.imageUrl ? (
-                  <Image
-                    source={{ uri: activeTier.imageUrl }}
-                    style={[styles.socialTierIcon, { pointerEvents: "none" } as any]}
-                    contentFit="contain"
-                    transition={150}
-                    cachePolicy="memory-disk"
-                    pointerEvents="none"
-                  />
-                ) : (
-                  <Text style={[styles.socialStoneIcon, { pointerEvents: "none" } as any]} pointerEvents="none">
-                    🪨
-                  </Text>
-                )}
-                <Text
-                  style={[styles.socialLevelText, { pointerEvents: "none" } as any]}
-                  pointerEvents="none"
+              {/* 3. Tombol Level Pill & Role Tag Khusus */}
+              <View style={styles.socialPillRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Lihat Level Progress (Lvl ${userLevel})`}
+                  onPress={() => {
+                    hapticLight();
+                    setShowLevelProgressModal(true);
+                  }}
+                  // @ts-ignore
+                  onClick={() => {
+                    hapticLight();
+                    setShowLevelProgressModal(true);
+                  }}
+                  style={({ pressed }) => [
+                    styles.socialLevelPill,
+                    pressed && styles.btnPressed,
+                    Platform.OS === "web" && ({ cursor: "pointer", userSelect: "none" } as any),
+                  ]}
+                  hitSlop={{ top: 4, bottom: 8, left: 4, right: 16 }}
                 >
-                  Lvl. {userLevel}
-                </Text>
-              </Pressable>
+                  {activeTier?.imageUrl ? (
+                    <Image
+                      source={{ uri: activeTier.imageUrl }}
+                      style={[styles.socialTierIcon, { pointerEvents: "none" } as any]}
+                      contentFit="contain"
+                      transition={150}
+                      cachePolicy="memory-disk"
+                      pointerEvents="none"
+                    />
+                  ) : (
+                    <Text style={[styles.socialStoneIcon, { pointerEvents: "none" } as any]} pointerEvents="none">
+                      🪨
+                    </Text>
+                  )}
+                  <Text
+                    style={[styles.socialLevelText, { pointerEvents: "none" } as any]}
+                    pointerEvents="none"
+                  >
+                    Lvl. {userLevel}
+                  </Text>
+                </Pressable>
+
+                {isSpecial && (
+                  <View style={styles.socialRolePill}>
+                    <AppIcon name="shield-check" size={11} color="#EF4444" />
+                    <Text style={styles.socialRolePillText}>{userRole}</Text>
+                  </View>
+                )}
+              </View>
             </View>
           </View>
 
@@ -458,23 +503,170 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
 
-        {/* 2. BODY: EMPTY SOCIAL ACTIVITY MESSAGE */}
-        <View style={styles.socialEmptyBody}>
-          <Text style={styles.socialEmptyTitle}>Belum ada aktivitas pertemanan.</Text>
-          <Text style={styles.socialEmptySubtitle}>
-            Mulai follow teman untuk lihat update mereka
-          </Text>
-        </View>
+        {/* 2. BODY: SCROLLABLE MENU (INVENTORY BANNER, BORDER SHOP, GACHA BANNER) */}
+        <ScrollView
+          style={styles.socialScrollView}
+          contentContainerStyle={styles.socialScrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* A. COMPACT INVENTORY INFO BANNER */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Buka Tas dan Inventory"
+            onPress={() => {
+              hapticLight();
+              router.push("/inventory" as never);
+            }}
+            // @ts-ignore
+            onClick={() => {
+              hapticLight();
+              router.push("/inventory" as never);
+            }}
+            style={({ pressed }) => [
+              styles.inventoryInfoBanner,
+              pressed && styles.btnPressed,
+              Platform.OS === "web" && ({ cursor: "pointer" } as any),
+            ]}
+          >
+            <Image
+              source={INVENTORY_STAR_IMG}
+              style={styles.inventoryImg}
+              contentFit="contain"
+            />
+            <View style={styles.inventoryTextCol}>
+              <View style={styles.inventoryTitleRow}>
+                <Text style={styles.inventoryTitle}>Tas & Inventory</Text>
+                <View style={styles.inventoryBadge}>
+                  <Text style={styles.inventoryBadgeText}>Koleksi</Text>
+                </View>
+              </View>
+              <Text style={styles.inventorySubtitle} numberOfLines={1}>
+                Kelola koleksi border, banner & item eksklusif
+              </Text>
+            </View>
+            <View style={styles.inventoryActionBtn}>
+              <Text style={styles.inventoryActionText}>Buka</Text>
+              <AppIcon name="chevron-right" size={16} color="#CBD5E1" />
+            </View>
+          </Pressable>
 
-        {/* 3. FLOATING ACTION BUTTON (ADD FRIENDS) */}
+          {/* B. SECTION: TOKO BORDER & GACHA BANNER */}
+          <View style={styles.socialSectionHeader}>
+            <Text style={styles.socialSectionTitle}>Koleksi & Kustomisasi</Text>
+            <Text style={styles.socialSectionSubtitle}>Hias profilmu dengan item langka</Text>
+          </View>
+
+          <View style={styles.featureCardsGrid}>
+            {/* 1. Beli Border Avatar Card */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Beli Border Avatar"
+              onPress={() => {
+                hapticLight();
+                router.push("/avatar-decorations" as never);
+              }}
+              // @ts-ignore
+              onClick={() => {
+                hapticLight();
+                router.push("/avatar-decorations" as never);
+              }}
+              style={({ pressed }) => [
+                styles.featureCard,
+                pressed && styles.btnPressed,
+                Platform.OS === "web" && ({ cursor: "pointer" } as any),
+              ]}
+            >
+              <View style={styles.featureCardHeader}>
+                <Image
+                  source={BORDER_WHITE_MAGE_IMG}
+                  style={styles.featureCardImg}
+                  contentFit="contain"
+                />
+                <View style={styles.featureCardBadge}>
+                  <Text style={styles.featureCardBadgeText}>STORE</Text>
+                </View>
+              </View>
+
+              <Text style={styles.featureCardTitle}>Beli Border Avatar</Text>
+              <Text style={styles.featureCardDesc}>
+                Koleksi border anime Mythic, Legends & Epic untuk bingkai profilmu.
+              </Text>
+
+              <View style={styles.featureCardFooter}>
+                <Text style={styles.featureCardCta}>Lihat Toko Border</Text>
+                <AppIcon name="arrow-right" size={15} color="#E2E8F0" />
+              </View>
+            </Pressable>
+
+            {/* 2. Gacha Banner Keren Card */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Gacha Banner Keren"
+              onPress={() => {
+                hapticLight();
+                router.push("/gacha" as never);
+              }}
+              // @ts-ignore
+              onClick={() => {
+                hapticLight();
+                router.push("/gacha" as never);
+              }}
+              style={({ pressed }) => [
+                styles.featureCard,
+                pressed && styles.btnPressed,
+                Platform.OS === "web" && ({ cursor: "pointer" } as any),
+              ]}
+            >
+              <View style={styles.featureCardHeader}>
+                <Image
+                  source={GACHA_BOOK_IMG}
+                  style={styles.featureCardImg}
+                  contentFit="contain"
+                />
+                <View style={styles.featureCardBadge}>
+                  <Text style={styles.featureCardBadgeText}>SUMMON</Text>
+                </View>
+              </View>
+
+              <Text style={styles.featureCardTitle}>Gacha Banner Keren</Text>
+              <Text style={styles.featureCardDesc}>
+                Dapatkan banner anime eksklusif, wallpaper profil & aura visual langka!
+              </Text>
+
+              <View style={styles.featureCardFooter}>
+                <Text style={styles.featureCardCta}>Mulai Gacha</Text>
+                <AppIcon name="arrow-right" size={15} color="#E2E8F0" />
+              </View>
+            </Pressable>
+          </View>
+
+          {/* C. SUBTLE ACTIVITY NOTICE */}
+          <View style={styles.socialNoticeCard}>
+            <View style={styles.socialNoticeIconBox}>
+              <AppIcon name="account-group-outline" size={20} color="#94A3B8" />
+            </View>
+            <View style={styles.socialNoticeTextCol}>
+              <Text style={styles.socialNoticeTitle}>Belum ada aktivitas pertemanan</Text>
+              <Text style={styles.socialNoticeSubtitle}>
+                Follow teman sesama wibu untuk memantau anime yang sedang mereka tonton!
+              </Text>
+            </View>
+          </View>
+        </ScrollView>
+
+        {/* 3. FLOATING ACTION BUTTON (ADD FRIENDS) - SILVER & RAISED */}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Tambah Teman"
-          onPress={() => showToast("Fitur Pertemanan akan segera hadir.")}
+          accessibilityLabel="Buka menu pertemanan"
+          onPress={() => {
+            hapticLight();
+            router.push("/connections" as never);
+          }}
           style={({ pressed }) => [styles.socialFab, pressed && styles.btnPressed]}
+          hitSlop={8}
         >
           <View pointerEvents="none" style={{ pointerEvents: "none" } as any}>
-            <AppIcon name="account-multiple-plus" size={26} color="#FFFFFF" />
+            <AppIcon name="account-multiple-plus" size={26} color="#0B0E14" />
           </View>
         </Pressable>
 
@@ -652,11 +844,15 @@ export default function ProfileScreen() {
               </Text>
               <Text style={styles.userTagText}>{userTag}</Text>
               <View style={styles.verifiedBadge}>
-                <AppIcon name="check-circle" size={17} color="#38BDF8" />
+                <AppIcon
+                  name={isSpecial ? "check-decagram" : "check-circle"}
+                  size={17}
+                  color={isSpecial ? "#EF4444" : "#38BDF8"}
+                />
               </View>
             </View>
 
-            {/* Level Pill & Teman Pill */}
+            {/* Level Pill, Role Tag (Khusus), & Teman Pill */}
             <View style={styles.pillRow}>
               {/* Level Progress Pill (Interactive) */}
               <Pressable
@@ -687,11 +883,27 @@ export default function ProfileScreen() {
                 <Text style={styles.levelPillText}>Lvl {userLevel.toLocaleString("id-ID")}</Text>
               </Pressable>
 
+              {/* Tag Role Khusus (Hanya jika BUKAN Member) */}
+              {isSpecial && (
+                <View style={styles.roleTagPill}>
+                  <AppIcon name="shield-check" size={13} color="#EF4444" />
+                  <Text style={styles.roleTagText}>{userRole}</Text>
+                </View>
+              )}
+
               {/* Teman Pill */}
-              <View style={styles.friendsPill}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Buka menu pertemanan"
+                onPress={() => {
+                  hapticLight();
+                  router.push("/connections" as never);
+                }}
+                style={({ pressed }) => [styles.friendsPill, pressed && styles.btnPressed]}
+              >
                 <AppIcon name="account-group" size={14} color="#94A3B8" />
-                <Text style={styles.friendsPillText}>0 Teman</Text>
-              </View>
+                <Text style={styles.friendsPillText}>{friendCount} Teman</Text>
+              </Pressable>
             </View>
           </View>
         </View>
@@ -727,16 +939,18 @@ export default function ProfileScreen() {
 
         {/* ─── 4. ACTION BUTTONS ─── */}
         <View style={styles.actionsWrap}>
-          {/* Primary: Tambah Teman */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Tambah Teman"
-            onPress={() => showToast("Fitur Pertemanan akan segera hadir.")}
-            style={({ pressed }) => [styles.addFriendBtn, pressed && styles.btnPressed]}
-          >
-            <AppIcon name="plus" size={18} color="#FFFFFF" />
-            <Text style={styles.addFriendText}>Tambah Teman</Text>
-          </Pressable>
+          {/* Primary: Tambah Teman (hanya ditampilkan jika melihat profil pengguna lain) */}
+          {!isOwnProfile && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Tambah Teman"
+              onPress={() => showToast("Fitur Pertemanan akan segera hadir.")}
+              style={({ pressed }) => [styles.addFriendBtn, pressed && styles.btnPressed]}
+            >
+              <AppIcon name="plus" size={18} color="#FFFFFF" />
+              <Text style={styles.addFriendText}>Tambah Teman</Text>
+            </Pressable>
+          )}
 
           {/* Secondary: Peliharaan & Afinitas */}
           <View style={styles.featureRow}>
@@ -1535,44 +1749,220 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  socialEmptyBody: {
+  socialScrollView: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 32,
-    gap: 8,
-    marginTop: -50,
+    width: "100%",
   },
-  socialEmptyTitle: {
+  socialScrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 130,
+  },
+  inventoryInfoBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(30, 41, 59, 0.45)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.2)",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 18,
+    ...(Platform.OS === "web"
+      ? ({
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+          boxShadow: "0 4px 14px rgba(0, 0, 0, 0.25)",
+        } as any)
+      : {}),
+  },
+  inventoryImg: {
+    width: 38,
+    height: 38,
+    marginRight: 12,
+  },
+  inventoryTextCol: {
+    flex: 1,
+    marginRight: 8,
+  },
+  inventoryTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 2,
+  },
+  inventoryTitle: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 13.5,
+    color: "#F8FAFC",
+  },
+  inventoryBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+    backgroundColor: "rgba(226, 232, 240, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.3)",
+  },
+  inventoryBadgeText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 9.5,
+    color: "#E2E8F0",
+    textTransform: "uppercase",
+  },
+  inventorySubtitle: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 11.5,
+    color: "#94A3B8",
+  },
+  inventoryActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.2)",
+  },
+  inventoryActionText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11.5,
+    color: "#E2E8F0",
+    marginRight: 2,
+  },
+  socialSectionHeader: {
+    marginBottom: 12,
+  },
+  socialSectionTitle: {
     fontFamily: "Nunito-Bold",
     fontSize: 15,
-    color: "#E2E8F0",
-    textAlign: "center",
+    color: "#F1F5F9",
   },
-  socialEmptySubtitle: {
+  socialSectionSubtitle: {
     fontFamily: "Nunito-Regular",
-    fontSize: 12.5,
+    fontSize: 12,
     color: "#64748B",
-    textAlign: "center",
-    lineHeight: 18,
+    marginTop: 1,
+  },
+  featureCardsGrid: {
+    gap: 12,
+    marginBottom: 18,
+  },
+  featureCard: {
+    backgroundColor: "rgba(18, 22, 31, 0.75)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.22)",
+    padding: 16,
+    position: "relative",
+    overflow: "hidden",
+    ...(Platform.OS === "web"
+      ? ({
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          boxShadow: "0 6px 20px rgba(0, 0, 0, 0.35)",
+        } as any)
+      : {}),
+  },
+  featureCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  featureCardImg: {
+    width: 48,
+    height: 48,
+  },
+  featureCardBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: "rgba(226, 232, 240, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.3)",
+  },
+  featureCardBadgeText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 10,
+    color: "#E2E8F0",
+    letterSpacing: 0.6,
+  },
+  featureCardTitle: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 15.5,
+    color: "#FFFFFF",
+    marginBottom: 4,
+  },
+  featureCardDesc: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 12,
+    color: "#94A3B8",
+    lineHeight: 17,
+    marginBottom: 12,
+  },
+  featureCardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  featureCardCta: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12.5,
+    color: "#E2E8F0",
+  },
+  socialNoticeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    padding: 12,
+    gap: 12,
+  },
+  socialNoticeIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  socialNoticeTextCol: {
+    flex: 1,
+  },
+  socialNoticeTitle: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12.5,
+    color: "#CBD5E1",
+    marginBottom: 2,
+  },
+  socialNoticeSubtitle: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 11,
+    color: "#64748B",
+    lineHeight: 15,
   },
   socialFab: {
     position: "absolute",
-    bottom: 90,
+    bottom: 112,
     right: 20,
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: "#2563EB",
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#E2E8F0",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#2563EB",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45,
-    shadowRadius: 14,
-    elevation: 6,
     zIndex: 50,
-    ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
+    ...(Platform.OS === "web"
+      ? ({
+          cursor: "pointer",
+        } as any)
+      : {}),
   },
   loadingContainer: {
     flex: 1,
@@ -1757,8 +2147,51 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 8,
     marginTop: 2,
+    flexWrap: "wrap",
+  },
+  roleTagPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.35)",
+  },
+  roleTagText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12,
+    color: "#EF4444",
+    letterSpacing: 0.1,
+  },
+  socialVerifiedBadge: {
+    marginLeft: 3,
+  },
+  socialPillRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+  },
+  socialRolePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.3)",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  socialRolePillText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
+    color: "#EF4444",
   },
   levelPill: {
     flexDirection: "row",
@@ -1797,19 +2230,16 @@ const styles = StyleSheet.create({
     color: "#94A3B8",
   },
 
-  // ─── STATS CARD ───
+  // ─── STATS CARD (SEAMLESS / TRANSPARENT) ───
   statsCard: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginHorizontal: 16,
     marginTop: 18,
-    paddingVertical: 14,
+    paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: "transparent",
   },
   statColumn: {
     flex: 1,

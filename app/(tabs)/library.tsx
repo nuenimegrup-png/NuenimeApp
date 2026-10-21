@@ -10,8 +10,6 @@ export default function LibraryTab() {
         initialTab="bookmarks"
         allowedTabs={["bookmarks", "alerts"]}
         showTopBar={true}
-        headerTitle="Subscribe"
-        headerSubtitle="Daftar anime langganan & favorit kamu"
       />
     </SafeAreaView>
   );
@@ -23,4 +21,3 @@ const styles = StyleSheet.create({
     backgroundColor: "#0B0E17",
   },
 });
-

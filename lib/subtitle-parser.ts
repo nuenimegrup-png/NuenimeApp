@@ -204,27 +204,46 @@ export function normalizeSubtitleLang(value?: string | null): string {
 
 export type SubtitleTrackLike = { url: string; label?: string; lang?: string };
 
+export function isActualSubtitleTrack(track: SubtitleTrackLike | null | undefined): boolean {
+  if (!track?.url) return false;
+  const url = track.url.toLowerCase();
+  const label = (track.label || "").toLowerCase();
+  const lang = (track.lang || "").toLowerCase();
+  if (
+    url.includes("thumbnails") ||
+    url.includes("sprite") ||
+    label.includes("thumbnails") ||
+    label.includes("sprite") ||
+    (!label && !lang && url.endsWith(".vtt"))
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function matchSubtitleTrack(
   tracks: readonly SubtitleTrackLike[] | undefined,
   preferredLanguage?: string | null,
 ): SubtitleTrackLike | null {
   if (!tracks?.length) return null;
+  const validTracks = tracks.filter(isActualSubtitleTrack);
+  if (!validTracks.length) return null;
   const preferred = normalizeSubtitleLang(preferredLanguage);
-  if (!preferred) return tracks[0] ?? null;
+  if (!preferred) return validTracks[0] ?? null;
   // Exact normalized match on lang or label first.
-  for (const track of tracks) {
+  for (const track of validTracks) {
     if (normalizeSubtitleLang(track.lang) === preferred) return track;
     if (normalizeSubtitleLang(track.label) === preferred) return track;
   }
   // Prefix match ("en" matches "en-us", "english" etc.).
-  for (const track of tracks) {
+  for (const track of validTracks) {
     const lang = normalizeSubtitleLang(track.lang);
     const label = normalizeSubtitleLang(track.label);
     if (lang.startsWith(preferred) || preferred.startsWith(lang) || label.startsWith(preferred) || preferred.startsWith(label)) {
       if (lang || label) return track;
     }
   }
-  return tracks[0] ?? null;
+  return validTracks[0] ?? null;
 }
 
 export function parseSubtitle(content: string, format: "vtt" | "srt" | "ass"): ParsedSubtitle {

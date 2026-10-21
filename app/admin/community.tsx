@@ -130,7 +130,10 @@ export default function AdminCommunityScreen() {
       <View style={styles.contentWrap}>
         {/* ─── KARTU WORD BLACKLIST ─── */}
         <View style={styles.cardBox}>
-          <Text style={styles.cardBoxTitle}>🚫 Filter Sensor Kata Terlarang (Blacklist)</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <AppIcon name="shield-alert-outline" size={18} color="#F87171" />
+            <Text style={styles.cardBoxTitle}>Filter Sensor Kata Terlarang (Blacklist)</Text>
+          </View>
           <Text style={styles.cardBoxSubtitle}>
             Komentar yang mengandung kata-kata di bawah akan otomatis disensor atau dicegah masuk.
           </Text>
@@ -163,7 +166,10 @@ export default function AdminCommunityScreen() {
 
         {/* ─── FEED KOMENTAR TERBARU ─── */}
         <View style={styles.cardBox}>
-          <Text style={styles.cardBoxTitle}>💬 Feed Komentar Terbaru Episode Anime</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <AppIcon name="comment-text-multiple" size={18} color="#38BDF8" />
+            <Text style={styles.cardBoxTitle}>Feed Komentar Terbaru Episode Anime</Text>
+          </View>
           <Text style={styles.cardBoxSubtitle}>
             Tinjau komentar penonton di seluruh episode. Hapus komentar berbau spam, spoiler kasar,
             atau ujaran kebencian.

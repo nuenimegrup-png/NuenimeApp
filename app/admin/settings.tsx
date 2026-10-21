@@ -6,16 +6,20 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Switch,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AdminLayout } from "@/components/admin/admin-layout";
 import { supabase } from "@/lib/supabase";
 import { AppIcon } from "@/components/app-icon";
+import { readNsfwPreference, writeAdminNsfwPreference } from "@/lib/nsfw-preference";
 
 export default function AdminSettingsScreen() {
   const [supabaseStatus, setSupabaseStatus] = useState<"checking" | "connected" | "fallback">("checking");
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [nsfwEnabled, setNsfwEnabled] = useState(false);
+  const [savingNsfw, setSavingNsfw] = useState(false);
 
   const checkConnection = async () => {
     setSupabaseStatus("checking");
@@ -36,7 +40,26 @@ export default function AdminSettingsScreen() {
 
   useEffect(() => {
     checkConnection();
+    readNsfwPreference().then((val) => setNsfwEnabled(val));
   }, []);
+
+  const handleToggleNsfw = async (val: boolean) => {
+    setNsfwEnabled(val);
+    setSavingNsfw(true);
+    const res = await writeAdminNsfwPreference(val);
+    setSavingNsfw(false);
+    if (res.success) {
+      setFeedback(
+        val
+          ? "Filter Konten 18+ diaktifkan! Pengguna sekarang dapat melihat anime dewasa."
+          : "Filter Konten 18+ dinonaktifkan! Seluruh anime dewasa disembunyikan dari aplikasi."
+      );
+      setTimeout(() => setFeedback(null), 4000);
+    } else {
+      alert(res.error || "Gagal mengubah konfigurasi konten");
+      setNsfwEnabled(!val);
+    }
+  };
 
   const handleClearCache = async () => {
     if (confirm("Reset data cache lokal admin?")) {
@@ -68,6 +91,54 @@ export default function AdminSettingsScreen() {
             <Text style={styles.feedbackText}>{feedback}</Text>
           </View>
         )}
+
+        {/* KONTROL GLOBAL KONTEN 18+ (DEWASA) */}
+        <View style={[styles.card, { marginBottom: 20 }]}>
+          <View style={styles.cardHeader}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+              <View style={styles.safetyIconBox}>
+                <AppIcon name="shield-lock" size={20} color="#EF4444" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={styles.cardTitle}>Filter Konten 18+ (Dewasa / Ecchi)</Text>
+                  <View style={styles.nsfwTagPill}>
+                    <Text style={styles.nsfwTagText}>18+</Text>
+                  </View>
+                </View>
+                <Text style={styles.cardDesc}>
+                  Kontrol pusat filter konten dewasa untuk seluruh pengguna aplikasi Nuenime. Pengguna biasa tidak dapat mengubah pengaturan ini sendiri.
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              {savingNsfw && <ActivityIndicator size="small" color="#EF4444" />}
+              <Switch
+                value={nsfwEnabled}
+                onValueChange={handleToggleNsfw}
+                trackColor={{ false: "#27272A", true: "#EF4444" }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
+
+          <View style={[styles.statusBox, { backgroundColor: nsfwEnabled ? "rgba(239, 68, 68, 0.08)" : "rgba(16, 185, 129, 0.08)", borderColor: nsfwEnabled ? "rgba(239, 68, 68, 0.2)" : "rgba(16, 185, 129, 0.2)" }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <AppIcon name={nsfwEnabled ? "alert-circle" : "check-circle"} size={16} color={nsfwEnabled ? "#EF4444" : "#10B981"} />
+              <Text style={{ fontFamily: "Nunito-Bold", fontSize: 13, color: nsfwEnabled ? "#FCA5A5" : "#6EE7B7" }}>
+                {nsfwEnabled
+                  ? "STATUS: KONTEN 18+ AKTIF (DITAMPILKAN)"
+                  : "STATUS: MODE AMAN AKTIF (18+ DISEMBUNYIKAN)"}
+              </Text>
+            </View>
+            <Text style={{ fontFamily: "Nunito-Regular", fontSize: 12, color: "#CBD5E1", marginTop: 4, lineHeight: 17 }}>
+              {nsfwEnabled
+                ? "Semua anime termasuk kategori dewasa/ecchi/18+ sedang ditampilkan kepada seluruh pengguna di halaman katalog, pencarian, dan rekomendasi acak."
+                : "Semua anime berkategori dewasa/ecchi/18+ otomatis disembunyikan dari aplikasi untuk seluruh pengguna secara global (Ramah semua umur)."}
+            </Text>
+          </View>
+        </View>
 
         {/* SUPABASE CONNECTION STATUS */}
         <View style={styles.card}>
@@ -147,30 +218,58 @@ export default function AdminSettingsScreen() {
           <View style={styles.envTable}>
             <View style={styles.envRow}>
               <Text style={styles.envKey}>EXPO_PUBLIC_SUPABASE_URL</Text>
-              <Text style={styles.envStatus}>
-                {process.env.EXPO_PUBLIC_SUPABASE_URL ? "✓ Terpasang" : "✕ Belum disetel"}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <AppIcon
+                  name={process.env.EXPO_PUBLIC_SUPABASE_URL ? "check" : "close"}
+                  size={13}
+                  color={process.env.EXPO_PUBLIC_SUPABASE_URL ? "#10B981" : "#94A3B8"}
+                />
+                <Text style={styles.envStatus}>
+                  {process.env.EXPO_PUBLIC_SUPABASE_URL ? "Terpasang" : "Belum disetel"}
+                </Text>
+              </View>
             </View>
 
             <View style={styles.envRow}>
               <Text style={styles.envKey}>EXPO_PUBLIC_SUPABASE_ANON_KEY</Text>
-              <Text style={styles.envStatus}>
-                {process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ? "✓ Terpasang (Masked)" : "✕ Belum disetel"}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <AppIcon
+                  name={process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ? "check" : "close"}
+                  size={13}
+                  color={process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ? "#10B981" : "#94A3B8"}
+                />
+                <Text style={styles.envStatus}>
+                  {process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ? "Terpasang (Masked)" : "Belum disetel"}
+                </Text>
+              </View>
             </View>
 
             <View style={styles.envRow}>
               <Text style={styles.envKey}>EXPO_PUBLIC_ADMIN_WHATSAPP</Text>
-              <Text style={styles.envStatus}>
-                {process.env.EXPO_PUBLIC_ADMIN_WHATSAPP ? "✓ Terpasang" : "✕ Default (Kosong)"}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <AppIcon
+                  name={process.env.EXPO_PUBLIC_ADMIN_WHATSAPP ? "check" : "close"}
+                  size={13}
+                  color={process.env.EXPO_PUBLIC_ADMIN_WHATSAPP ? "#10B981" : "#94A3B8"}
+                />
+                <Text style={styles.envStatus}>
+                  {process.env.EXPO_PUBLIC_ADMIN_WHATSAPP ? "Terpasang" : "Default (Kosong)"}
+                </Text>
+              </View>
             </View>
 
             <View style={styles.envRow}>
               <Text style={styles.envKey}>EXPO_PUBLIC_QRIS_URL</Text>
-              <Text style={styles.envStatus}>
-                {process.env.EXPO_PUBLIC_QRIS_URL ? "✓ Terpasang" : "✕ Default (Kosong)"}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <AppIcon
+                  name={process.env.EXPO_PUBLIC_QRIS_URL ? "check" : "close"}
+                  size={13}
+                  color={process.env.EXPO_PUBLIC_QRIS_URL ? "#10B981" : "#94A3B8"}
+                />
+                <Text style={styles.envStatus}>
+                  {process.env.EXPO_PUBLIC_QRIS_URL ? "Terpasang" : "Default (Kosong)"}
+                </Text>
+              </View>
             </View>
           </View>
         </View>
@@ -351,5 +450,25 @@ const styles = StyleSheet.create({
     color: "#EF4444",
     fontSize: 13,
     fontWeight: "700",
+  },
+  safetyIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  nsfwTagPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    backgroundColor: "#EF4444",
+  },
+  nsfwTagText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 10,
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
   },
 });
