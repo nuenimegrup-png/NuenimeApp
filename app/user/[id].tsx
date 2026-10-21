@@ -886,13 +886,19 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: "#FFFFFF",
     letterSpacing: -0.3,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   userTagText: {
     fontFamily: "Nunito-Bold",
     fontSize: 13.5,
     color: "#64748B",
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   verifiedBadge: {
+    justifyContent: "center",
+    alignItems: "center",
     marginLeft: 2,
   },
 

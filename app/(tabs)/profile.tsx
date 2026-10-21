@@ -1707,7 +1707,7 @@ const styles = StyleSheet.create({
   },
   socialNameRow: {
     flexDirection: "row",
-    alignItems: "baseline",
+    alignItems: "center",
     gap: 6,
   },
   socialDisplayName: {
@@ -1715,11 +1715,15 @@ const styles = StyleSheet.create({
     fontSize: 15.5,
     color: "#FFFFFF",
     letterSpacing: -0.2,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   socialUserTag: {
     fontFamily: "Nunito-Regular",
     fontSize: 12,
     color: "#808A98",
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   socialLevelPill: {
     flexDirection: "row",
@@ -2134,13 +2138,19 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: "#FFFFFF",
     letterSpacing: -0.3,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   userTagText: {
     fontFamily: "Nunito-Bold",
     fontSize: 13.5,
     color: "#64748B",
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   verifiedBadge: {
+    justifyContent: "center",
+    alignItems: "center",
     marginLeft: 2,
   },
   pillRow: {
@@ -2169,7 +2179,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
   socialVerifiedBadge: {
-    marginLeft: 3,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 1,
   },
   socialPillRow: {
     flexDirection: "row",
