@@ -182,3 +182,10 @@ export function subscribePrivateMessages(
     supabase.removeChannel(channel);
   };
 }
+
+/** Melacak partner chat yang sedang aktif dibuka layarnya */
+export let activeChatPartnerId: string | null = null;
+
+export function setActiveChatPartner(partnerId: string | null) {
+  activeChatPartnerId = partnerId;
+}

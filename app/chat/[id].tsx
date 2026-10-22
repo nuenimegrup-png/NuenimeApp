@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -10,7 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { AppIcon } from "@/components/app-icon";
 import { BorderAvatar } from "@/components/border-avatar";
@@ -20,6 +21,7 @@ import {
   getPrivateMessages,
   sendPrivateMessage,
   subscribePrivateMessages,
+  setActiveChatPartner,
 } from "@/lib/private-chat-service";
 import { getPublicUserProfile, type FriendUser } from "@/lib/friends-service";
 import { isSpecialRole } from "@/lib/admin-service";
@@ -42,13 +44,46 @@ export default function PrivateChatRoomScreen() {
   const auth = useAnirakuAuth();
   const currentUserId = auth.user?.id;
 
+  const insets = useSafeAreaInsets();
   const [friend, setFriend] = useState<FriendUser | null>(null);
   const [messages, setMessages] = useState<PrivateMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
+
+  // Tandai partner chat yang aktif dibuka agar notifikasi tidak membunyikan HP saat sedang membaca chat ini
+  useEffect(() => {
+    if (id) {
+      setActiveChatPartner(id);
+    }
+    return () => {
+      setActiveChatPartner(null);
+    };
+  }, [id]);
+
+  // Listener keyboard agar bottom bar naik dengan mulus di atas software keyboard
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSub = Keyboard.addListener(showEvent, () => {
+      setKeyboardOpen(true);
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 80);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardOpen(false);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Load friend profile and chat messages
   const loadChat = useCallback(async () => {
@@ -162,7 +197,7 @@ export default function PrivateChatRoomScreen() {
   };
 
   return (
-    <SafeAreaView edges={["top", "bottom"]} style={styles.container}>
+    <SafeAreaView edges={["top"]} style={styles.container}>
       {/* ─── 1. TOP HEADER (PERSIS SCREENSHOT 1) ─── */}
       <View style={styles.header}>
         <Pressable
@@ -213,7 +248,8 @@ export default function PrivateChatRoomScreen() {
       {/* ─── 2. CHAT MESSAGES BODY ─── */}
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
       >
         {loading ? (
           <View style={styles.centerContainer}>
@@ -280,7 +316,14 @@ export default function PrivateChatRoomScreen() {
         )}
 
         {/* ─── 3. BOTTOM INPUT BAR (PERSIS SCREENSHOT 1) ─── */}
-        <View style={styles.bottomBar}>
+        <View
+          style={[
+            styles.bottomBar,
+            {
+              paddingBottom: keyboardOpen ? 10 : Math.max(insets.bottom, 12),
+            },
+          ]}
+        >
           <View style={styles.inputWrap}>
             <TextInput
               value={inputText}

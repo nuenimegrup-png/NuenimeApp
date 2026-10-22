@@ -121,7 +121,11 @@ export default function ConnectionsScreen() {
     if (!currentUserId) return;
     hapticLight();
     setRequests((prev) => prev.filter((r) => r.id !== requesterId));
-    await rejectOrCancelFriendRequest(currentUserId, requesterId);
+    await rejectOrCancelFriendRequest(
+      currentUserId,
+      requesterId,
+      auth.profile?.display_name || auth.profile?.username
+    );
   };
 
   // Auto-search realtime as user types (300ms debounce)

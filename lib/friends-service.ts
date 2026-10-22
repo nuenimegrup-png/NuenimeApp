@@ -275,7 +275,8 @@ export async function acceptFriendRequest(
  */
 export async function rejectOrCancelFriendRequest(
   userA: string,
-  userB: string
+  userB: string,
+  userName?: string | null
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { error } = await supabase
@@ -285,6 +286,18 @@ export async function rejectOrCancelFriendRequest(
       .eq("status", "pending");
 
     if (error) return { success: false, error: error.message };
+
+    // Kirim notifikasi ke pihak yang ditolak
+    try {
+      await supabase.from("notifications").insert({
+        user_id: userB,
+        title: "Permintaan Pertemanan Ditolak",
+        message: `${userName || "Pengguna"} menolak permintaan pertemanan.`,
+        type: "friend_rejected",
+        read: false,
+      });
+    } catch {}
+
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err?.message || "Gagal memproses." };

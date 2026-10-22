@@ -21,6 +21,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { showSystemBarNotification } from "@/lib/system-notification";
+import { activeChatPartnerId } from "@/lib/private-chat-service";
 
 export type NotificationPrefs = {
   newEpisodes: boolean;
@@ -246,6 +247,138 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
                 channelId: "nuenime_security",
                 channelName: "Keamanan Akun Nuenime",
               });
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "private_messages",
+            filter: `receiver_id=eq.${userId}`,
+          },
+          async (payload) => {
+            const row = payload.new as {
+              id?: string;
+              sender_id?: string;
+              receiver_id?: string;
+              message?: string;
+              created_at?: string;
+            } | null;
+            if (!row || !row.sender_id || !row.message) return;
+
+            // Jika pengguna sedang aktif melihat obrolan dengan pengirim ini, tidak perlu membunyikan status bar
+            if (activeChatPartnerId === row.sender_id) return;
+
+            // Ambil nama pengirim dari database
+            let senderName = "Pesan Masuk";
+            try {
+              const { data: prof } = await supabase
+                .from("profiles")
+                .select("display_name, username")
+                .eq("id", row.sender_id)
+                .single();
+              if (prof?.display_name || prof?.username) {
+                senderName = prof.display_name || prof.username;
+              }
+            } catch {}
+
+            // 🔔 Picu notifikasi native murni di Status Bar HP (di luar aplikasi)
+            void showSystemBarNotification({
+              title: senderName,
+              body: row.message,
+              channelId: "nuenime_chat",
+              channelName: "Pesan Chat Pribadi",
+              data: {
+                type: "chat",
+                senderId: row.sender_id,
+                actionUrl: `/chat/${row.sender_id}`,
+              },
+            });
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "friendships",
+          },
+          async (payload) => {
+            if (payload.eventType === "INSERT") {
+              const row = payload.new as {
+                id?: string;
+                user_id?: string;
+                friend_id?: string;
+                status?: string;
+              } | null;
+              // Jika pengguna ini adalah penerima permintaan pertemanan (friend_id == userId)
+              if (row && row.friend_id === userId && row.status === "pending") {
+                let requesterName = "Seseorang";
+                try {
+                  const { data: prof } = await supabase
+                    .from("profiles")
+                    .select("display_name, username")
+                    .eq("id", row.user_id)
+                    .single();
+                  if (prof?.display_name || prof?.username) {
+                    requesterName = prof.display_name || prof.username;
+                  }
+                } catch {}
+
+                // 🔔 Notifikasi status bar HP di luar aplikasi
+                void showSystemBarNotification({
+                  title: "Permintaan Pertemanan Baru 👥",
+                  body: `${requesterName} telah mengirimkan permintaan pertemanan kepada Anda.`,
+                  channelId: "nuenime_social",
+                  channelName: "Pertemanan Nuenime",
+                  data: {
+                    type: "friend_request",
+                    actionUrl: "/connections",
+                  },
+                });
+              }
+            } else if (payload.eventType === "UPDATE") {
+              const newRow = payload.new as {
+                id?: string;
+                user_id?: string;
+                friend_id?: string;
+                status?: string;
+              } | null;
+              const oldRow = payload.old as { status?: string } | null;
+
+              // Jika status berubah menjadi accepted dan pengguna ini adalah pengirim awal (user_id == userId)
+              if (
+                newRow &&
+                newRow.user_id === userId &&
+                newRow.status === "accepted" &&
+                oldRow?.status !== "accepted"
+              ) {
+                let friendName = "Teman Anda";
+                try {
+                  const { data: prof } = await supabase
+                    .from("profiles")
+                    .select("display_name, username")
+                    .eq("id", newRow.friend_id)
+                    .single();
+                  if (prof?.display_name || prof?.username) {
+                    friendName = prof.display_name || prof.username;
+                  }
+                } catch {}
+
+                // 🔔 Notifikasi status bar HP di luar aplikasi
+                void showSystemBarNotification({
+                  title: "Pertemanan Diterima 🎉",
+                  body: `${friendName} telah menerima permintaan pertemanan Anda! Anda sekarang terhubung.`,
+                  channelId: "nuenime_social",
+                  channelName: "Pertemanan Nuenime",
+                  data: {
+                    type: "friend_accepted",
+                    actionUrl: `/chat/${newRow.friend_id}`,
+                  },
+                });
+              }
             }
           }
         )
