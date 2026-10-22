@@ -20,7 +20,7 @@ import {
   Sun, PictureInPicture, ThumbsUp, ThumbsDown, ShareNetwork, PlayCircle,
   Flag, Diamond, Sparkle, Info, SlidersHorizontal, Eye, CaretDown, HardDrives
 } from "phosphor-react-native";
-import { anirakuProxyUrl, getAnimeMetadata, getEpisodes, getServers, getStream, getPlaybackType, isAnirakuProxyUrl, nativePlaybackHeaders } from "@/lib/aniraku-api";
+import { anirakuProxyUrl, getAnimeMetadata, getEpisodes, getServers, getStream, getPlaybackType, isAnirakuProxyUrl, nativePlaybackHeaders, CHROME_ANDROID_UA } from "@/lib/aniraku-api";
 import { getAnimeById, getKnownMalId, getMalIdByAnimeId } from "@/lib/anilist";
 import { enrichEpisodesWithTmdb } from "@/lib/tmdb-episodes";
 import {
@@ -581,7 +581,13 @@ export default function WatchScreen() {
     const subtitleUrl = preferred.url.includes("/api/v1/proxy?") ? anirakuProxyUrl(preferred.url) : anirakuProxyUrl(preferred.url, nativePlaybackHeaders(playbackHeaders));
     let cancelled = false;
     const directHeaders = nativePlaybackHeaders(playbackHeaders);
-    fetch(subtitleUrl, directHeaders && !preferred.url.includes("/api/v1/proxy?") ? { headers: { ...directHeaders, Accept: "*/*" } } : undefined)
+    const subHeaders: Record<string, string> = {
+      "User-Agent": CHROME_ANDROID_UA,
+      Referer: "https://aniraku.tech/",
+      Accept: "*/*",
+      ...(directHeaders && !preferred.url.includes("/api/v1/proxy?") ? directHeaders : {}),
+    };
+    fetch(subtitleUrl, { headers: subHeaders })
       .then((r) => {
         if (!r.ok) throw new Error(`subtitle ${r.status}`);
         return r.text();
@@ -1309,9 +1315,18 @@ export default function WatchScreen() {
   }, [source?.url, useSourceProxy, playbackHeaders]);
 
   const videoSourceHeaders = useMemo(() => {
-    if (useSourceProxy) return undefined;
-    if (source && isAnirakuProxyUrl(source.url)) return undefined;
-    return nativePlaybackHeaders(playbackHeaders);
+    const directHeaders = nativePlaybackHeaders(playbackHeaders);
+    const proxyHeaders: Record<string, string> = {
+      "User-Agent": CHROME_ANDROID_UA,
+      Referer: "https://aniraku.tech/",
+    };
+    if (useSourceProxy || (source && isAnirakuProxyUrl(source.url))) {
+      return proxyHeaders;
+    }
+    return {
+      "User-Agent": CHROME_ANDROID_UA,
+      ...(directHeaders ?? {}),
+    };
   }, [useSourceProxy, playbackHeaders, source?.url]);
 
   // ── Quality from the provider's Auto URL ──
@@ -1430,7 +1445,13 @@ export default function WatchScreen() {
       parsedVariantsRef.current = { key: masterPlaybackUri, variants };
     };
 
-    fetch(masterPlaybackUri, directHeaders && !proxied ? { headers: { ...directHeaders, Accept: "*/*" } } : undefined)
+    const manifestHeaders: Record<string, string> = {
+      "User-Agent": CHROME_ANDROID_UA,
+      Referer: "https://aniraku.tech/",
+      Accept: "*/*",
+      ...(directHeaders && !proxied ? directHeaders : {}),
+    };
+    fetch(masterPlaybackUri, { headers: manifestHeaders })
       .then((response) => {
         if (!response.ok) throw new Error(`manifest ${response.status}`);
         return response.text();
@@ -1457,14 +1478,12 @@ export default function WatchScreen() {
     return t === "hls" ? "m3u8" : t === "dash" ? "mpd" : undefined;
   }, [source?.url]);
 
-  // Real ExoPlayer LoadControl — low latency fast-start configuration
-  // bufferForPlaybackMs reduced from 2500ms to 500ms for instant playback start
-  // bufferForPlaybackAfterRebufferMs reduced from 5000ms to 1000ms for fast recovery
+  // Real ExoPlayer LoadControl — matches Aniraku proven buffer configuration
   const videoBufferConfig = useMemo(() => ({
-    minBufferMs: 5_000,
-    maxBufferMs: 30_000,
-    bufferForPlaybackMs: 500,
-    bufferForPlaybackAfterRebufferMs: 1_000,
+    minBufferMs: 15_000,
+    maxBufferMs: 120_000,
+    bufferForPlaybackMs: 2_500,
+    bufferForPlaybackAfterRebufferMs: 5_000,
   }), []);
 
   // ── Actions ──
@@ -1597,7 +1616,13 @@ export default function WatchScreen() {
     try {
       const directHeaders = nativePlaybackHeaders(playbackHeadersMirrorRef.current);
       const proxied = useSourceProxy || isAnirakuProxyUrl(staleUrl) || isAnirakuProxyUrl(masterKey);
-      const response = await fetch(masterKey, directHeaders && !proxied ? { headers: { ...directHeaders, Accept: "*/*" } } : undefined);
+      const manifestHeaders: Record<string, string> = {
+        "User-Agent": CHROME_ANDROID_UA,
+        Referer: "https://aniraku.tech/",
+        Accept: "*/*",
+        ...(directHeaders && !proxied ? directHeaders : {}),
+      };
+      const response = await fetch(masterKey, { headers: manifestHeaders });
       if (!response.ok) throw new Error(`manifest ${response.status}`);
       const text = await response.text();
       const variants = parseHlsMasterVariants(text, originalStreamUrl(masterKey));

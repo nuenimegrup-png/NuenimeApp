@@ -9,7 +9,7 @@ on:
       tag:
         description: "Release tag to build (must match the version in app.config.ts)"
         required: false
-        default: "v0.0.2"
+        default: "v0.0.3"
 
 env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}

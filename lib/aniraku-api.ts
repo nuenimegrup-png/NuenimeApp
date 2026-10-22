@@ -1,6 +1,9 @@
 import { APP_CONFIG } from "@/lib/app-config";
 import type { Anime, Episode, Server, StreamResponse, StreamSource } from "@/lib/types";
 
+export const CHROME_ANDROID_UA =
+  "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36";
+
 async function apiRequest<T>(path: string, init?: RequestInit, timeoutMs: number = 15_000): Promise<T> {
   let response: Response;
   const controller = new AbortController();
@@ -9,7 +12,12 @@ async function apiRequest<T>(path: string, init?: RequestInit, timeoutMs: number
     response = await fetch(`${APP_CONFIG.apiBaseUrl}${path}`, {
       ...init,
       signal: init?.signal ?? controller.signal,
-      headers: { Accept: "application/json", ...(init?.headers ?? {}) },
+      headers: {
+        Accept: "application/json",
+        "User-Agent": CHROME_ANDROID_UA,
+        Referer: "https://aniraku.tech/",
+        ...(init?.headers ?? {}),
+      },
     });
   } catch (cause) {
     const timedOut = cause instanceof Error && cause.name === "AbortError";
@@ -29,9 +37,6 @@ async function apiRequest<T>(path: string, init?: RequestInit, timeoutMs: number
   }
   return payload;
 }
-
-export const CHROME_ANDROID_UA =
-  "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36";
 
 export function getPlaybackType(source: StreamSource): "hls" | "dash" | "native" | "embed" {
   const raw = `${source.type ?? ""} ${source.mime ?? ""}`.toLowerCase();
