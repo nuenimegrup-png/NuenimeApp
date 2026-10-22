@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabase";
+import { sendPushToUser, sendPushToAllUsers } from "./push-notification-service";
 import type { AdminUser } from "./admin-audit";
 import { logAdminAction } from "./admin-audit";
 import { addCrystalBalance, getCrystalBalance } from "./topup-service";
@@ -102,6 +103,17 @@ export async function sendMassGift(
       recipients_count: 100,
     });
   } catch {}
+
+  // 🔔 Kirim Push Notification ke seluruh pengguna (tetap sampai walaupun APK mati)
+  void sendPushToAllUsers({
+    title: `🎁 ${newGift.title}`,
+    body: newGift.message,
+    channelId: "nuenime_system",
+    data: {
+      type: "gift",
+      actionUrl: `/mailbox?giftId=${newGift.id}`,
+    },
+  });
 
   // 3. Simpan ke local cache AsyncStorage
   try {
@@ -374,6 +386,17 @@ export async function createBorderCompensationGift(params: {
         type: "gift",
       });
     } catch {}
+
+    // 🔔 Kirim Push Notification langsung ke target user
+    void sendPushToUser(userId, {
+      title: `💎 Klaim Pengembalian: Border "${borderName}"`,
+      body: `Border "${borderName}" dihapus. Kamu mendapatkan pengembalian ${refundAmount} Dylan Crystal.`,
+      channelId: "nuenime_system",
+      data: {
+        type: "gift",
+        actionUrl: "/mailbox",
+      },
+    });
 
     // 3. Simpan juga ke cache lokal system_gifts
     const localGift: SystemGift = {

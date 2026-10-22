@@ -22,6 +22,7 @@ import { supabase } from "@/lib/supabase";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { showSystemBarNotification } from "@/lib/system-notification";
 import { activeChatPartnerId } from "@/lib/private-chat-service";
+import { registerAndSavePushToken } from "@/lib/push-notification-service";
 
 export type NotificationPrefs = {
   newEpisodes: boolean;
@@ -111,6 +112,14 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const queryClient = useQueryClient();
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
+  const appMountTimestamp = useRef(Date.now()).current;
+
+  // Daftarkan token push ke Google FCM dan simpan ke Supabase agar tetap menerima notifikasi saat APK mati
+  useEffect(() => {
+    if (user?.id) {
+      registerAndSavePushToken(user.id).catch(() => {});
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     // Push listeners are native-only: on web they warn and do nothing.
@@ -194,8 +203,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
               type?: string;
               read?: boolean;
               link?: string;
+              created_at?: string;
             } | null;
             if (!row?.id || row.read === true) return;
+
+            // Cegah spam: jika notifikasi ini dibuat sebelum sesi aplikasi dibuka (sudah diterima via push), jangan bunyikan ulang
+            const createdAtMs = row.created_at ? new Date(row.created_at).getTime() : Date.now();
+            if (createdAtMs < appMountTimestamp - 4000) return;
 
             // 🔔 1. MUNCULKAN NOTIFIKASI NATIVE DI STATUS BAR HP (DI LUAR APK)
             void showSystemBarNotification({
@@ -267,6 +281,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
               created_at?: string;
             } | null;
             if (!row || !row.sender_id || !row.message) return;
+
+            // Cegah spam: jangan bunyikan pesan lama yang sudah terkirim sebelum aplikasi dibuka
+            const createdAtMs = row.created_at ? new Date(row.created_at).getTime() : Date.now();
+            if (createdAtMs < appMountTimestamp - 4000) return;
 
             // Jika pengguna sedang aktif melihat obrolan dengan pengirim ini, tidak perlu membunyikan status bar
             if (activeChatPartnerId === row.sender_id) return;

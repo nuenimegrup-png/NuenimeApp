@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
+import { sendPushToAllUsers } from "@/lib/push-notification-service";
 import type {
   TopUpTransaction,
   TopUpStatus,
@@ -2873,6 +2874,18 @@ export async function sendAdminBroadcast(params: {
     targetType: "broadcast",
     targetId: item.id,
     details: { title: item.title, type: item.type, recipientsCount: item.recipientsCount },
+  });
+
+  // 4. 🔔 Kirim Push Notification ke SEMUA pengguna (sampai walaupun APK sedang mati total!)
+  void sendPushToAllUsers({
+    title: item.title,
+    body: item.message,
+    channelId: "nuenime_broadcast",
+    data: {
+      type: "broadcast",
+      actionUrl: item.actionUrl,
+      broadcastId: item.id,
+    },
   });
 
   return item;

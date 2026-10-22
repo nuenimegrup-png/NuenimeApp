@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { sendPushToUser } from "./push-notification-service";
 
 export type FriendshipStatus =
   | "none"
@@ -225,6 +226,17 @@ export async function sendFriendRequest(
       });
     } catch {}
 
+    // 🔔 Kirim Push Notification ke HP penerima (tetap sampai walaupun APK mati total)
+    void sendPushToUser(toUserId, {
+      title: "Permintaan Pertemanan Baru 👥",
+      body: `${fromUserName || "Seseorang"} telah mengirimkan permintaan pertemanan kepada Anda.`,
+      channelId: "nuenime_social",
+      data: {
+        type: "friend_request",
+        actionUrl: "/connections",
+      },
+    });
+
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err?.message || "Gagal mengirim permintaan pertemanan." };
@@ -264,6 +276,17 @@ export async function acceptFriendRequest(
       });
     } catch {}
 
+    // 🔔 Kirim Push Notification ke HP pengirim awal (tetap sampai walaupun APK mati total)
+    void sendPushToUser(requesterUserId, {
+      title: "Pertemanan Diterima 🎉",
+      body: `${currentUserName || "Teman Anda"} telah menerima permintaan pertemanan Anda! Anda sekarang terhubung.`,
+      channelId: "nuenime_social",
+      data: {
+        type: "friend_accepted",
+        actionUrl: `/chat/${currentUserId}`,
+      },
+    });
+
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err?.message || "Gagal menerima permintaan." };
@@ -297,6 +320,17 @@ export async function rejectOrCancelFriendRequest(
         read: false,
       });
     } catch {}
+
+    // 🔔 Kirim Push Notification ke HP pihak yang ditolak (tetap sampai walaupun APK mati total)
+    void sendPushToUser(userB, {
+      title: "Permintaan Pertemanan Ditolak",
+      body: `${userName || "Pengguna"} menolak permintaan pertemanan.`,
+      channelId: "nuenime_social",
+      data: {
+        type: "friend_rejected",
+        actionUrl: "/connections",
+      },
+    });
 
     return { success: true };
   } catch (err: any) {

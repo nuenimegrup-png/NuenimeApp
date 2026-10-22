@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabase";
 import { filterAndCensorMessage } from "./word-filter";
+import { sendPushToUser } from "./push-notification-service";
 
 export interface PrivateMessage {
   id: string;
@@ -133,6 +134,18 @@ export async function sendPrivateMessage(
         read: false,
       });
     } catch {}
+
+    // 🔔 Kirim Push Notification ke HP penerima (tetap sampai walaupun APK penerima sedang mati total)
+    void sendPushToUser(receiverId, {
+      title: senderName || "Pesan Chat Masuk",
+      body: textToSave,
+      channelId: "nuenime_chat",
+      data: {
+        type: "chat",
+        senderId,
+        actionUrl: `/chat/${senderId}`,
+      },
+    });
 
     return { success: true, data: newMsg };
   } catch (err: any) {
