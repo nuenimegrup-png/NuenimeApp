@@ -80,12 +80,7 @@ export function anirakuProxyUrl(url: string, headers?: Record<string, string>) {
   // proxy-of-proxy URL that the backend rejects with
   // {"error":"proxy target not allowed"} → HTTP 403 → ExoPlayer
   // ERROR_CODE_IO_BAD_HTTP_STATUS. Play those URLs as-is.
-  if (isAnirakuProxyUrl(url)) {
-    if (APP_CONFIG.apiBaseUrl && !APP_CONFIG.apiBaseUrl.startsWith("https://api.aniraku.tech")) {
-      return url.replace("https://api.aniraku.tech", APP_CONFIG.apiBaseUrl);
-    }
-    return url;
-  }
+  if (isAnirakuProxyUrl(url)) return url;
   const parameters = new URLSearchParams({ url, rn: `${Date.now()}-${Math.random().toString(36).slice(2)}` });
   if (headers && Object.keys(headers).length) parameters.set("headers", JSON.stringify(headers));
   return `${APP_CONFIG.apiBaseUrl}/api/v1/proxy?${parameters.toString()}`;

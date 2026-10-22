@@ -1,13 +1,10 @@
-import React, { forwardRef } from "react";
-import RNVideo, { type VideoRef } from "react-native-video";
+import RNVideo from "react-native-video";
 
 /**
  * Android & iOS Native Implementation.
- * Uses 100% native react-native-video (ExoPlayer on Android, AVPlayer on iOS).
- * Completely isolated from any web libraries or DOM elements.
+ * Uses 100% native react-native-video (ExoPlayer on Android, AVPlayer on iOS) directly.
  */
-export const UniversalVideo = forwardRef<VideoRef, any>((props, ref) => {
-  return <RNVideo ref={ref} {...props} />;
-});
+export const UniversalVideo = RNVideo;
 
 export default UniversalVideo;
+
