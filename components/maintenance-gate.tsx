@@ -71,8 +71,16 @@ export function MaintenanceGate() {
 
             if (isActive) {
               void showSystemBarNotification({
-                title: "Pemeliharaan Sistem Nuenime",
+                title: "Pemeliharaan Sistem Nuenime 🛠️",
                 body: val.message || "Server sedang dalam pemeliharaan berkala untuk peningkatan performa.",
+                channelId: "nuenime_maintenance",
+                channelName: "Status Pemeliharaan Sistem",
+              });
+            } else {
+              // 🔔 Notifikasi pemeliharaan selesai!
+              void showSystemBarNotification({
+                title: "Pemeliharaan Selesai! 🎉",
+                body: "Server Nuenime telah kembali online dan siap digunakan. Selamat menonton kembali!",
                 channelId: "nuenime_maintenance",
                 channelName: "Status Pemeliharaan Sistem",
               });

@@ -2208,6 +2208,30 @@ export async function saveAdminMaintenanceConfig(
     targetId: "maintenance",
     details: config,
   });
+
+  // 🔔 Kirim Push Notification ke seluruh pengguna (sampai walaupun APK sedang mati total!)
+  if (config.isActive) {
+    void sendPushToAllUsers({
+      title: "Pemeliharaan Sistem Nuenime 🛠️",
+      body: config.message || "Server sedang dalam pemeliharaan berkala untuk peningkatan performa.",
+      channelId: "nuenime_maintenance",
+      data: {
+        type: "maintenance",
+        status: "started",
+      },
+    });
+  } else {
+    // 🔔 Notifikasi pemeliharaan selesai!
+    void sendPushToAllUsers({
+      title: "Pemeliharaan Selesai! 🎉",
+      body: "Server Nuenime telah kembali online dan siap digunakan. Selamat menonton kembali!",
+      channelId: "nuenime_maintenance",
+      data: {
+        type: "maintenance",
+        status: "completed",
+      },
+    });
+  }
 }
 
 // ─── 7B. POP-UP AWAL (ANNOUNCEMENT MODAL) CONFIG ───
