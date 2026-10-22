@@ -54,6 +54,8 @@ export const SERIES_GENRES = [
   { id: "Horror", label: "Horror" },
 ] as const;
 
+let memoryCachedHome: { trending: any[]; popular: any[]; upcoming: any[] } | null = null;
+
 export default function HomeScreen() {
   const { width: windowWidth } = useWindowDimensions();
   // 16 horizontal padding on each side = 32 total. 3 gaps of 8px between 4 items = 24.
@@ -85,7 +87,7 @@ export default function HomeScreen() {
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const [selectedGenre, setSelectedGenre] = useState<string>("Action");
 
-  const [cachedHome, setCachedHome] = useState<{ trending: any[]; popular: any[]; upcoming: any[] } | null>(null);
+  const [cachedHome, setCachedHome] = useState<{ trending: any[]; popular: any[]; upcoming: any[] } | null>(memoryCachedHome);
 
   // Load cached home data instantly on startup for zero-delay first paint
   useEffect(() => {
@@ -94,6 +96,7 @@ export default function HomeScreen() {
         try {
           const parsed = JSON.parse(raw);
           if (parsed && Array.isArray(parsed.trending) && parsed.trending.length > 0) {
+            memoryCachedHome = parsed;
             setCachedHome(parsed);
           }
         } catch {}
@@ -106,13 +109,14 @@ export default function HomeScreen() {
     queryFn: () => getHomeAnime(isAdultParam),
     placeholderData: cachedHome ?? undefined,
     staleTime: 10 * 60_000,
-    retry: 3,
-    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 4000),
   });
 
   // Save fresh home data to cache
   useEffect(() => {
     if (home.data && home.data.trending && home.data.trending.length > 0) {
+      memoryCachedHome = home.data;
       void AsyncStorage.setItem(`nuenime.cache.home.${isAdultParam}`, JSON.stringify(home.data)).catch(() => {});
     }
   }, [home.data, isAdultParam]);

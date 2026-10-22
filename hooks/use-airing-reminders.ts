@@ -143,10 +143,7 @@ export function AiringReminderScheduler() {
   }, [disarm, user]);
 
   useEffect(() => {
-    void syncReminders();
-    // First-ever launch requests notification permission on mount — re-sync
-    // twice afterwards so reminders land without waiting for the next
-    // foreground. AniList responses are cached 5 min, so these are near-free.
+    // Tunda initial sync reminder ke kickoff 15 detik agar tidak membebani cold start
     const kickoff = [setTimeout(() => void syncReminders(), 15_000), setTimeout(() => void syncReminders(), 90_000)];
     const interval = setInterval(() => void syncReminders(), SYNC_INTERVAL_MS);
     const appStateSubscription = AppState.addEventListener("change", (state) => {

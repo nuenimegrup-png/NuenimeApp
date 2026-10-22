@@ -38,7 +38,7 @@ export function useStartupPrefetch() {
           staleTime: 10 * 60_000,
         });
       }).catch(() => {});
-    }, 4000);
+    }, 10000);
 
     return () => {
       cancelled = true;

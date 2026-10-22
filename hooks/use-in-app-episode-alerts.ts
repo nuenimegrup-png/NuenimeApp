@@ -162,13 +162,22 @@ export function InAppEpisodeAlertMonitor() {
 
   useEffect(() => {
     if (!user) return;
-    void checkForReleasedEpisodes();
+    // Tunda pemeriksaan episode baru selama 18 detik saat startup
+    // agar 100% kuota network dan slot AniList dialokasikan untuk Home dan Jadwal
+    const startupTimer = setTimeout(() => {
+      void checkForReleasedEpisodes();
+    }, 18000);
+
     // Check every 30 minutes instead of 6 hours
     const interval = setInterval(() => { void checkForReleasedEpisodes(); }, 30 * 60 * 1000);
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") void checkForReleasedEpisodes();
     });
-    return () => { clearInterval(interval); subscription.remove(); };
+    return () => {
+      clearTimeout(startupTimer);
+      clearInterval(interval);
+      subscription.remove();
+    };
   }, [checkForReleasedEpisodes, user]);
 
   return null;

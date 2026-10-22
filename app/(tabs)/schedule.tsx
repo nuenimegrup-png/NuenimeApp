@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import {
@@ -191,9 +192,27 @@ const TimelineScheduleRow = memo(function TimelineScheduleRow({
   );
 });
 
+let memoryScheduleCache: AiringSchedulePage | null = null;
+
 export default function ScheduleScreen() {
   const [dayOffset, setDayOffset] = useState(0);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+  const [cachedSchedule, setCachedSchedule] = useState<AiringSchedulePage | null>(memoryScheduleCache);
+
+  // Ambil cache jadwal lokal secara instan pada startup agar tampilan langsung muncul tanpa loading
+  useEffect(() => {
+    void AsyncStorage.getItem("nuenime.cache.schedule.v1").then((raw) => {
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.airingSchedules) && parsed.airingSchedules.length > 0) {
+            memoryScheduleCache = parsed;
+            setCachedSchedule(parsed);
+          }
+        } catch {}
+      }
+    });
+  }, []);
 
   const [todayKey, setTodayKey] = useState(() => localDayKey(new Date()));
   useEffect(() => {
@@ -217,9 +236,18 @@ export default function ScheduleScreen() {
   const schedule = useQuery({
     queryKey: ["schedule", window.startAt, window.endAt],
     queryFn: () => (dayOffset < 0 ? fetchAiringArchive(window) : getAiringScheduleWindow(window)),
+    placeholderData: dayOffset === 0 ? cachedSchedule ?? undefined : undefined,
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
   });
+
+  // Simpan jadwal hari ini ke local cache untuk zero-delay loading
+  useEffect(() => {
+    if (dayOffset === 0 && schedule.data?.airingSchedules?.length) {
+      memoryScheduleCache = schedule.data;
+      void AsyncStorage.setItem("nuenime.cache.schedule.v1", JSON.stringify(schedule.data)).catch(() => {});
+    }
+  }, [dayOffset, schedule.data]);
 
   // Group schedules by local day
   const dayGroups: DayGroup[] = useMemo(() => {

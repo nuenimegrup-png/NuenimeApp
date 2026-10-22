@@ -188,11 +188,19 @@ async function request<T>(query: string, variables: Record<string, unknown> = {}
   const requestPromise = (async () => {
     const fetchFromEndpoint = async (endpoint: string) => {
       await waitForAniListSlot();
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: requestBody,
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      let response: Response;
+      try {
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: requestBody,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       const rawPayload = await response.text();
       let payload: { data?: T; errors?: Array<{ message?: string }> } = {};
       try { payload = rawPayload ? JSON.parse(rawPayload) : {}; } catch { throw new Error("AniList returned an unreadable response."); }
