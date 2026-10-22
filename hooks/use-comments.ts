@@ -4,6 +4,7 @@ import { useAnirakuAuth } from "@/providers/auth-provider";
 import { useExp } from "@/providers/exp-toast-provider";
 import { EXP_RULES } from "@/lib/user-level";
 import { canSubmitSharedComment, cleanCommentContent } from "@/lib/comment-content";
+import { filterAndCensorMessage } from "@/lib/word-filter";
 
 export type SharedComment = {
   id: string;
@@ -64,8 +65,9 @@ export function useComments(animeId?: number, episodeNumber?: number) {
   };
   const add = useMutation({ mutationFn: async (input: { content?: string; spoiler?: boolean; episode?: number | null; parentId?: string | null }) => {
     if (!user || !animeId) throw new Error("Sign in to post a comment.");
-    const content = cleanCommentContent(input.content);
-    if (!canSubmitSharedComment(content)) throw new Error("Write a comment before posting.");
+    const rawContent = cleanCommentContent(input.content);
+    if (!canSubmitSharedComment(rawContent)) throw new Error("Write a comment before posting.");
+    const content = filterAndCensorMessage(rawContent).processedText;
     const { data, error } = await supabase
       .from("comments")
       .insert({

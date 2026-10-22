@@ -20,6 +20,7 @@ import {
 } from "@/lib/episode-notifications";
 import { supabase } from "@/lib/supabase";
 import { useAnirakuAuth } from "@/providers/auth-provider";
+import { showSystemBarNotification } from "@/lib/system-notification";
 
 export type NotificationPrefs = {
   newEpisodes: boolean;
@@ -185,8 +186,29 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
           (payload) => {
-            const row = payload.new as { id?: unknown; type?: unknown; read?: unknown } | null;
+            const row = payload.new as {
+              id?: string;
+              title?: string;
+              message?: string;
+              type?: string;
+              read?: boolean;
+              link?: string;
+            } | null;
             if (!row?.id || row.read === true) return;
+
+            // 🔔 1. MUNCULKAN NOTIFIKASI NATIVE DI STATUS BAR HP (DI LUAR APK)
+            void showSystemBarNotification({
+              title: row.title || "Notifikasi Nuenime",
+              body: row.message || "Anda memiliki notifikasi baru di Nuenime.",
+              channelId: "nuenime_user_alerts",
+              channelName: "Aktivitas & Notifikasi Nuenime",
+              data: { id: row.id, type: row.type, link: row.link },
+            });
+
+            // 2. Query cache invalidation
+            void queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
+
+            // 3. Auto-suppress jika disenyapkan pengguna
             void (async () => {
               try {
                 const prefs = await readNotificationPrefs();
@@ -198,6 +220,33 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
                 // Best-effort only.
               }
             })();
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${userId}` },
+          (payload) => {
+            const oldRow = payload.old as { is_banned?: boolean } | null;
+            const newRow = payload.new as { is_banned?: boolean; ban_reason?: string } | null;
+            if (!newRow) return;
+
+            if (oldRow?.is_banned === false && newRow.is_banned === true) {
+              void showSystemBarNotification({
+                title: "Akun Anda Diblokir ⚠️",
+                body: newRow.ban_reason
+                  ? `Akun Anda telah dinonaktifkan oleh administrator. Alasan: ${newRow.ban_reason}`
+                  : "Akun Anda telah dinonaktifkan oleh administrator.",
+                channelId: "nuenime_security",
+                channelName: "Keamanan Akun Nuenime",
+              });
+            } else if (oldRow?.is_banned === true && newRow.is_banned === false) {
+              void showSystemBarNotification({
+                title: "Akun Anda Telah Dipulihkan ✅",
+                body: "Blokir akun Anda telah dibuka oleh administrator. Selamat kembali ke Nuenime!",
+                channelId: "nuenime_security",
+                channelName: "Keamanan Akun Nuenime",
+              });
+            }
           }
         )
         .subscribe();

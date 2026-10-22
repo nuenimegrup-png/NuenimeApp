@@ -96,27 +96,35 @@ export default function PublicUserProfileScreen() {
     if (!id) return;
     setLoading(true);
     try {
-      const [profile, fList, commentsRes, historyRes, bookmarksRes] = await Promise.all([
-        getPublicUserProfile(id),
+      const profile = await getPublicUserProfile(id);
+      const isLocked = !Boolean(currentUserId && id && currentUserId === id) && Boolean(profile?.isPrivate);
+
+      const [fList, commentsRes, historyRes, bookmarksRes] = await Promise.all([
         getFriends(id).catch(() => []),
-        supabase
-          .from("comments")
-          .select("id, user_id, anime_id, content, episode_number, created_at, likes, is_spoiler")
-          .eq("user_id", id)
-          .order("created_at", { ascending: false })
-          .limit(30),
-        supabase
-          .from("watch_history")
-          .select("id, anime_id, anime_title, anime_image, episode_number, episode_thumbnail, progress, duration, updated_at")
-          .eq("user_id", id)
-          .order("updated_at", { ascending: false })
-          .limit(30),
-        supabase
-          .from("bookmarks")
-          .select("id, anime_id, title, image, score, type, added_at")
-          .eq("user_id", id)
-          .order("added_at", { ascending: false })
-          .limit(30),
+        isLocked
+          ? Promise.resolve({ data: [] })
+          : supabase
+              .from("comments")
+              .select("id, user_id, anime_id, content, episode_number, created_at, likes, is_spoiler")
+              .eq("user_id", id)
+              .order("created_at", { ascending: false })
+              .limit(30),
+        isLocked
+          ? Promise.resolve({ data: [] })
+          : supabase
+              .from("watch_history")
+              .select("id, anime_id, anime_title, anime_image, episode_number, episode_thumbnail, progress, duration, updated_at")
+              .eq("user_id", id)
+              .order("updated_at", { ascending: false })
+              .limit(30),
+        isLocked
+          ? Promise.resolve({ data: [] })
+          : supabase
+              .from("bookmarks")
+              .select("id, anime_id, title, image, score, type, added_at")
+              .eq("user_id", id)
+              .order("added_at", { ascending: false })
+              .limit(30),
       ]);
 
       setTargetUser(profile);
@@ -401,6 +409,30 @@ export default function PublicUserProfileScreen() {
                 <AppIcon name="account-group" size={14} color="#94A3B8" />
                 <Text style={styles.friendsPillText}>{targetFriendCount} Teman</Text>
               </Pressable>
+
+              {/* Status Profil Privat */}
+              {targetUser.isPrivate ? (
+                <View
+                  style={[
+                    styles.privacyStatusPill,
+                    isOwnProfile ? styles.privacyStatusPillOwner : styles.privacyStatusPillLocked,
+                  ]}
+                >
+                  <AppIcon
+                    name={isOwnProfile ? "lock-check" : "lock"}
+                    size={12}
+                    color={isOwnProfile ? "#F59E0B" : "#94A3B8"}
+                  />
+                  <Text
+                    style={[
+                      styles.privacyStatusPillText,
+                      isOwnProfile && { color: "#FBBF24" },
+                    ]}
+                  >
+                    {isOwnProfile ? "Profil Privat" : "Privat"}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           </View>
         </View>
@@ -415,21 +447,39 @@ export default function PublicUserProfileScreen() {
           <View style={styles.statDivider} />
 
           <View style={styles.statColumn}>
-            <Text style={styles.statNumber}>{userComments.length}</Text>
+            {!isOwnProfile && targetUser.isPrivate ? (
+              <View style={styles.statLockWrapper}>
+                <AppIcon name="lock" size={16} color="#64748B" />
+              </View>
+            ) : (
+              <Text style={styles.statNumber}>{userComments.length}</Text>
+            )}
             <Text style={styles.statLabel}>komentar</Text>
           </View>
 
           <View style={styles.statDivider} />
 
           <View style={styles.statColumn}>
-            <Text style={styles.statNumber}>{userHistory.length}</Text>
+            {!isOwnProfile && targetUser.isPrivate ? (
+              <View style={styles.statLockWrapper}>
+                <AppIcon name="lock" size={16} color="#64748B" />
+              </View>
+            ) : (
+              <Text style={styles.statNumber}>{userHistory.length}</Text>
+            )}
             <Text style={styles.statLabel}>riwayat</Text>
           </View>
 
           <View style={styles.statDivider} />
 
           <View style={styles.statColumn}>
-            <Text style={styles.statNumber}>{totalMinutes}</Text>
+            {!isOwnProfile && targetUser.isPrivate ? (
+              <View style={styles.statLockWrapper}>
+                <AppIcon name="lock" size={16} color="#64748B" />
+              </View>
+            ) : (
+              <Text style={styles.statNumber}>{totalMinutes}</Text>
+            )}
             <Text style={styles.statLabel}>menit</Text>
           </View>
         </View>
@@ -555,9 +605,27 @@ export default function PublicUserProfileScreen() {
           </View>
         </View>
 
-        {/* ─── 5. TABS KONTEN: KOMENTAR | FAVORIT | HISTORI ─── */}
-        <View style={styles.tabBarSection}>
-          <View style={styles.tabHeaderRow}>
+        {/* ─── 5. TABS KONTEN: JIKA PRIVAT MAKA TERKUNCI, JIKA TIDAK MAKA TAMPILKAN NORMAL ─── */}
+        {!isOwnProfile && targetUser.isPrivate ? (
+          <View style={styles.lockedContainer}>
+            <View style={styles.lockedIconCircle}>
+              <AppIcon name="lock" size={38} color="#38BDF8" />
+            </View>
+            <Text style={styles.lockedTitle}>Akun Ini Bersifat Privat</Text>
+            <Text style={styles.lockedSubtitle}>
+              Pengguna ini telah mengatur profilnya menjadi privat. Riwayat tontonan, anime favorit, dan komentar disembunyikan.
+            </Text>
+            <View style={styles.lockedBadge}>
+              <AppIcon name="shield-lock-outline" size={15} color="#94A3B8" />
+              <Text style={styles.lockedBadgeText}>
+                Hanya pemilik akun yang dapat mengakses konten ini
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <>
+            <View style={styles.tabBarSection}>
+              <View style={styles.tabHeaderRow}>
             <Pressable
               onPress={() => setActiveTab("komentar")}
               style={[styles.tabButton, activeTab === "komentar" && styles.tabButtonActive]}
@@ -725,6 +793,8 @@ export default function PublicUserProfileScreen() {
             </View>
           )}
         </View>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -985,6 +1055,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: "#FFFFFF",
     letterSpacing: -0.2,
+  },
+  statLockWrapper: {
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
   },
   statLabel: {
     fontFamily: "Nunito-Bold",
@@ -1285,6 +1360,87 @@ const styles = StyleSheet.create({
   historyEpText: {
     fontFamily: "Nunito-Regular",
     fontSize: 11,
+    color: "#64748B",
+  },
+
+  // ─── PRIVACY STATUS PILLS ───
+  privacyStatusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  privacyStatusPillOwner: {
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    borderColor: "rgba(245, 158, 11, 0.35)",
+  },
+  privacyStatusPillLocked: {
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  privacyStatusPillText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11.5,
+    color: "#94A3B8",
+  },
+
+  // ─── LOCKED STATE (PROFIL PRIVAT) ───
+  lockedContainer: {
+    marginHorizontal: 16,
+    marginTop: 24,
+    paddingVertical: 36,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    backgroundColor: "rgba(22, 27, 38, 0.6)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  lockedIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "rgba(56, 189, 248, 0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  lockedTitle: {
+    fontFamily: "Nunito-Black",
+    fontSize: 17,
+    color: "#FFFFFF",
+    textAlign: "center",
+  },
+  lockedSubtitle: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 13,
+    color: "#94A3B8",
+    textAlign: "center",
+    lineHeight: 19,
+    maxWidth: 310,
+  },
+  lockedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  lockedBadgeText: {
+    fontFamily: "Nunito-SemiBold",
+    fontSize: 11.5,
     color: "#64748B",
   },
 });

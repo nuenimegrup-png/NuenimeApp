@@ -79,6 +79,17 @@ export async function loadAccountSettings(userId?: string | null): Promise<UserA
           // Update local cache
           await AsyncStorage.setItem(storageKey, JSON.stringify(localSettings)).catch(() => {});
         }
+      } else {
+        // Fallback: check profiles.is_private if user_settings is empty
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("is_private")
+          .eq("id", userId)
+          .maybeSingle();
+        if (prof && typeof prof.is_private === "boolean") {
+          localSettings.privateProfile = prof.is_private;
+          await AsyncStorage.setItem(storageKey, JSON.stringify(localSettings)).catch(() => {});
+        }
       }
     } catch {
       // Offline / network failure - fall back to local cached settings
@@ -89,7 +100,8 @@ export async function loadAccountSettings(userId?: string | null): Promise<UserA
 }
 
 /**
- * Saves per-account settings. Updates local user-scoped storage and Supabase `user_settings`.
+ * Saves per-account settings. Updates local user-scoped storage, Supabase `user_settings`,
+ * and Supabase `profiles.is_private` so other users will see the locked state.
  */
 export async function saveAccountSettings(
   patch: Partial<UserAccountSettings>,
@@ -107,7 +119,7 @@ export async function saveAccountSettings(
     }
   } catch {}
 
-  // Sync to Supabase `user_settings` if user is logged in
+  // Sync to Supabase `user_settings` and `profiles` if user is logged in
   if (userId) {
     try {
       const { data: existing } = await supabase
@@ -132,6 +144,28 @@ export async function saveAccountSettings(
       );
     } catch {
       // Best effort remote sync
+    }
+
+    // Explicitly update profiles.is_private so public user profile queries see it
+    if (typeof patch.privateProfile === "boolean") {
+      try {
+        await supabase
+          .from("profiles")
+          .update({
+            is_private: patch.privateProfile,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", userId);
+      } catch {
+        // Best effort
+      }
+
+      // Also sync user metadata
+      try {
+        await supabase.auth.updateUser({
+          data: { is_private: patch.privateProfile },
+        });
+      } catch {}
     }
   }
 

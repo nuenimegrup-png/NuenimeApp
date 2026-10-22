@@ -24,6 +24,7 @@ import {
 import { getPublicUserProfile, type FriendUser } from "@/lib/friends-service";
 import { isSpecialRole } from "@/lib/admin-service";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
+import { filterAndCensorMessage } from "@/lib/word-filter";
 
 function formatChatTime(dateStr: string): string {
   try {
@@ -59,7 +60,14 @@ export default function PrivateChatRoomScreen() {
         getPrivateMessages(currentUserId, id),
       ]);
       setFriend(fProfile);
-      setMessages(historyMsgs);
+      // Pastikan tidak ada pesan duplikat dari cache maupun database
+      const seen = new Set<string>();
+      const unique = (historyMsgs || []).filter((m) => {
+        if (!m?.id || seen.has(m.id)) return false;
+        seen.add(m.id);
+        return true;
+      });
+      setMessages(unique);
     } catch (err) {
       console.warn("[private-chat-screen] loadChat error:", err);
     } finally {
@@ -77,7 +85,19 @@ export default function PrivateChatRoomScreen() {
 
     const unsubscribe = subscribePrivateMessages(currentUserId, id, (newMsg) => {
       setMessages((prev) => {
+        // Jika ID pesan sudah ada dalam list, jangan tambahkan lagi
         if (prev.some((m) => m.id === newMsg.id)) return prev;
+
+        // Jika pesan ini dikirim oleh user sendiri dan ada optimistic message sementara (temp_*)
+        if (newMsg.senderId === currentUserId) {
+          const tempIdx = prev.findIndex((m) => m.id.startsWith("temp_"));
+          if (tempIdx !== -1) {
+            const copy = [...prev];
+            copy[tempIdx] = newMsg;
+            return copy;
+          }
+        }
+
         return [...prev, newMsg];
       });
       setTimeout(() => {
@@ -99,13 +119,17 @@ export default function PrivateChatRoomScreen() {
     setSending(true);
     setInputText("");
 
+    // Filter otomatis kata terlarang secara realtime
+    const filterRes = filterAndCensorMessage(text);
+    const textToSend = filterRes.processedText;
+
     // Optimistic message
     const tempId = `temp_${Date.now()}`;
     const optimisticMsg: PrivateMessage = {
       id: tempId,
       senderId: currentUserId,
       receiverId: id,
-      message: text,
+      message: textToSend,
       createdAt: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, optimisticMsg]);
@@ -123,7 +147,17 @@ export default function PrivateChatRoomScreen() {
     setSending(false);
     if (res.success && res.data) {
       hapticSuccess();
-      setMessages((prev) => prev.map((m) => (m.id === tempId ? res.data! : m)));
+      const serverMsg = res.data;
+      setMessages((prev) => {
+        // Cek apakah pesan server ini sudah dimasukkan duluan oleh WebSocket Realtime
+        const alreadyExists = prev.some((m) => m.id === serverMsg.id);
+        if (alreadyExists) {
+          // Buang saja tempId agar tidak terjadi duplikasi key
+          return prev.filter((m) => m.id !== tempId);
+        }
+        // Gantikan tempId dengan data resmi dari server
+        return prev.map((m) => (m.id === tempId ? serverMsg : m));
+      });
     }
   };
 
@@ -197,11 +231,13 @@ export default function PrivateChatRoomScreen() {
           <FlatList
             ref={flatListRef}
             data={messages}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item, index) => `${item.id}_${index}`}
             contentContainerStyle={styles.messageList}
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
             renderItem={({ item }) => {
               const isMine = item.senderId === currentUserId;
+              const isCensored = item.message.includes("[Pesan mengandung kata terlarang]");
+
               return (
                 <View
                   style={[
@@ -213,9 +249,28 @@ export default function PrivateChatRoomScreen() {
                     style={[
                       styles.messageBubble,
                       isMine ? styles.bubbleMine : styles.bubbleOther,
+                      isCensored && {
+                        backgroundColor: isMine ? "rgba(239, 68, 68, 0.18)" : "rgba(239, 68, 68, 0.14)",
+                        borderColor: "rgba(239, 68, 68, 0.35)",
+                        borderWidth: 1,
+                      },
                     ]}
                   >
-                    <Text style={styles.messageText}>{item.message}</Text>
+                    {isCensored ? (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                        <AppIcon name="shield-alert-outline" size={13} color="#F87171" />
+                        <Text
+                          style={[
+                            styles.messageText,
+                            { color: "#FCA5A5", fontStyle: "italic", fontSize: 12.5 },
+                          ]}
+                        >
+                          {item.message}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.messageText}>{item.message}</Text>
+                    )}
                     <Text style={styles.messageTimeText}>{formatChatTime(item.createdAt)}</Text>
                   </View>
                 </View>

@@ -42,6 +42,7 @@ import { BorderAvatar } from "@/components/border-avatar";
 import { getEquippedBorderId, subscribeEquippedBorder } from "@/lib/avatar-borders";
 import { isSpecialRole } from "@/lib/admin-service";
 import { getFriends } from "@/lib/friends-service";
+import { loadAccountSettings } from "@/lib/user-settings";
 
 const DEFAULT_BANNER =
   "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1200";
@@ -109,6 +110,17 @@ export default function ProfileScreen() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [bannerLoadError, setBannerLoadError] = useState(false);
   const [friendCount, setFriendCount] = useState<number>(0);
+  const [isPrivateAccount, setIsPrivateAccount] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void loadAccountSettings(auth.user?.id).then((settings) => {
+      if (active) setIsPrivateAccount(settings.privateProfile);
+    });
+    return () => {
+      active = false;
+    };
+  }, [auth.user?.id]);
 
   useEffect(() => {
     if (auth.user?.id) {
@@ -472,6 +484,21 @@ export default function ProfileScreen() {
                     <AppIcon name="shield-check" size={11} color="#EF4444" />
                     <Text style={styles.socialRolePillText}>{userRole}</Text>
                   </View>
+                )}
+
+                {isPrivateAccount && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Profil Privat"
+                    onPress={() => {
+                      hapticLight();
+                      router.push("/settings" as never);
+                    }}
+                    style={({ pressed }) => [styles.socialPrivatePill, pressed && styles.btnPressed]}
+                  >
+                    <AppIcon name="lock" size={11} color="#F59E0B" />
+                    <Text style={styles.socialPrivatePillText}>Privat</Text>
+                  </Pressable>
                 )}
               </View>
             </View>
@@ -2977,5 +3004,21 @@ const styles = StyleSheet.create({
   modalBtnDisabled: {
     opacity: 0.45,
     backgroundColor: "#334155",
+  },
+  socialPrivatePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 14,
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.35)",
+  },
+  socialPrivatePillText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
+    color: "#FBBF24",
   },
 });

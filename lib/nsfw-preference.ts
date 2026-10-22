@@ -94,29 +94,48 @@ export function useNsfwPreference() {
     });
 
     // 2. Realtime listener: jika Admin mengganti toggle di Dashboard, APK langsung berubah instan
-    const channel = supabase
-      .channel("realtime-nsfw-preference")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "system_configs",
-          filter: `key=eq.${SYSTEM_CONFIG_KEY}`,
-        },
-        (payload: any) => {
-          if (payload?.new?.value?.allow_nsfw !== undefined) {
-            const nextVal = Boolean(payload.new.value.allow_nsfw);
-            setEnabledState(nextVal);
-            void AsyncStorage.setItem(NSFW_KEY, nextVal ? "true" : "false");
-          }
+    const channelId = `realtime-nsfw-pref-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    let channel: any = null;
+
+    try {
+      // Bersihkan channel yang mungkin tertinggal dari sesi hot-reload sebelumnya
+      try {
+        const existing = supabase.getChannels().filter((c) => c.topic?.includes("realtime-nsfw"));
+        for (const ch of existing) {
+          void supabase.removeChannel(ch);
         }
-      )
-      .subscribe();
+      } catch {}
+
+      channel = supabase
+        .channel(channelId)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "system_configs",
+            filter: `key=eq.${SYSTEM_CONFIG_KEY}`,
+          },
+          (payload: any) => {
+            if (payload?.new?.value?.allow_nsfw !== undefined) {
+              const nextVal = Boolean(payload.new.value.allow_nsfw);
+              setEnabledState(nextVal);
+              void AsyncStorage.setItem(NSFW_KEY, nextVal ? "true" : "false");
+            }
+          }
+        )
+        .subscribe();
+    } catch (err) {
+      console.warn("[nsfw-preference] Supabase realtime subscription warning:", err);
+    }
 
     return () => {
       active = false;
-      supabase.removeChannel(channel);
+      if (channel) {
+        try {
+          void supabase.removeChannel(channel);
+        } catch {}
+      }
     };
   }, []);
 

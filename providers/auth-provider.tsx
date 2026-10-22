@@ -139,15 +139,30 @@ export function AuthProvider({ children }: PropsWithChildren) {
           AsyncStorage.getItem(`@nuenime_user_ban_reason_${user.id}`).catch(() => null),
         ]);
 
+        const serverBannerAt = (profileData as any)?.banner_updated_at;
+        const serverNameAt = (profileData as any)?.name_updated_at;
+        const serverAvatarAt = (profileData as any)?.avatar_updated_at;
+
+        // Jika di database bernilai null (misal di-reset oleh admin), bersihkan juga cache lokal!
+        if (serverBannerAt === null) {
+          AsyncStorage.removeItem(`aniraku.cooldown.${user.id}.banner`).catch(() => {});
+        }
+        if (serverNameAt === null) {
+          AsyncStorage.removeItem(`aniraku.cooldown.${user.id}.name`).catch(() => {});
+        }
+        if (serverAvatarAt === null) {
+          AsyncStorage.removeItem(`aniraku.cooldown.${user.id}.avatar`).catch(() => {});
+        }
+
         const fullProfile = {
           ...profileData,
           role: overrideRole || (profileData as any)?.role || "Member",
           is_banned: overrideBan !== null ? overrideBan === "true" : Boolean((profileData as any)?.is_banned),
           banned_at: (profileData as any)?.banned_at || null,
           ban_reason: overrideBanReason || (profileData as any)?.ban_reason || null,
-          banner_updated_at: (profileData as any)?.banner_updated_at || localBannerAt || null,
-          name_updated_at: (profileData as any)?.name_updated_at || localNameAt || null,
-          avatar_updated_at: (profileData as any)?.avatar_updated_at || localAvatarAt || null,
+          banner_updated_at: serverBannerAt !== undefined ? serverBannerAt : (localBannerAt || null),
+          name_updated_at: serverNameAt !== undefined ? serverNameAt : (localNameAt || null),
+          avatar_updated_at: serverAvatarAt !== undefined ? serverAvatarAt : (localAvatarAt || null),
         } as AnirakuProfile;
 
         // Jika profil di DB belum memiliki avatar_url, atau masih memakai avatar placeholder bawaan,
@@ -642,11 +657,6 @@ const banStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(239, 68, 68, 0.35)",
     alignItems: "center",
-    shadowColor: "#EF4444",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 24,
-    elevation: 10,
   },
   iconBox: {
     width: 72,

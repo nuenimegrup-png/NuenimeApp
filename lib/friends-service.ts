@@ -24,6 +24,7 @@ export interface FriendUser {
   status: "pending" | "accepted" | "blocked" | "none";
   direction?: "incoming" | "outgoing";
   createdAt?: string;
+  isPrivate?: boolean;
 }
 
 /**
@@ -67,7 +68,7 @@ export async function getFriends(userId: string): Promise<FriendUser[]> {
     // 3. Ambil data profil teman
     const { data: profiles, error: pError } = await supabase
       .from("profiles")
-      .select("id, username, display_name, avatar_url, banner_url, equipped_border, level, exp, member_number, role, is_vip, bio")
+      .select("id, username, display_name, avatar_url, banner_url, equipped_border, level, exp, member_number, role, is_vip, bio, is_private")
       .in("id", otherIds);
 
     if (pError || !profiles) return [];
@@ -90,6 +91,7 @@ export async function getFriends(userId: string): Promise<FriendUser[]> {
         bio: p.bio || null,
         status: "accepted",
         createdAt: meta?.createdAt,
+        isPrivate: Boolean(p.is_private),
       };
     });
   } catch (err) {
@@ -393,7 +395,7 @@ export async function getPublicUserProfile(identifier: string): Promise<FriendUs
   try {
     let req = supabase
       .from("profiles")
-      .select("id, username, display_name, avatar_url, banner_url, equipped_border, level, exp, member_number, role, is_vip, bio, created_at");
+      .select("id, username, display_name, avatar_url, banner_url, equipped_border, level, exp, member_number, role, is_vip, bio, created_at, is_private");
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
     if (isUuid) {
@@ -425,6 +427,7 @@ export async function getPublicUserProfile(identifier: string): Promise<FriendUs
       bio: data.bio || null,
       status: "none",
       createdAt: data.created_at || null,
+      isPrivate: Boolean(data.is_private),
     };
   } catch {
     return null;

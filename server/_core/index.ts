@@ -130,16 +130,31 @@ async function startServer() {
 
     try {
       const method = req.method.toUpperCase();
-      const reqAccept = req.headers.accept || "*/*";
+      const fetchHeaders: Record<string, string> = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        Referer: "https://aniraku.tech/",
+        Accept: "application/json, text/plain, */*",
+        ...(req.headers.range ? { Range: String(req.headers.range) } : {}),
+        ...(req.headers["content-type"] ? { "Content-Type": String(req.headers["content-type"]) } : {}),
+        ...(req.headers.authorization ? { Authorization: String(req.headers.authorization) } : {}),
+      };
+      console.log("[proxy headers]", JSON.stringify(fetchHeaders));
       const upstream = await fetch(target, {
         method,
-        headers: {
-          Accept: reqAccept,
-          ...(req.headers.range ? { Range: String(req.headers.range) } : {}),
-          ...(req.headers["content-type"] ? { "Content-Type": String(req.headers["content-type"]) } : {}),
-        },
+        headers: fetchHeaders,
         body: method === "GET" || method === "HEAD" ? undefined : JSON.stringify(req.body ?? {}),
       });
+      console.log("[proxy]", target.toString(), "status:", upstream.status);
+
+      // Jika /api/v1/sync mengembalikan 401 (karena JWT Supabase Nuenime berbeda dengan auth Aniraku upstream),
+      // kembalikan status kosong yang valid agar tidak menghasilkan error 401 di browser
+      if (upstreamPath === "/api/v1/sync" && upstream.status === 401) {
+        res.status(200).json({
+          mal: { configured: false, connected: false },
+          anilist: { configured: false, connected: false },
+        });
+        return;
+      }
 
       const contentType = upstream.headers.get("content-type");
       if (contentType) res.setHeader("Content-Type", contentType);

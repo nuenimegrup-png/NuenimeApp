@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -18,6 +18,19 @@ import { useWatchHistory } from "@/hooks/use-watch-history";
 import { EmptyState, ErrorState, LoadingState } from "@/components/async-state";
 import { AppIcon } from "@/components/app-icon";
 import { FirstRunImportPrompt } from "@/components/first-run-import-prompt";
+import { showChoiceSheet } from "@/components/choice-sheet";
+import {
+  LIST_STATUSES,
+  LIST_STATUS_LABELS,
+  MANUAL_LIST_STATUSES,
+  type ListStatus,
+} from "@/lib/list-status";
+import {
+  bookmarkDisplayStatus,
+  filterByListStatus,
+  statusCounts,
+} from "@/lib/bookmark-status";
+import { countWatchedEpisodes, savedEpisodeMeta } from "@/lib/library-history";
 import { hapticLight } from "@/lib/haptics";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAnirakuAuth } from "@/providers/auth-provider";
@@ -49,6 +62,24 @@ const sortLabels: Record<LibrarySort, string> = {
   score: "RATING",
 };
 
+const statusLabelsId: Record<ListStatus, string> = {
+  CURRENT: "Sedang Nonton",
+  PLANNING: "Rencana Nonton",
+  COMPLETED: "Selesai",
+  PAUSED: "Dijeda",
+  DROPPED: "Ditolak",
+  REPEATING: "Nonton Ulang",
+};
+
+const statusColors: Record<ListStatus, { bg: string; text: string; border: string }> = {
+  CURRENT: { bg: "rgba(16, 185, 129, 0.12)", text: "#10B981", border: "rgba(16, 185, 129, 0.3)" },
+  PLANNING: { bg: "rgba(59, 130, 246, 0.12)", text: "#60A5FA", border: "rgba(59, 130, 246, 0.3)" },
+  COMPLETED: { bg: "rgba(168, 85, 247, 0.12)", text: "#C084FC", border: "rgba(168, 85, 247, 0.3)" },
+  PAUSED: { bg: "rgba(100, 116, 139, 0.12)", text: "#94A3B8", border: "rgba(100, 116, 139, 0.3)" },
+  DROPPED: { bg: "rgba(239, 68, 68, 0.12)", text: "#EF4444", border: "rgba(239, 68, 68, 0.3)" },
+  REPEATING: { bg: "rgba(16, 185, 129, 0.12)", text: "#10B981", border: "rgba(16, 185, 129, 0.3)" },
+};
+
 function sortOptionsFor(tab: LibraryTab): LibrarySort[] {
   if (tab === "history") return ["recent", "title"];
   if (tab === "bookmarks") return ["recent", "title", "score"];
@@ -66,7 +97,7 @@ function searchText(tab: LibraryTab, row: any, query: string) {
 }
 
 /** Server order already is "recent"; only the other sorts reorder. */
-function sortRecords(tab: LibraryTab, sort: LibrarySort, rows: any[]): any[] {
+function sortRecords(tab: LibraryTab, sort: LibrarySort, rows: readonly any[]): readonly any[] {
   if (tab === "alerts" || sort === "recent") return rows;
   const copy = rows.slice();
   if (sort === "title") {
@@ -115,6 +146,7 @@ export function LibraryView({
   const [sort, setSort] = useState<LibrarySort>("recent");
   const [layout, setLayout] = useState<LibraryLayout>("list");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ListStatus | "ALL">("ALL");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [removingKey, setRemovingKey] = useState<string | null>(null);
   const [cachedResumeRows, setCachedResumeRows] = useState<ResumeRow[] | null>(null);
@@ -220,14 +252,23 @@ export function LibraryView({
   const allRecords: any[] = tab === "history" && fallbackRows?.length ? fallbackRows : data.data ?? [];
   const canRemoveHistory = tab === "history";
   const activeSort = sortOptionsFor(tab).includes(sort) ? sort : "recent";
+
+  const watchedAnimeIds = useMemo(
+    () => new Set((history.displayRows ?? []).map((row) => Number((row as { anime_id?: unknown })?.anime_id)).filter((id) => Number.isFinite(id))),
+    [history.displayRows],
+  );
+  const watchedCounts = useMemo(() => countWatchedEpisodes(history.displayRows ?? []), [history.displayRows]);
+
   const query = search.trim().toLowerCase();
   const searched = query ? allRecords.filter((row) => searchText(tab, row, query)) : allRecords;
+  const statusSearched = tab === "bookmarks" ? filterByListStatus(searched, watchedAnimeIds, statusFilter) : searched;
+  const statusChipCounts = tab === "bookmarks" ? statusCounts(allRecords, watchedAnimeIds) : null;
   const records =
     tab === "alerts"
       ? unreadOnly
         ? searched.filter((row) => !row.read)
         : searched
-      : sortRecords(tab, activeSort, searched);
+      : sortRecords(tab, activeSort, statusSearched);
   const isGrid = tab === "bookmarks" && layout === "grid";
   const pending = data.isPending && !(tab === "history" && fallbackRows?.length);
 
@@ -361,55 +402,118 @@ export function LibraryView({
     router.push((`/anime/${item.anime_id}`) as never);
   };
 
-  const renderBookmarkRow = (item: any) => (
-    <Pressable
-      accessibilityRole="button"
-      onPress={() => openBookmark(item)}
-      style={({ pressed }) => [styles.glassCard, pressed && styles.btnPressed]}
-    >
-      <Image
-        source={{ uri: item.image || item.anime_image || "" }}
-        style={styles.cardPoster}
-        contentFit="cover"
-        transition={150}
-        cachePolicy="memory-disk"
-      />
-      <View style={styles.cardBody}>
-        <View style={styles.badgeRow}>
-          <View style={styles.typeBadge}>
-            <Text style={styles.typeBadgeText}>{item.type || "ANIME"}</Text>
+  /** Membuka sheet untuk mengubah status (Watching, Plan to Watch, Completed, Dropped). */
+  const openStatusPicker = (item: any) => {
+    const animeId = Number(item?.anime_id);
+    if (!Number.isInteger(animeId)) return;
+    const current = bookmarkDisplayStatus(item, watchedAnimeIds.has(animeId));
+    const label = String(item?.title || item?.anime_title || "Anime");
+    showChoiceSheet({
+      kicker: "STATUS DAFTAR",
+      title: label,
+      message: `Status saat ini: “${statusLabelsId[current] || LIST_STATUS_LABELS[current]}”`,
+      options: [
+        ...MANUAL_LIST_STATUSES.map((status) => ({
+          key: status,
+          label: statusLabelsId[status] || LIST_STATUS_LABELS[status],
+          isCurrent: status === current,
+          onPress: () => {
+            if (status === current) return;
+            void bookmarks.updateStatus
+              .mutateAsync({ animeId, status })
+              .catch(() => Alert.alert("Gagal", "Perubahan status gagal disimpan ke server."));
+          },
+        })),
+        { key: "cancel", label: "Batal", variant: "muted" as const },
+      ],
+    });
+  };
+
+  const renderBookmarkRow = (item: any) => {
+    const animeId = Number(item?.anime_id);
+    const status = bookmarkDisplayStatus(item, watchedAnimeIds.has(animeId));
+    const colors = statusColors[status];
+    const epMeta = savedEpisodeMeta(watchedCounts.get(animeId) ?? 0, Number(item?.total_episodes) || 0);
+
+    return (
+      <Pressable
+        accessibilityRole={Platform.OS === "web" ? undefined : "button"}
+        onPress={() => openBookmark(item)}
+        onLongPress={() => openStatusPicker(item)}
+        style={({ pressed }) => [styles.glassCard, pressed && styles.btnPressed]}
+      >
+        <Image
+          source={{ uri: item.image || item.anime_image || "" }}
+          style={styles.cardPoster}
+          contentFit="cover"
+          transition={150}
+          cachePolicy="memory-disk"
+        />
+        <View style={styles.cardBody}>
+          <View style={styles.badgeRow}>
+            {/* Status Badge - Tap to Change Status */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Ubah status ${item.title || item.anime_title || "Anime"}`}
+              onPress={(e) => {
+                e?.stopPropagation?.();
+                openStatusPicker(item);
+              }}
+              hitSlop={6}
+              style={[
+                styles.statusBadgeSmall,
+                { backgroundColor: colors.bg, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.statusBadgeSmallText, { color: colors.text }]}>
+                {statusLabelsId[status] || LIST_STATUS_LABELS[status]}
+              </Text>
+            </Pressable>
+
+            <View style={styles.typeBadge}>
+              <Text style={styles.typeBadgeText}>{item.type || "ANIME"}</Text>
+            </View>
+            {(() => {
+              const rawScore = Number(item?.score ?? item?.averageScore ?? 0);
+              const displayScore = rawScore > 10 ? (rawScore / 10).toFixed(1) : rawScore > 0 ? rawScore.toFixed(1) : null;
+              return displayScore ? (
+                <View style={styles.scoreBadge}>
+                  <Text style={styles.scoreStarIcon}>★</Text>
+                  <Text style={styles.scoreBadgeText}>{displayScore}</Text>
+                </View>
+              ) : null;
+            })()}
           </View>
-          {(() => {
-            const rawScore = Number(item?.score ?? item?.averageScore ?? 0);
-            const displayScore = rawScore > 10 ? (rawScore / 10).toFixed(1) : rawScore > 0 ? rawScore.toFixed(1) : null;
-            return displayScore ? (
-              <View style={styles.scoreBadge}>
-                <Text style={styles.scoreStarIcon}>★</Text>
-                <Text style={styles.scoreBadgeText}>{displayScore}</Text>
-              </View>
-            ) : null;
-          })()}
+          <Text style={styles.cardTitle} numberOfLines={2}>
+            {item.title || item.anime_title || "Anime"}
+          </Text>
+          <Text style={styles.cardSubText}>
+            {[
+              epMeta,
+              item.format || "TV Series",
+              item.episodes ? `${item.episodes} Eps` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </Text>
         </View>
-        <Text style={styles.cardTitle} numberOfLines={2}>
-          {item.title || item.anime_title || "Anime"}
-        </Text>
-        <Text style={styles.cardSubText}>
-          {[item.format || "TV Series", item.episodes ? `${item.episodes} Eps` : null]
-            .filter(Boolean)
-            .join(" · ")}
-        </Text>
-      </View>
-      <AppIcon name="chevron-right" size={18} color="#64748B" />
-    </Pressable>
-  );
+        <AppIcon name="chevron-right" size={18} color="#64748B" />
+      </Pressable>
+    );
+  };
 
   const renderBookmarkGrid = (item: any) => {
     const uri = item.image || item.anime_image || "";
-    const score = Number(item?.score);
+    const animeId = Number(item?.anime_id);
+    const status = bookmarkDisplayStatus(item, watchedAnimeIds.has(animeId));
+    const colors = statusColors[status];
+    const epMeta = savedEpisodeMeta(watchedCounts.get(animeId) ?? 0, Number(item?.total_episodes) || 0);
+
     return (
       <Pressable
-        accessibilityRole="button"
+        accessibilityRole={Platform.OS === "web" ? undefined : "button"}
         onPress={() => openBookmark(item)}
+        onLongPress={() => openStatusPicker(item)}
         style={({ pressed }) => [styles.gridCard, pressed && styles.btnPressed]}
       >
         <View style={styles.gridImageWrapper}>
@@ -426,6 +530,25 @@ export function LibraryView({
               {String(item.title || item.anime_title || "A").charAt(0).toUpperCase()}
             </Text>
           )}
+
+          {/* Status badge in top-left of grid image */}
+          <Pressable
+            accessibilityRole="button"
+            onPress={(e) => {
+              e?.stopPropagation?.();
+              openStatusPicker(item);
+            }}
+            hitSlop={6}
+            style={[
+              styles.gridStatusBadge,
+              { backgroundColor: colors.bg, borderColor: colors.border },
+            ]}
+          >
+            <Text style={[styles.statusBadgeSmallText, { color: colors.text, fontSize: 9 }]}>
+              {statusLabelsId[status] || LIST_STATUS_LABELS[status]}
+            </Text>
+          </Pressable>
+
           {(() => {
             const rawScore = Number(item?.score ?? item?.averageScore ?? 0);
             const displayScore = rawScore > 10 ? (rawScore / 10).toFixed(1) : rawScore > 0 ? rawScore.toFixed(1) : null;
@@ -440,7 +563,7 @@ export function LibraryView({
           {item.title || item.anime_title || "Anime"}
         </Text>
         <Text style={styles.gridMeta} numberOfLines={1}>
-          {item.type || item.format || "ANIME"}
+          {[epMeta, item.type || item.format || "ANIME"].filter(Boolean).join(" · ")}
         </Text>
       </Pressable>
     );
@@ -481,7 +604,15 @@ export function LibraryView({
 
   const emptyMessage = query
     ? `Tidak ada anime yang cocok dengan "${search.trim()}".`
+    : tab === "bookmarks" && statusFilter !== "ALL"
+    ? `Belum ada anime dengan status "${statusLabelsId[statusFilter] || LIST_STATUS_LABELS[statusFilter]}".`
     : emptyLabel[tab];
+
+  const emptyAction = query
+    ? { label: "HAPUS PENCARIAN", onPress: () => setSearch("") }
+    : tab === "bookmarks" && statusFilter !== "ALL"
+    ? { label: "SEMUA STATUS", onPress: () => setStatusFilter("ALL") }
+    : undefined;
 
   const content = pending ? (
     <LoadingState label="Menyelaraskan data..." />
@@ -493,7 +624,7 @@ export function LibraryView({
   ) : records.length === 0 ? (
     <EmptyState
       label={emptyMessage}
-      action={query ? { label: "HAPUS PENCARIAN", onPress: () => setSearch("") } : undefined}
+      action={emptyAction}
     />
   ) : (
     <FlatList
@@ -720,6 +851,38 @@ export function LibraryView({
               })}
             </View>
           ) : null}
+        </View>
+      ) : null}
+
+      {/* 4.5 Saved Status Filter Chips (Miruro/Aniraku model) */}
+      {tab === "bookmarks" && statusChipCounts && allRecords.length > 0 ? (
+        <View style={styles.statusChipRow}>
+          {(["ALL", ...LIST_STATUSES] as const).map((option) => {
+            const count = option === "ALL" ? allRecords.length : statusChipCounts[option];
+            if (count === 0 && option !== "ALL") return null;
+            const selected = statusFilter === option;
+            const label = option === "ALL" ? "SEMUA" : statusLabelsId[option] || LIST_STATUS_LABELS[option];
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                key={option}
+                onPress={() => {
+                  hapticLight();
+                  setStatusFilter(option);
+                }}
+                style={({ pressed }) => [
+                  styles.statusChip,
+                  selected && styles.statusChipActive,
+                  pressed && styles.btnPressed,
+                ]}
+              >
+                <Text style={[styles.statusChipText, selected && styles.statusChipTextActive]}>
+                  {`${label} · ${count}`}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       ) : null}
 
@@ -974,6 +1137,58 @@ const styles = StyleSheet.create({
   chipTextActive: {
     color: "#E2E8F0",
     fontFamily: "Nunito-Black",
+  },
+
+  // ─── 4.5 SAVED STATUS CHIPS ───
+  statusChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 16,
+    gap: 6,
+    marginBottom: 10,
+  },
+  statusChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+  },
+  statusChipActive: {
+    borderColor: "rgba(226, 232, 240, 0.4)",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+  },
+  statusChipText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 10,
+    color: "#94A3B8",
+    letterSpacing: 0.3,
+  },
+  statusChipTextActive: {
+    color: "#FFFFFF",
+    fontFamily: "Nunito-Black",
+  },
+  statusBadgeSmall: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  statusBadgeSmallText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 9.5,
+    letterSpacing: 0.2,
+  },
+  gridStatusBadge: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    zIndex: 2,
   },
 
   // ─── 5. ALERT ACTIONS ───

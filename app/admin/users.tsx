@@ -33,6 +33,8 @@ import {
   adminSetUserBanStatus,
   getUserFullHistory,
   getUserFriendsList,
+  adminDeleteFriendship,
+  adminAddFriendship,
 } from "@/lib/admin-service";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { getProfileCooldownStatus, BANNER_COOLDOWN_SECONDS, NAME_COOLDOWN_SECONDS, AVATAR_COOLDOWN_SECONDS } from "@/lib/profile-cooldown";
@@ -109,6 +111,18 @@ export default function AdminUsersScreen() {
   const [friendsSearch, setFriendsSearch] = useState("");
   const [loadingFriends, setLoadingFriends] = useState(false);
 
+  // Connect Friend Modal State
+  const [showConnectFriendModal, setShowConnectFriendModal] = useState(false);
+  const [targetFriendUserId, setTargetFriendUserId] = useState("");
+  const [connectFriendReason, setConnectFriendReason] = useState("");
+  const [connectingFriend, setConnectingFriend] = useState(false);
+
+  // Disconnect Friend Modal State
+  const [showDisconnectModal, setShowDisconnectModal] = useState(false);
+  const [friendToDisconnect, setFriendToDisconnect] = useState<UserFriendItem | null>(null);
+  const [disconnectReason, setDisconnectReason] = useState("");
+  const [disconnectingFriend, setDisconnectingFriend] = useState(false);
+
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
@@ -129,6 +143,20 @@ export default function AdminUsersScreen() {
     loadUsers();
   }, [loadUsers]);
 
+  // Refresh friends list callback
+  const refreshFriendsList = useCallback(async () => {
+    if (!activeUser) return;
+    setLoadingFriends(true);
+    try {
+      const res = await getUserFriendsList(activeUser.id, friendsSearch);
+      setFriendsList(res);
+    } catch (err) {
+      console.warn("[users.tsx] refreshFriendsList error:", err);
+    } finally {
+      setLoadingFriends(false);
+    }
+  }, [activeUser?.id, friendsSearch]);
+
   // Load history when active user or history category changes
   useEffect(() => {
     if (activeUser && activeDetailSubTab === "history") {
@@ -146,12 +174,61 @@ export default function AdminUsersScreen() {
   // Load friends when active user or friends subtab changes
   useEffect(() => {
     if (activeUser && activeDetailSubTab === "friends") {
-      setLoadingFriends(true);
-      getUserFriendsList(activeUser.id, friendsSearch)
-        .then(setFriendsList)
-        .finally(() => setLoadingFriends(false));
+      refreshFriendsList();
     }
-  }, [activeUser, activeDetailSubTab, friendsSearch]);
+  }, [activeUser?.id, activeDetailSubTab, friendsSearch, refreshFriendsList]);
+
+  // Handler: Connect new friend
+  const handleConnectFriend = async () => {
+    if (!activeUser || !targetFriendUserId) {
+      Alert.alert("Pilih Pengguna", "Silakan pilih salah satu pengguna dari daftar.");
+      return;
+    }
+    setConnectingFriend(true);
+    const res = await adminAddFriendship({
+      userId: activeUser.id,
+      targetUserId: targetFriendUserId,
+      reason: connectFriendReason.trim() || "Dihubungkan oleh Administrator Nuenime",
+      admin: adminActor,
+    });
+    setConnectingFriend(false);
+    if (res.success) {
+      hapticSuccess();
+      setShowConnectFriendModal(false);
+      setTargetFriendUserId("");
+      setConnectFriendReason("");
+      refreshFriendsList();
+      Alert.alert("Berhasil", "Pertemanan berhasil dihubungkan di sistem!");
+    } else {
+      hapticWarning();
+      Alert.alert("Gagal", res.error || "Gagal menghubungkan pertemanan.");
+    }
+  };
+
+  // Handler: Disconnect friend
+  const handleDisconnectFriend = async () => {
+    if (!activeUser || !friendToDisconnect) return;
+    setDisconnectingFriend(true);
+    const res = await adminDeleteFriendship({
+      friendshipId: friendToDisconnect.id,
+      userId: activeUser.id,
+      friendId: friendToDisconnect.friendId,
+      reason: disconnectReason.trim() || "Diputuskan oleh Administrator Nuenime",
+      admin: adminActor,
+    });
+    setDisconnectingFriend(false);
+    if (res.success) {
+      hapticSuccess();
+      setShowDisconnectModal(false);
+      setFriendToDisconnect(null);
+      setDisconnectReason("");
+      refreshFriendsList();
+      Alert.alert("Berhasil", "Pertemanan telah diputuskan.");
+    } else {
+      hapticWarning();
+      Alert.alert("Gagal", res.error || "Gagal menghapus pertemanan.");
+    }
+  };
 
   // Open user in new in-page tab
   const handleOpenUserDetail = (user: AdminUserListItem) => {
@@ -209,6 +286,15 @@ export default function AdminUsersScreen() {
       setShowAdjustModal(false);
       setAdjustAmount("");
       setAdjustReason("");
+
+      // Update openUserTabs & users state immediately so the open tab and list reflect the new balance
+      setOpenUserTabs((prev) =>
+        prev.map((u) => (u.id === target.id ? { ...u, crystalBalance: res.after } : u))
+      );
+      setUsers((prev) =>
+        prev.map((u) => (u.id === target.id ? { ...u, crystalBalance: res.after } : u))
+      );
+
       loadUsers();
     } else {
       hapticWarning();
@@ -244,25 +330,26 @@ export default function AdminUsersScreen() {
       setShowCooldownModal(false);
       setCooldownReason("");
 
-      // Update openUserTabs state immediately
-      setOpenUserTabs((prev) =>
-        prev.map((tab) => {
-          if (tab.id !== activeUser.id) return tab;
-          const updated = { ...tab };
-          if (cooldownType === "all") {
-            updated.nameUpdatedAt = null;
-            updated.avatarUpdatedAt = null;
-            updated.bannerUpdatedAt = null;
-          } else if (cooldownType === "name") {
-            updated.nameUpdatedAt = null;
-          } else if (cooldownType === "avatar") {
-            updated.avatarUpdatedAt = null;
-          } else if (cooldownType === "banner") {
-            updated.bannerUpdatedAt = null;
-          }
-          return updated;
-        })
-      );
+      // Update openUserTabs & users state immediately
+      const updateCooldowns = (tab: AdminUserListItem) => {
+        if (tab.id !== activeUser.id) return tab;
+        const updated = { ...tab };
+        if (cooldownType === "all") {
+          updated.nameUpdatedAt = null;
+          updated.avatarUpdatedAt = null;
+          updated.bannerUpdatedAt = null;
+        } else if (cooldownType === "name") {
+          updated.nameUpdatedAt = null;
+        } else if (cooldownType === "avatar") {
+          updated.avatarUpdatedAt = null;
+        } else if (cooldownType === "banner") {
+          updated.bannerUpdatedAt = null;
+        }
+        return updated;
+      };
+
+      setOpenUserTabs((prev) => prev.map(updateCooldowns));
+      setUsers((prev) => prev.map(updateCooldowns));
 
       loadUsers();
     } else {
@@ -825,7 +912,11 @@ export default function AdminUsersScreen() {
               { id: "balance", label: "Saldo Crystal", icon: "diamond-stone" },
               { id: "status", label: "Status Akun", icon: "account-cancel" },
               { id: "history", label: "Riwayat Pengguna", icon: "history" },
-              { id: "friends", label: "Pertemanan", icon: "account-multiple" },
+              {
+                id: "friends",
+                label: friendsList.length > 0 ? `Pertemanan (${friendsList.length})` : "Pertemanan",
+                icon: "account-multiple",
+              },
             ].map((st) => (
               <Pressable
                 key={st.id}
@@ -1319,8 +1410,32 @@ export default function AdminUsersScreen() {
                 <View>
                   <Text style={styles.panelTitle}>Jaringan Pertemanan Pengguna</Text>
                   <Text style={styles.panelSubtitle}>
-                    Daftar teman terhubung untuk akun @{activeUser.username}.
+                    Daftar teman terhubung untuk akun @{activeUser.username} ({friendsList.length} teman terdaftar di sistem).
                   </Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Pressable
+                    onPress={() => {
+                      hapticLight();
+                      refreshFriendsList();
+                    }}
+                    style={styles.silverRefreshBtn}
+                    accessibilityLabel="Segarkan daftar pertemanan"
+                  >
+                    <AppIcon name="refresh" size={15} color="#CBD5E1" />
+                    <Text style={styles.silverRefreshBtnText}>Segarkan</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      hapticLight();
+                      setShowConnectFriendModal(true);
+                    }}
+                    style={styles.primaryActionBtnSilver}
+                    accessibilityLabel="Hubungkan teman baru"
+                  >
+                    <AppIcon name="account-plus" size={15} color="#FFFFFF" />
+                    <Text style={styles.primaryActionBtnText}>+ Hubungkan Teman</Text>
+                  </Pressable>
                 </View>
               </View>
 
@@ -1330,40 +1445,117 @@ export default function AdminUsersScreen() {
                 <TextInput
                   value={friendsSearch}
                   onChangeText={setFriendsSearch}
-                  placeholder="Cari teman sesama pengguna..."
+                  placeholder="Cari teman berdasarkan nama atau @username..."
                   placeholderTextColor="#64748B"
                   style={styles.searchInput}
                 />
               </View>
 
               {loadingFriends ? (
-                <ActivityIndicator size="small" color="#38BDF8" style={{ padding: 30 }} />
+                <View style={{ padding: 40, alignItems: "center", justifyContent: "center" }}>
+                  <ActivityIndicator size="small" color="#38BDF8" />
+                  <Text style={{ color: "#94A3B8", marginTop: 8, fontSize: 12 }}>
+                    Memuat daftar pertemanan...
+                  </Text>
+                </View>
               ) : friendsList.length === 0 ? (
                 <View style={styles.emptyWrap}>
                   <AppIcon name="account-group-outline" size={44} color="#64748B" />
                   <Text style={styles.emptyTitle}>Belum Ada Teman Terhubung</Text>
-                  <Text style={styles.emptyText}>Pengguna ini belum menambahkan atau memiliki pertemanan yang diterima di Nuenime.</Text>
+                  <Text style={styles.emptyText}>
+                    Pengguna ini belum menambahkan atau memiliki pertemanan yang diterima di Nuenime.
+                  </Text>
+                  <Pressable
+                    onPress={() => {
+                      hapticLight();
+                      setShowConnectFriendModal(true);
+                    }}
+                    style={[styles.primaryActionBtnSilver, { marginTop: 14 }]}
+                  >
+                    <AppIcon name="account-plus" size={15} color="#FFFFFF" />
+                    <Text style={styles.primaryActionBtnText}>Hubungkan Pengguna Ini Sekarang</Text>
+                  </Pressable>
                 </View>
               ) : (
                 <View style={styles.friendsGrid}>
-                  {friendsList.map((f) => (
-                    <View key={f.id} style={styles.friendCard}>
-                      <View style={styles.avatarMiniWrap}>
-                        {f.avatarUrl ? (
-                          <Image source={{ uri: f.avatarUrl }} style={styles.avatarMini} />
-                        ) : (
-                          <View style={styles.avatarPlaceholder}>
-                            <Text style={styles.avatarPlaceholderText}>{f.username[0]?.toUpperCase()}</Text>
+                  {friendsList.map((f) => {
+                    const friendUserObj = users.find((u) => u.id === f.friendId);
+                    return (
+                      <View key={f.id} style={styles.friendCard}>
+                        <View style={styles.avatarMiniWrap}>
+                          {f.avatarUrl ? (
+                            <Image source={{ uri: f.avatarUrl }} style={styles.avatarMini} />
+                          ) : (
+                            <View style={styles.avatarPlaceholder}>
+                              <Text style={styles.avatarPlaceholderText}>{f.username[0]?.toUpperCase()}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={{ flex: 1, minWidth: 140 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <Text style={styles.friendNameText}>{f.displayName}</Text>
+                            {f.memberNumber && (
+                              <View style={styles.friendNumBadge}>
+                                <Text style={styles.friendNumBadgeText}>{f.memberNumber}</Text>
+                              </View>
+                            )}
                           </View>
-                        )}
+                          <Text style={styles.friendUsernameText}>@{f.username}</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+                            <View style={styles.friendLevelBadge}>
+                              <Text style={styles.friendLevelBadgeText}>Lv.{f.level || 1}</Text>
+                            </View>
+                            <View
+                              style={[
+                                styles.friendStatusPill,
+                                f.status === "accepted" ? styles.friendStatusAccepted : styles.friendStatusPending,
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.friendStatusPillText,
+                                  f.status === "accepted" ? { color: "#34D399" } : { color: "#F59E0B" },
+                                ]}
+                              >
+                                {f.status === "accepted" ? "✓ Berteman" : "⏳ Menunggu"}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text style={styles.friendDateText}>
+                            Terhubung sejak {new Date(f.createdAt).toLocaleDateString("id-ID")}
+                          </Text>
+                        </View>
+
+                        {/* Actions for each friend */}
+                        <View style={styles.friendActionCol}>
+                          {friendUserObj && (
+                            <Pressable
+                              onPress={() => {
+                                handleOpenUserDetail(friendUserObj);
+                              }}
+                              style={styles.friendOpenTabBtn}
+                              accessibilityLabel="Buka tab detail akun ini"
+                            >
+                              <AppIcon name="open-in-new" size={13} color="#38BDF8" />
+                              <Text style={styles.friendOpenTabBtnText}>Buka Akun</Text>
+                            </Pressable>
+                          )}
+                          <Pressable
+                            onPress={() => {
+                              hapticLight();
+                              setFriendToDisconnect(f);
+                              setShowDisconnectModal(true);
+                            }}
+                            style={styles.friendDisconnectBtn}
+                            accessibilityLabel="Putuskan pertemanan"
+                          >
+                            <AppIcon name="link-off" size={13} color="#EF4444" />
+                            <Text style={styles.friendDisconnectBtnText}>Putuskan</Text>
+                          </Pressable>
+                        </View>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.friendNameText}>{f.displayName}</Text>
-                        <Text style={styles.friendUsernameText}>@{f.username}</Text>
-                        <Text style={styles.friendDateText}>Berteman sejak {new Date(f.createdAt).toLocaleDateString("id-ID")}</Text>
-                      </View>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               )}
             </View>
@@ -1823,6 +2015,128 @@ export default function AdminUsersScreen() {
                     : activeUser?.isBanned
                     ? "Konfirmasi Buka Blokir"
                     : "Konfirmasi Blokir Akun"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── MODAL HUBUNGKAN TEMAN BARU ─── */}
+      <Modal visible={showConnectFriendModal} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Hubungkan Pertemanan Baru</Text>
+            <Text style={styles.modalSub}>
+              Hubungkan akun <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>@{activeUser?.username}</Text> dengan pengguna lain secara instan di Nuenime.
+            </Text>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.fieldLabel}>Pilih Teman yang Ingin Dihubungkan:</Text>
+              <ScrollView style={{ maxHeight: 180, backgroundColor: "rgba(255, 255, 255, 0.03)", borderRadius: 10, borderWidth: 1, borderColor: "rgba(255, 255, 255, 0.08)", padding: 6 }}>
+                {users
+                  .filter((u) => u.id !== activeUser?.id && !friendsList.some((f) => f.friendId === u.id))
+                  .map((u) => {
+                    const isSelected = targetFriendUserId === u.id;
+                    return (
+                      <Pressable
+                        key={u.id}
+                        onPress={() => setTargetFriendUserId(u.id)}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          paddingVertical: 8,
+                          paddingHorizontal: 10,
+                          borderRadius: 8,
+                          backgroundColor: isSelected ? "rgba(56, 189, 248, 0.15)" : "transparent",
+                          marginBottom: 4,
+                        }}
+                      >
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                          <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#1E293B", alignItems: "center", justifyContent: "center" }}>
+                            <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "700" }}>{u.username[0]?.toUpperCase()}</Text>
+                          </View>
+                          <View>
+                            <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "600" }}>{u.displayName}</Text>
+                            <Text style={{ color: "#94A3B8", fontSize: 10 }}>@{u.username} • {u.memberNumber}</Text>
+                          </View>
+                        </View>
+                        {isSelected && <AppIcon name="check-circle" size={16} color="#38BDF8" />}
+                      </Pressable>
+                    );
+                  })}
+              </ScrollView>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.fieldLabel}>Alasan / Catatan Admin:</Text>
+              <TextInput
+                value={connectFriendReason}
+                onChangeText={setConnectFriendReason}
+                placeholder="Contoh: Permintaan bantuan CS / Verifikasi relasi akun"
+                placeholderTextColor="#64748B"
+                style={styles.fieldInput}
+              />
+            </View>
+
+            <View style={styles.modalActionRow}>
+              <Pressable onPress={() => setShowConnectFriendModal(false)} style={styles.modalCancelBtn}>
+                <Text style={styles.modalCancelText}>Batal</Text>
+              </Pressable>
+              <Pressable
+                disabled={connectingFriend || !targetFriendUserId}
+                onPress={handleConnectFriend}
+                style={[styles.primaryActionBtnSilver, (!targetFriendUserId || connectingFriend) && { opacity: 0.5 }]}
+              >
+                <Text style={styles.primaryActionBtnText}>
+                  {connectingFriend ? "Menghubungkan..." : "Konfirmasi Hubungkan"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── MODAL PUTUSKAN PERTEMANAN ─── */}
+      <Modal visible={showDisconnectModal} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={[styles.modalTitle, { color: "#EF4444" }]}>Putuskan Pertemanan</Text>
+            <Text style={styles.modalSub}>
+              Apakah Anda yakin ingin memutuskan hubungan pertemanan antara{" "}
+              <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>@{activeUser?.username}</Text> dan{" "}
+              <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>@{friendToDisconnect?.username}</Text>?
+            </Text>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.fieldLabel}>Alasan Pemutusan (Wajib):</Text>
+              <TextInput
+                value={disconnectReason}
+                onChangeText={setDisconnectReason}
+                placeholder="Contoh: Laporan spam pertemanan / Permintaan pengguna"
+                placeholderTextColor="#64748B"
+                style={styles.fieldInput}
+              />
+            </View>
+
+            <View style={styles.modalActionRow}>
+              <Pressable
+                onPress={() => {
+                  setShowDisconnectModal(false);
+                  setFriendToDisconnect(null);
+                }}
+                style={styles.modalCancelBtn}
+              >
+                <Text style={styles.modalCancelText}>Batal</Text>
+              </Pressable>
+              <Pressable
+                disabled={disconnectingFriend}
+                onPress={handleDisconnectFriend}
+                style={[styles.modalConfirmBtn, { backgroundColor: "#EF4444" }]}
+              >
+                <Text style={styles.modalConfirmText}>
+                  {disconnectingFriend ? "Memutuskan..." : "Konfirmasi Putuskan"}
                 </Text>
               </Pressable>
             </View>
@@ -2897,7 +3211,34 @@ const styles = StyleSheet.create({
     color: "#94A3B8",
   },
 
-  // Friends Tab
+  // Friends Tab (Silver Liquid Glass & Cards)
+  silverRefreshBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.14)",
+  },
+  silverRefreshBtnText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12,
+    color: "#CBD5E1",
+  },
+  primaryActionBtnSilver: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.28)",
+  },
   friendsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -2908,27 +3249,109 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     width: "48%",
-    minWidth: 260,
-    padding: 12,
-    borderRadius: 10,
+    minWidth: 280,
+    padding: 14,
+    borderRadius: 12,
     backgroundColor: "rgba(255, 255, 255, 0.03)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.06)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
   },
   friendNameText: {
     fontFamily: "Nunito-Bold",
     fontSize: 13,
     color: "#FFFFFF",
   },
+  friendNumBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+  },
+  friendNumBadgeText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 9.5,
+    color: "#CBD5E1",
+  },
   friendUsernameText: {
     fontFamily: "Nunito-Regular",
     fontSize: 11,
     color: "#38BDF8",
   },
+  friendLevelBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.25)",
+  },
+  friendLevelBadgeText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 10,
+    color: "#38BDF8",
+  },
+  friendStatusPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  friendStatusAccepted: {
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
+    borderColor: "rgba(16, 185, 129, 0.3)",
+  },
+  friendStatusPending: {
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    borderColor: "rgba(245, 158, 11, 0.3)",
+  },
+  friendStatusPillText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 10,
+  },
   friendDateText: {
     fontFamily: "Nunito-Regular",
     fontSize: 10,
     color: "#64748B",
+    marginTop: 4,
+  },
+  friendActionCol: {
+    gap: 6,
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  friendOpenTabBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.2)",
+  },
+  friendOpenTabBtnText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 10.5,
+    color: "#38BDF8",
+  },
+  friendDisconnectBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: "rgba(239, 68, 68, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.2)",
+  },
+  friendDisconnectBtnText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 10.5,
+    color: "#EF4444",
   },
 
   // ── 9. Modals (Matching borders.tsx)

@@ -13,7 +13,13 @@ export function AppIcon({
   color: string;
   style?: StyleProp<ViewStyle>;
 }) {
-  const d = SVG_PATHS[name] || SVG_PATHS["help-circle-outline"] || SVG_PATHS["circle-outline"];
+  const normalized = name ? name.trim() : "";
+  const d =
+    SVG_PATHS[normalized] ||
+    SVG_PATHS[normalized.replace(/-outline$/, "")] ||
+    SVG_PATHS[normalized + "-outline"] ||
+    SVG_PATHS["circle-outline"];
+
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" pointerEvents="none" style={[{ pointerEvents: "none" as any }, style]}>
       <Path d={d} fill={color} />

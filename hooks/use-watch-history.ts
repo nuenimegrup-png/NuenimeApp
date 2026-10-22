@@ -3,12 +3,47 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { resolveMaxHistoryProgress } from "@/lib/watch-engine";
+import { countWatchedEpisodes } from "@/lib/library-history";
+import { deriveStatusAfterWatch, normalizeListStatus } from "@/lib/list-status";
 import { LOCAL_WATCH_KEY_PREFIX, parseLocalWatchEntry, type LocalWatchEntry } from "@/lib/watch-progress";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 
-export type HistoryInput = { animeId: number; animeTitle: string; animeImage?: string | null; episode: number; episodeTitle?: string | null; episodeThumbnail?: string | null; progress: number; duration: number };
+export type HistoryInput = { animeId: number; animeTitle: string; animeImage?: string | null; episode: number; episodeTitle?: string | null; episodeThumbnail?: string | null; progress: number; duration: number; totalEpisodes?: number };
 
 const HISTORY_CACHE_PREFIX = "aniraku.history-cache.v1:";
+
+/**
+ * Miruro watch-event advance (the "hidden" bookmark-status mechanism): after
+ * a history save, recompute this title's bookmark status from distinct
+ * watched episodes. Only bookmarked titles carry a status; DROPPED/PAUSED
+ * pass through untouched (explicit-only). Best-effort: any failure —
+ * including a schema that predates the `status` column — is a no-op.
+ * Returns true when a row was actually updated.
+ */
+export async function advanceSavedStatus(userId: string, input: HistoryInput): Promise<boolean> {
+  if (!userId || !Number.isFinite(input.animeId) || input.animeId <= 0) return false;
+  try {
+    const { data: bookmark } = await supabase.from("bookmarks").select("*").eq("user_id", userId).eq("anime_id", input.animeId).maybeSingle();
+    if (!bookmark) return false; // not bookmarked — nothing carries a status
+    const { data: historyRows } = await supabase.from("watch_history").select("episode_number, progress, duration").eq("user_id", userId).eq("anime_id", input.animeId);
+    // Same ≥80% "watched" rule as Saved-row progress (lib/library-history),
+    // so the badge and the progress meta can never disagree.
+    const watchedCount = countWatchedEpisodes(
+      (historyRows ?? []).map((row) => ({ ...row, anime_id: input.animeId })),
+    ).get(input.animeId) ?? 0;
+    const row = bookmark as { id?: unknown; status?: unknown; total_episodes?: unknown };
+    const storedTotal = Math.floor(Number(row.total_episodes)) || 0;
+    const total = storedTotal > 0 ? storedTotal : Math.max(0, Math.floor(Number(input.totalEpisodes)) || 0);
+    const previous = normalizeListStatus(row.status);
+    const next = deriveStatusAfterWatch({ previous, watchedCount, total });
+    if (next === previous || row.id === undefined || row.id === null) return false;
+    const { error } = await supabase.from("bookmarks").update({ status: next }).eq("id", row.id);
+    if (error) return false; // best-effort: never throw into the save flow (legacy schema, offline, …)
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Zero-network fallback: last synced history rows, for offline Library / resume rows. */
 async function readCachedHistoryRows(userId: string): Promise<any[] | null> {
@@ -49,7 +84,7 @@ export function useWatchHistory() {
   const [synced, setSynced] = useState(false);
   const syncedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const history = useQuery({ queryKey, enabled: Boolean(user), queryFn: async () => { const { data, error } = await supabase.from("watch_history").select("*").eq("user_id", user!.id).order("updated_at", { ascending: false }); if (error) throw error; return data ?? []; } });
+  const history = useQuery({ queryKey, enabled: Boolean(user), queryFn: async () => { const { data, error } = await supabase.from("watch_history").select("*").eq("user_id", user!.id).order("timestamp", { ascending: false }); if (error) throw error; return data ?? []; } });
 
   // Offline open: keep the last synced rows in AsyncStorage so Library +
   // resume rails render with zero network. Fresh server data always wins
@@ -134,8 +169,19 @@ export function useWatchHistory() {
     }
     const { error } = await supabase.from("watch_history").upsert({ user_id: user.id, anime_id: input.animeId, anime_title: input.animeTitle, anime_image: cover, episode_number: input.episode, episode_title: input.episodeTitle ?? null, episode_thumbnail: input.episodeThumbnail ?? null, timestamp: Date.now(), progress, duration: input.duration }, { onConflict: "user_id,anime_id,episode_number" });
     if (error) throw error;
-  }, onSuccess: () => void queryClient.invalidateQueries({ queryKey }) });
+  }, onSuccess: (_data, input) => {
+    void queryClient.invalidateQueries({ queryKey });
+    // Hidden mechanism: watch events advance the bookmark status (Miruro
+    // `recordWatchEvent` parity). Refresh Saved badges when it changes.
+    if (user?.id) {
+      void advanceSavedStatus(user.id, input)
+        .then((changed) => { if (changed) void queryClient.invalidateQueries({ queryKey: ["bookmarks"] }); })
+        .catch(() => {});
+    }
+  } });
   const remove = useMutation({ mutationFn: async (entry: { animeId: number; episode: number }) => { if (!user) return; const { error } = await supabase.from("watch_history").delete().eq("user_id", user.id).eq("anime_id", entry.animeId).eq("episode_number", entry.episode); if (error) throw error; }, onSuccess: () => void queryClient.invalidateQueries({ queryKey }) });
+  /** History shows one row per title — removing it drops every episode row for that title. */
+  const removeTitle = useMutation({ mutationFn: async (entry: { animeId: number }) => { if (!user) return; const { error } = await supabase.from("watch_history").delete().eq("user_id", user.id).eq("anime_id", entry.animeId); if (error) throw error; }, onSuccess: () => void queryClient.invalidateQueries({ queryKey }) });
   const clear = useMutation({ mutationFn: async () => { if (!user) return; const { error } = await supabase.from("watch_history").delete().eq("user_id", user.id); if (error) throw error; }, onSuccess: () => void queryClient.invalidateQueries({ queryKey }) });
-  return { history, save, remove, clear, synced, cachedRows, displayRows, isOfflineCache };
+  return { history, save, remove, removeTitle, clear, synced, cachedRows, displayRows, isOfflineCache };
 }

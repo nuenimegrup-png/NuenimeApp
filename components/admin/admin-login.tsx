@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
   portalTag: {
     fontFamily: "Nunito-Bold",
     fontSize: 11,
-    color: "#8C57FF",
+    color: "#CBD5E1",
     letterSpacing: 1.5,
     marginBottom: 4,
   },

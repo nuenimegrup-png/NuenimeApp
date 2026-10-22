@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   ImageStyle,
+  Platform,
   StyleProp,
   StyleSheet,
   Text,
@@ -180,15 +181,19 @@ export const BorderAvatar: React.FC<BorderAvatarProps> = ({
   if (onPress && !disabled) {
     return (
       <View
-        accessible
-        accessibilityRole="button"
+        accessible={Platform.OS !== "web"}
+        {...(Platform.OS !== "web" ? { accessibilityRole: "button" as const } : {})}
         hitSlop={6}
         onTouchEnd={(e) => {
           e.stopPropagation();
           onPress();
         }}
-        // Web: tidak pakai Pressable (→ <button>) karena bisa ada Pressable child
-        // sehingga menghasilkan nested <button> yang tidak valid di HTML
+        // @ts-ignore
+        onClick={(e: any) => {
+          onPress();
+        }}
+        // Web: render sebagai <div> dengan cursor pointer, BUKAN <button>,
+        // agar tidak terjadi nested <button> ketika children memiliki tombol aksi (cth: tombol edit foto).
         style={{ cursor: "pointer" } as any}
       >
         {renderContent()}

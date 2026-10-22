@@ -32,105 +32,32 @@ export type { TopUpTransaction, TopUpStatus, PaymentMethodId, CrystalPackage };
 export { formatRupiah, formatCrystalAmount, getCrystalBalance, deductCrystalBalance };
 export type { AvatarBorder, BorderRarity };
 
-// ─── ROLE-BASED ACCESS CONTROL (RBAC) ───
-export type AdminRole = "super_admin" | "finance_admin" | "moderator";
+// ─── ROLE-BASED ACCESS CONTROL (RBAC) & AUDIT LOG ───
+import {
+  AdminUser,
+  AdminRole,
+  canManageFinance,
+  canManageUsers,
+  canModerate,
+  canManageSystem,
+  AuditLogItem,
+  logAdminAction,
+  getAdminAuditLogs,
+} from "./admin-audit";
 
-export interface AdminUser {
-  id: string;
-  email: string;
-  username: string;
-  role: AdminRole;
-}
+export {
+  AdminUser,
+  AdminRole,
+  canManageFinance,
+  canManageUsers,
+  canModerate,
+  canManageSystem,
+  AuditLogItem,
+  logAdminAction,
+  getAdminAuditLogs,
+};
 
-export function canManageFinance(role: AdminRole): boolean {
-  return role === "super_admin" || role === "finance_admin";
-}
-
-export function canManageUsers(role: AdminRole): boolean {
-  return role === "super_admin" || role === "finance_admin";
-}
-
-export function canModerate(role: AdminRole): boolean {
-  return role === "super_admin" || role === "moderator";
-}
-
-export function canManageSystem(role: AdminRole): boolean {
-  return role === "super_admin";
-}
-
-// ─── AUDIT LOG ENTRY ───
-export interface AuditLogItem {
-  id: string;
-  adminId: string;
-  adminEmail: string;
-  adminRole: AdminRole;
-  action: string;
-  targetType: string;
-  targetId: string;
-  details: Record<string, any>;
-  createdAt: string;
-}
-
-const STORAGE_AUDIT_LOGS = "nuenime.admin.audit_logs";
 const STORAGE_SYSTEM_CONFIGS = "nuenime.admin.system_configs";
-
-/**
- * Mencatat tindakan penting admin ke dalam audit log
- */
-export async function logAdminAction(params: {
-  admin: AdminUser;
-  action: string;
-  targetType: string;
-  targetId: string;
-  details: Record<string, any>;
-}): Promise<AuditLogItem> {
-  const item: AuditLogItem = {
-    id: `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
-    adminId: params.admin.id,
-    adminEmail: params.admin.email,
-    adminRole: params.admin.role,
-    action: params.action,
-    targetType: params.targetType,
-    targetId: params.targetId,
-    details: params.details,
-    createdAt: new Date().toISOString(),
-  };
-
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_AUDIT_LOGS);
-    const list: AuditLogItem[] = raw ? JSON.parse(raw) : [];
-    list.unshift(item);
-    // Simpan hingga 500 entri terbaru
-    await AsyncStorage.setItem(STORAGE_AUDIT_LOGS, JSON.stringify(list.slice(0, 500)));
-
-    // Simpan ke Supabase jika terhubung
-    try {
-      await supabase.from("admin_audit_logs").insert({
-        id: item.id,
-        admin_id: item.adminId,
-        admin_email: item.adminEmail,
-        admin_role: item.adminRole,
-        action: item.action,
-        target_type: item.targetType,
-        target_id: item.targetId,
-        details: item.details,
-        created_at: item.createdAt,
-      });
-    } catch {}
-  } catch {}
-
-  return item;
-}
-
-export async function getAdminAuditLogs(): Promise<AuditLogItem[]> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_AUDIT_LOGS);
-    if (raw) return JSON.parse(raw);
-    return [];
-  } catch {
-    return [];
-  }
-}
 
 // ─── 1. FINANCE & TOP UP TRANSACTIONS ───
 
@@ -1169,6 +1096,19 @@ export async function adminSetUserBanStatus(params: {
       },
     });
 
+    // Kirim notifikasi sistem status akun ke pengguna
+    try {
+      await supabase.from("notifications").insert({
+        user_id: params.userId,
+        title: params.isBanned ? "Akun Anda Diblokir ⚠️" : "Akun Anda Telah Dipulihkan ✅",
+        message: params.isBanned
+          ? `Akun Anda telah dinonaktifkan oleh administrator. Alasan: ${params.reason.trim()}`
+          : "Blokir akun Anda telah dibuka oleh administrator. Selamat kembali ke Nuenime!",
+        type: params.isBanned ? "account_banned" : "account_unbanned",
+        read: false,
+      });
+    } catch {}
+
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message || "Gagal mengubah status blokir akun." };
@@ -1364,28 +1304,110 @@ export interface UserFriendItem {
   avatarUrl?: string | null;
   status: "accepted" | "pending";
   createdAt: string;
+  level?: number;
+  exp?: number;
+  role?: string;
+  isVip?: boolean;
+  memberNumber?: string;
 }
 
 export async function getUserFriendsList(userId: string, search?: string): Promise<UserFriendItem[]> {
+  if (!userId) return [];
   try {
-    const { data, error } = await supabase
-      .from("friendships")
-      .select("*, friend:profiles!friend_id(id, username, display_name, avatar_url)")
-      .eq("user_id", userId);
+    // 1. Ambil hubungan dari tabel friendships (baik sebagai user_id pengirim maupun friend_id penerima)
+    const [sentRes, receivedRes] = await Promise.all([
+      supabase
+        .from("friendships")
+        .select("id, user_id, friend_id, status, created_at")
+        .eq("user_id", userId),
+      supabase
+        .from("friendships")
+        .select("id, user_id, friend_id, status, created_at")
+        .eq("friend_id", userId),
+    ]);
 
-    if (error || !data || data.length === 0) {
+    const rows: any[] = [...(sentRes.data || []), ...(receivedRes.data || [])];
+
+    // Jika Promise.all kosong tapi mungkin or(...) berhasil, atau sebaliknya
+    if (rows.length === 0) {
+      const { data: orRows } = await supabase
+        .from("friendships")
+        .select("id, user_id, friend_id, status, created_at")
+        .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
+      if (orRows && orRows.length > 0) {
+        rows.push(...orRows);
+      }
+    }
+
+    if (rows.length === 0) {
       return [];
     }
 
-    let list: UserFriendItem[] = data.map((d: any) => ({
-      id: d.id,
-      friendId: d.friend_id,
-      username: d.friend?.username || "Pengguna",
-      displayName: d.friend?.display_name || d.friend?.username || "Pengguna",
-      avatarUrl: d.friend?.avatar_url || null,
-      status: d.status || "accepted",
-      createdAt: d.created_at || new Date().toISOString(),
-    }));
+    const otherUserMap = new Map<
+      string,
+      { friendshipId: string; status: "accepted" | "pending"; createdAt: string }
+    >();
+
+    rows.forEach((r: any) => {
+      const otherId = r.user_id === userId ? r.friend_id : r.user_id;
+      if (otherId && otherId !== userId) {
+        const existing = otherUserMap.get(otherId);
+        // Prioritaskan status accepted jika ada duplikat
+        if (!existing || r.status === "accepted") {
+          otherUserMap.set(otherId, {
+            friendshipId: r.id,
+            status: (r.status as "accepted" | "pending") || "accepted",
+            createdAt: r.created_at || new Date().toISOString(),
+          });
+        }
+      }
+    });
+
+    const otherIds = Array.from(otherUserMap.keys());
+    if (otherIds.length === 0) return [];
+
+    const { data: profiles, error: pError } = await supabase
+      .from("profiles")
+      .select("id, username, display_name, avatar_url, level, exp, role, is_vip, member_number")
+      .in("id", otherIds);
+
+    if (pError || !profiles || profiles.length === 0) {
+      return otherIds.map((id) => {
+        const meta = otherUserMap.get(id);
+        return {
+          id: meta?.friendshipId || id,
+          friendId: id,
+          username: "Pengguna",
+          displayName: "Pengguna Nuenime",
+          avatarUrl: null,
+          status: meta?.status || "accepted",
+          createdAt: meta?.createdAt || new Date().toISOString(),
+          level: 1,
+          exp: 0,
+          role: "Member",
+          isVip: false,
+          memberNumber: "#0001",
+        };
+      });
+    }
+
+    let list: UserFriendItem[] = profiles.map((p: any) => {
+      const meta = otherUserMap.get(p.id);
+      return {
+        id: meta?.friendshipId || p.id,
+        friendId: p.id,
+        username: p.username || "pengguna",
+        displayName: p.display_name || p.username || "Pengguna Nuenime",
+        avatarUrl: p.avatar_url || null,
+        status: meta?.status || "accepted",
+        createdAt: meta?.createdAt || new Date().toISOString(),
+        level: Number(p.level) || 1,
+        exp: Number(p.exp) || 0,
+        role: p.role || "Member",
+        isVip: Boolean(p.is_vip),
+        memberNumber: p.member_number ? `#${String(p.member_number).padStart(4, "0")}` : "#0001",
+      };
+    });
 
     if (search && search.trim()) {
       const q = search.toLowerCase();
@@ -1397,8 +1419,123 @@ export async function getUserFriendsList(userId: string, search?: string): Promi
     }
 
     return list;
-  } catch {
+  } catch (err) {
+    console.warn("[admin-service] getUserFriendsList error:", err);
     return [];
+  }
+}
+
+/**
+ * Memutuskan hubungan pertemanan antar user langsung dari panel admin
+ */
+export async function adminDeleteFriendship(params: {
+  friendshipId: string;
+  userId: string;
+  friendId: string;
+  admin: AdminUser;
+  reason?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    let query = supabase.from("friendships").delete();
+    if (params.friendshipId) {
+      query = query.eq("id", params.friendshipId);
+    } else {
+      query = query.or(
+        `and(user_id.eq.${params.userId},friend_id.eq.${params.friendId}),and(user_id.eq.${params.friendId},friend_id.eq.${params.userId})`
+      );
+    }
+
+    const { error } = await query;
+    if (error) throw error;
+
+    await logAdminAction({
+      admin: params.admin,
+      action: "DELETE_FRIENDSHIP",
+      targetType: "friendship",
+      targetId: params.friendshipId || `${params.userId}_${params.friendId}`,
+      details: {
+        userId: params.userId,
+        friendId: params.friendId,
+        reason: params.reason || "Diputuskan oleh Administrator",
+      },
+    });
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Gagal menghapus pertemanan." };
+  }
+}
+
+/**
+ * Menghubungkan 2 pengguna menjadi teman langsung dari panel admin
+ */
+export async function adminAddFriendship(params: {
+  userId: string;
+  targetUserId: string;
+  admin: AdminUser;
+  reason?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!params.userId || !params.targetUserId || params.userId === params.targetUserId) {
+      return { success: false, error: "Pilih 2 akun pengguna yang berbeda." };
+    }
+
+    // Periksa apakah sudah ada entri
+    const { data: existing } = await supabase
+      .from("friendships")
+      .select("id, status")
+      .or(
+        `and(user_id.eq.${params.userId},friend_id.eq.${params.targetUserId}),and(user_id.eq.${params.targetUserId},friend_id.eq.${params.userId})`
+      );
+
+    if (existing && existing.length > 0) {
+      await supabase
+        .from("friendships")
+        .update({ status: "accepted" })
+        .eq("id", existing[0].id);
+    } else {
+      const { error: insErr } = await supabase.from("friendships").insert({
+        user_id: params.userId,
+        friend_id: params.targetUserId,
+        status: "accepted",
+      });
+      if (insErr) throw insErr;
+    }
+
+    await logAdminAction({
+      admin: params.admin,
+      action: "ADD_FRIENDSHIP",
+      targetType: "friendship",
+      targetId: `${params.userId}_${params.targetUserId}`,
+      details: {
+        userId: params.userId,
+        targetUserId: params.targetUserId,
+        reason: params.reason || "Dihubungkan langsung oleh Administrator",
+      },
+    });
+
+    try {
+      await supabase.from("notifications").insert([
+        {
+          user_id: params.userId,
+          title: "Pertemanan Baru Terhubung 🎉",
+          message: "Akun Anda telah dihubungkan dengan teman baru oleh administrator Nuenime.",
+          type: "friend_request_accepted",
+          read: false,
+        },
+        {
+          user_id: params.targetUserId,
+          title: "Pertemanan Baru Terhubung 🎉",
+          message: "Akun Anda telah dihubungkan dengan teman baru oleh administrator Nuenime.",
+          type: "friend_request_accepted",
+          read: false,
+        },
+      ]);
+    } catch {}
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Gagal menghubungkan pertemanan." };
   }
 }
 

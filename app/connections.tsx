@@ -405,43 +405,83 @@ export default function ConnectionsScreen() {
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#38BDF8" />}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <View style={styles.requestCard}>
-              <Pressable
-                onPress={() => router.push(`/user/${item.id}` as never)}
-                style={styles.requestLeft}
-              >
-                <BorderAvatar
-                  size={44}
-                  borderId={item.equippedBorder}
-                  avatarUrl={item.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
-                />
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={styles.displayNameText} numberOfLines={1}>
-                    {item.displayName}
-                  </Text>
-                  <Text style={styles.memberNumberText}>
-                    Lvl {item.level} • {item.memberNumber}
-                  </Text>
-                </View>
-              </Pressable>
+          renderItem={({ item }) => {
+            const tierInfo = getTierForLevel(item.level || 1);
+            const activeTier = tierInfo?.currentTier;
+            const tierName = activeTier?.name || "Member";
+            const isSpecial = isSpecialRole(item.role);
+            const cleanMemberNum =
+              "#" + (String(item.memberNumber).replace(/[^0-9]/g, "").replace(/^0+/, "") || "1");
 
-              <View style={styles.requestActionRow}>
+            return (
+              <View style={styles.requestCard}>
+                {/* Pressable kiri → profil */}
                 <Pressable
-                  onPress={() => handleAccept(item.id)}
-                  style={({ pressed }) => [styles.acceptBtn, pressed && styles.btnPressed]}
+                  onPress={() => { hapticLight(); router.push(`/user/${item.id}` as never); }}
+                  style={styles.requestLeft}
                 >
-                  <Text style={styles.acceptBtnText}>Terima</Text>
+                  <BorderAvatar
+                    size={46}
+                    borderId={item.equippedBorder}
+                    avatarUrl={item.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
+                  />
+
+                  {/* Info Column */}
+                  <View style={styles.friendInfoCol}>
+                    {/* Nama + Verified Badge */}
+                    <View style={styles.nameRow}>
+                      <Text style={styles.displayNameText} numberOfLines={1}>
+                        {item.displayName}
+                      </Text>
+                      <AppIcon
+                        name={isSpecial ? "check-decagram" : "check-circle"}
+                        size={14}
+                        color={isSpecial ? "#EF4444" : "#38BDF8"}
+                      />
+                    </View>
+
+                    {/* Level + Tier + Member Number */}
+                    <View style={styles.badgesRow}>
+                      <View style={styles.levelPill}>
+                        {activeTier?.imageUrl && (
+                          <Image
+                            source={{ uri: activeTier.imageUrl }}
+                            style={styles.tierPillIcon}
+                            contentFit="contain"
+                            cachePolicy="memory-disk"
+                          />
+                        )}
+                        <Text style={styles.levelPillText}>
+                          Lvl {item.level.toLocaleString("id-ID")}
+                        </Text>
+                      </View>
+                      <View style={styles.tierPill}>
+                        <Text style={styles.tierPillText}>{tierName.toUpperCase()}</Text>
+                      </View>
+                      <Text style={styles.memberNumberText}>{cleanMemberNum}</Text>
+                    </View>
+                  </View>
                 </Pressable>
-                <Pressable
-                  onPress={() => handleReject(item.id)}
-                  style={({ pressed }) => [styles.rejectBtn, pressed && styles.btnPressed]}
-                >
-                  <Text style={styles.rejectBtnText}>Tolak</Text>
-                </Pressable>
+
+                {/* Tombol Aksi */}
+                <View style={styles.requestActionRow}>
+                  <Pressable
+                    onPress={() => handleAccept(item.id)}
+                    style={({ pressed }) => [styles.acceptBtn, pressed && styles.btnPressed]}
+                  >
+                    <AppIcon name="check" size={13} color="#FFFFFF" />
+                    <Text style={styles.acceptBtnText}>Terima</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handleReject(item.id)}
+                    style={({ pressed }) => [styles.rejectBtn, pressed && styles.btnPressed]}
+                  >
+                    <Text style={styles.rejectBtnText}>Tolak</Text>
+                  </Pressable>
+                </View>
               </View>
-            </View>
-          )}
+            );
+          }}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyTitle}>Belum ada permintaan</Text>
@@ -461,7 +501,7 @@ export default function ConnectionsScreen() {
         }}
         style={({ pressed }) => [styles.floatingCameraBtn, pressed && styles.btnPressed]}
       >
-        <AppIcon name="camera" size={20} color="#38BDF8" />
+        <AppIcon name="account-plus" size={20} color="#38BDF8" />
       </Pressable>
 
       {/* ─── 5. MODAL: INFO CHAT PRIVATE ─── */}
@@ -959,16 +999,20 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
 
-  // ─── REQUEST CARD ───
+  // ─── REQUEST CARD (glassmorphism, matches Teman card) ───
   requestCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
-    borderRadius: 14,
+    backgroundColor: "rgba(30, 41, 59, 0.75)",
+    borderRadius: 16,
     padding: 12,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.06)",
-    gap: 12,
+    borderColor: "rgba(255, 255, 255, 0.09)",
+    gap: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 3,
   },
   requestLeft: {
     flex: 1,
@@ -980,30 +1024,43 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    flexShrink: 0,
   },
   acceptBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
     backgroundColor: "#10B981",
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingVertical: 7,
+    borderRadius: 10,
+    shadowColor: "#10B981",
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 2,
   },
   acceptBtnText: {
     fontFamily: "Nunito-Black",
-    fontSize: 11,
+    fontSize: 12,
     color: "#FFFFFF",
+    letterSpacing: 0.1,
   },
   rejectBtn: {
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.07)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.15)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
+    borderColor: "rgba(255, 255, 255, 0.13)",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
   },
   rejectBtnText: {
     fontFamily: "Nunito-Bold",
-    fontSize: 11,
+    fontSize: 12,
     color: "#94A3B8",
+    letterSpacing: 0.1,
   },
 
   // ─── EMPTY & LOADING ───

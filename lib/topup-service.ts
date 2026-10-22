@@ -454,11 +454,14 @@ export async function setCrystalBalance(
   // Sinkronkan ke Supabase user_balances jika user valid
   if (userId && userId.trim().length > 0 && userId !== "guest") {
     try {
-      await supabase.from("user_balances").upsert({
-        user_id: userId,
-        crystal_balance: safeAmount,
-        updated_at: new Date().toISOString(),
-      });
+      await supabase.from("user_balances").upsert(
+        {
+          user_id: userId,
+          crystal_balance: safeAmount,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      );
     } catch {}
   }
 

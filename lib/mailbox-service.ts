@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabase";
-import type { AdminUser } from "./admin-service";
-import { logAdminAction } from "./admin-service";
+import type { AdminUser } from "./admin-audit";
+import { logAdminAction } from "./admin-audit";
 import { addCrystalBalance, getCrystalBalance } from "./topup-service";
 import {
   recordBorderPurchaseToSupabase,

@@ -1,3 +1,5 @@
+import { supabase } from "./supabase";
+
 // ==============================================================================
 // NUENIME / VALORA FILM - SISTEM LEVEL & EXP (EXPERIENCE POINTS)
 // ==============================================================================
@@ -128,4 +130,54 @@ export function getLevelProgressInfo(rawTotalXp: number | null | undefined): Lev
       };
     }
   }
+}
+
+export interface LiveExpConfig {
+  watch_episode: number;
+  comment: number;
+  daily_login: number;
+  weekend_boost_active: boolean;
+  weekend_multiplier: number;
+}
+
+export const DEFAULT_LIVE_EXP_CONFIG: LiveExpConfig = {
+  watch_episode: 20,
+  comment: 5,
+  daily_login: 10,
+  weekend_boost_active: true,
+  weekend_multiplier: 1.5,
+};
+
+/**
+ * Mengambil konfigurasi live perolehan EXP dari Supabase system_configs.
+ * Jika offline / tabel belum terisi, otomatis fallback ke default yang sinkron.
+ */
+export async function fetchLiveExpConfig(): Promise<LiveExpConfig> {
+  try {
+    const { data, error } = await supabase
+      .from("system_configs")
+      .select("value")
+      .eq("key", "exp_rules")
+      .maybeSingle();
+
+    if (!error && data?.value && typeof data.value === "object") {
+      const val = data.value as any;
+      return {
+        watch_episode: typeof val.watch_episode === "number" ? val.watch_episode : DEFAULT_LIVE_EXP_CONFIG.watch_episode,
+        comment: typeof val.comment === "number" ? val.comment : DEFAULT_LIVE_EXP_CONFIG.comment,
+        daily_login: typeof val.daily_login === "number" ? val.daily_login : DEFAULT_LIVE_EXP_CONFIG.daily_login,
+        weekend_boost_active:
+          typeof val.weekend_boost_active === "boolean"
+            ? val.weekend_boost_active
+            : DEFAULT_LIVE_EXP_CONFIG.weekend_boost_active,
+        weekend_multiplier:
+          typeof val.weekend_multiplier === "number"
+            ? val.weekend_multiplier
+            : DEFAULT_LIVE_EXP_CONFIG.weekend_multiplier,
+      };
+    }
+  } catch (err) {
+    console.warn("[user-level] fetchLiveExpConfig error:", err);
+  }
+  return DEFAULT_LIVE_EXP_CONFIG;
 }

@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabase";
+import { filterAndCensorMessage } from "./word-filter";
 
 export interface PrivateMessage {
   id: string;
@@ -62,7 +63,7 @@ export async function getPrivateMessages(
       id: d.id,
       senderId: d.sender_id,
       receiverId: d.receiver_id,
-      message: d.message,
+      message: filterAndCensorMessage(d.message).processedText,
       createdAt: d.created_at,
     }));
 
@@ -81,6 +82,7 @@ export async function getPrivateMessages(
 
 /**
  * Mengirim pesan chat pribadi baru.
+ * Otomatis menyensor kata terlarang jika terdeteksi.
  */
 export async function sendPrivateMessage(
   senderId: string,
@@ -93,13 +95,17 @@ export async function sendPrivateMessage(
     return { success: false, error: "Pesan tidak boleh kosong." };
   }
 
+  // Filter kata terlarang secara otomatis sebelum disimpan ke database
+  const filtered = filterAndCensorMessage(cleanText);
+  const textToSave = filtered.processedText;
+
   try {
     const { data, error } = await supabase
       .from("private_messages")
       .insert({
         sender_id: senderId,
         receiver_id: receiverId,
-        message: cleanText,
+        message: textToSave,
         created_at: new Date().toISOString(),
       })
       .select()
@@ -122,7 +128,7 @@ export async function sendPrivateMessage(
       await supabase.from("notifications").insert({
         user_id: receiverId,
         title: `Pesan baru dari ${senderName || "Teman"}`,
-        message: cleanText.length > 50 ? `${cleanText.slice(0, 50)}...` : cleanText,
+        message: textToSave.length > 50 ? `${textToSave.slice(0, 50)}...` : textToSave,
         type: "private_chat",
         read: false,
       });
@@ -164,7 +170,7 @@ export function subscribePrivateMessages(
             id: row.id,
             senderId: row.sender_id,
             receiverId: row.receiver_id,
-            message: row.message,
+            message: filterAndCensorMessage(row.message).processedText,
             createdAt: row.created_at,
           });
         }

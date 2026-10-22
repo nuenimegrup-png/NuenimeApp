@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { APP_CONFIG } from "@/lib/app-config";
 import { supabase } from "@/lib/supabase";
 import type { SyncProvider } from "@/components/provider-mark";
-import { normalizeSyncStatus } from "@/lib/provider-sync-contract";
+import { normalizeSyncStatus, EMPTY_SYNC_STATUS } from "@/lib/provider-sync-contract";
 import type { ProviderSyncStatus } from "@/lib/provider-sync-contract";
 import { LIST_STATUSES, LIST_STATUS_LABELS } from "@/lib/list-status";
 
@@ -46,12 +46,15 @@ async function responseError(response: Response, fallback: string) {
 }
 
 export async function getProviderSyncStatus(): Promise<ProviderSyncStatus> {
-  const response = await fetch(`${APP_CONFIG.apiBaseUrl}/api/v1/sync`, {
-    headers: await authHeaders(),
-  });
-  if (!response.ok)
-    throw new Error(await responseError(response, "Sync status is unavailable."));
-  return normalizeSyncStatus(await response.json());
+  try {
+    const response = await fetch(`${APP_CONFIG.apiBaseUrl}/api/v1/sync`, {
+      headers: await authHeaders(),
+    });
+    if (!response.ok) return EMPTY_SYNC_STATUS;
+    return normalizeSyncStatus(await response.json());
+  } catch {
+    return EMPTY_SYNC_STATUS;
+  }
 }
 
 /** Miruro `getSyncStatus`: nullable, never throws (Library tab inline handling). */

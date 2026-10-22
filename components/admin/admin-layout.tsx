@@ -214,7 +214,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   if (checkingAuth) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#8C57FF" />
+        <ActivityIndicator size="large" color="#CBD5E1" />
         <Text style={styles.loadingText}>Memuat Otentikasi Admin...</Text>
       </View>
     );
@@ -235,7 +235,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const currentRole: AdminRole = sessionAdmin.role || "super_admin";
   const roleAccentColor =
     currentRole === "super_admin"
-      ? "#8C57FF"
+      ? "#E2E8F0"
       : currentRole === "finance_admin"
       ? "#38BDF8"
       : "#10B981";
@@ -376,7 +376,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                   <View
                     style={[
                       styles.menuBadge,
-                      { backgroundColor: item.badgeColor || "#8C57FF" },
+                      { backgroundColor: item.badgeColor || "rgba(255, 255, 255, 0.16)" },
                     ]}
                   >
                     <Text style={styles.menuBadgeText}>{item.badge}</Text>
@@ -450,7 +450,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                 <AppIcon
                   name="magnify"
                   size={19}
-                  color={activeDropdown === "search" ? "#8C57FF" : "#CBD5E1"}
+                  color={activeDropdown === "search" ? "#FFFFFF" : "#CBD5E1"}
                 />
               </Pressable>
 
@@ -470,7 +470,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                 <AppIcon
                   name="bell"
                   size={18}
-                  color={activeDropdown === "notifications" ? "#8C57FF" : "#CBD5E1"}
+                  color={activeDropdown === "notifications" ? "#FFFFFF" : "#CBD5E1"}
                 />
                 {unreadCount > 0 ? (
                   <View style={styles.notifBadgeDot} />
@@ -489,17 +489,12 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                 style={({ pressed }) => [
                   styles.userProfilePillBtn,
                   activeDropdown === "user" && styles.userProfilePillBtnActive,
-                  pressed && { opacity: 0.85 },
+                  pressed && { opacity: 0.8 },
                 ]}
                 accessibilityLabel="Menu Profil Admin"
               >
-                <View
-                  style={[
-                    styles.userAvatar,
-                    { backgroundColor: `${roleAccentColor}20`, borderColor: roleAccentColor },
-                  ]}
-                >
-                  <Text style={[styles.userAvatarText, { color: roleAccentColor }]}>
+                <View style={styles.userAvatar}>
+                  <Text style={styles.userAvatarText}>
                     {sessionAdmin.username?.charAt(0)?.toUpperCase() || "A"}
                   </Text>
                 </View>
@@ -508,8 +503,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                     {sessionAdmin.username || "Admin Nuenime"}
                   </Text>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                    <AppIcon name={roleIcon} size={11} color={roleAccentColor} />
-                    <Text style={[styles.userRoleText, { color: roleAccentColor }]}>
+                    <AppIcon name={roleIcon} size={11} color="#CBD5E1" />
+                    <Text style={styles.userRoleText}>
                       {roleLabel}
                     </Text>
                   </View>
@@ -517,7 +512,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                 <AppIcon
                   name={activeDropdown === "user" ? "chevron-up" : "chevron-down"}
                   size={15}
-                  color={activeDropdown === "user" ? "#8C57FF" : "#94A3B8"}
+                  color={activeDropdown === "user" ? "#FFFFFF" : "#94A3B8"}
                 />
               </Pressable>
             </View>
@@ -537,13 +532,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
           <View style={styles.userDropdownContainer}>
             {/* Header info akun */}
             <View style={styles.userDropdownHeader}>
-              <View
-                style={[
-                  styles.userDropdownAvatar,
-                  { backgroundColor: `${roleAccentColor}25`, borderColor: roleAccentColor },
-                ]}
-              >
-                <Text style={[styles.userDropdownAvatarText, { color: roleAccentColor }]}>
+              <View style={styles.userDropdownAvatar}>
+                <Text style={styles.userDropdownAvatarText}>
                   {sessionAdmin.username?.charAt(0)?.toUpperCase() || "A"}
                 </Text>
               </View>
@@ -554,14 +544,9 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                 <Text style={styles.userDropdownEmail} numberOfLines={1}>
                   {sessionAdmin.email || "admin@nuenime.internal"}
                 </Text>
-                <View
-                  style={[
-                    styles.userDropdownRoleBadge,
-                    { backgroundColor: `${roleAccentColor}18`, borderColor: `${roleAccentColor}40` },
-                  ]}
-                >
-                  <AppIcon name={roleIcon} size={11} color={roleAccentColor} />
-                  <Text style={[styles.userDropdownRoleText, { color: roleAccentColor }]}>
+                <View style={styles.userDropdownRoleBadge}>
+                  <AppIcon name={roleIcon} size={11} color="#CBD5E1" />
+                  <Text style={styles.userDropdownRoleText}>
                     {roleLabel}
                   </Text>
                 </View>
@@ -581,8 +566,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                 handleNavigate("/admin/index");
               }}
             >
-              <View style={[styles.dropdownMenuIconWrap, { backgroundColor: "rgba(140, 87, 255, 0.15)" }]}>
-                <AppIcon name="view-dashboard" size={16} color="#8C57FF" />
+              <View style={[styles.dropdownMenuIconWrap, { backgroundColor: "rgba(255, 255, 255, 0.08)" }]}>
+                <AppIcon name="view-dashboard" size={16} color="#CBD5E1" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.dropdownMenuTitle}>Dashboard</Text>
@@ -658,7 +643,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
           <View style={styles.notificationsDropdownContainer}>
             <View style={styles.notifHeaderRow}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <AppIcon name="bell" size={16} color="#8C57FF" />
+                <AppIcon name="bell" size={16} color="#CBD5E1" />
                 <Text style={styles.notifHeaderTitle}>Notifikasi Admin</Text>
               </View>
               {unreadCount > 0 ? (
@@ -713,7 +698,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               }}
             >
               <Text style={styles.notifFooterText}>Lihat Seluruh Log di Audit Trail</Text>
-              <AppIcon name="chevron-right" size={14} color="#8C57FF" />
+              <AppIcon name="chevron-right" size={14} color="#CBD5E1" />
             </Pressable>
           </View>
         ) : null}
@@ -722,7 +707,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
         {activeDropdown === "search" ? (
           <View style={styles.searchDropdownContainer}>
             <View style={styles.searchInputRow}>
-              <AppIcon name="magnify" size={18} color="#8C57FF" />
+              <AppIcon name="magnify" size={18} color="#CBD5E1" />
               <TextInput
                 value={searchQuery}
                 onChangeText={setSearchQuery}
@@ -1053,8 +1038,8 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   headerIconBtnActive: {
-    backgroundColor: "rgba(140, 87, 255, 0.15)",
-    borderColor: "#8C57FF",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderColor: "rgba(255, 255, 255, 0.28)",
   },
   notifBadgeDot: {
     position: "absolute",
@@ -1077,41 +1062,45 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 5,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderRadius: 8,
+    backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "transparent",
   },
   userProfilePillBtnActive: {
-    borderColor: "#8C57FF",
-    backgroundColor: "rgba(140, 87, 255, 0.12)",
+    borderColor: "rgba(255, 255, 255, 0.22)",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
   },
   userAvatar: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
     borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.22)",
     alignItems: "center",
     justifyContent: "center",
   },
   userAvatarText: {
     fontFamily: "Nunito-Black",
     fontSize: 12,
+    color: "#FFFFFF",
   },
   userInfoText: {
     display: Platform.OS === "web" ? "flex" : "none",
   },
   userNameText: {
     fontFamily: "Nunito-Bold",
-    fontSize: 11,
+    fontSize: 12,
     color: "#FFFFFF",
-    maxWidth: 120,
+    maxWidth: 140,
   },
   userRoleText: {
     fontFamily: "Nunito-Bold",
     fontSize: 9.5,
+    color: "#CBD5E1",
   },
   /* ─── DROPDOWNS & BACKDROP ─── */
   dropdownBackdrop: {
@@ -1149,13 +1138,16 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    borderWidth: 1.5,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.22)",
     alignItems: "center",
     justifyContent: "center",
   },
   userDropdownAvatarText: {
     fontFamily: "Nunito-Black",
     fontSize: 17,
+    color: "#FFFFFF",
   },
   userDropdownName: {
     fontFamily: "Nunito-Black",
@@ -1173,14 +1165,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     alignSelf: "flex-start",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
     borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
   },
   userDropdownRoleText: {
     fontFamily: "Nunito-Bold",
     fontSize: 9.5,
+    color: "#CBD5E1",
   },
   dropdownDivider: {
     height: 1,
@@ -1249,12 +1244,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    backgroundColor: "rgba(140, 87, 255, 0.12)",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
   },
   notifMarkReadText: {
     fontFamily: "Nunito-Bold",
     fontSize: 10,
-    color: "#8C57FF",
+    color: "#CBD5E1",
   },
   notifItemRow: {
     flexDirection: "row",
@@ -1299,7 +1294,7 @@ const styles = StyleSheet.create({
   notifFooterText: {
     fontFamily: "Nunito-Bold",
     fontSize: 11,
-    color: "#8C57FF",
+    color: "#CBD5E1",
   },
   /* ─── SEARCH DROPDOWN ─── */
   searchDropdownContainer: {
