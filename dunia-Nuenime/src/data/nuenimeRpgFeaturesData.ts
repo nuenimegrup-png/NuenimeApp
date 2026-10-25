@@ -131,12 +131,12 @@ export const DEMO_CITY_LEADERS: Record<CityId, CityLeaderProfile> = {
 export const DEMO_SWITCHABLE_ACCOUNTS: ActiveDemoAccount[] = [
   {
     id: 'user-demo-adventurer',
-    displayName: 'Raka Pratama (Anggota Klan Demo)',
-    handle: '@demo_member_nuenime',
-    title: 'Penjelajah Anime & Ksatria Klan',
+    displayName: 'Petualang Bebas Nuenime',
+    handle: '@adventurer_nuenime',
+    title: 'Petualang Independen Nuenime',
     role: 'CLAN_MEMBER',
     ledCityId: null,
-    joinedClanId: 'clan-seraph-vanguard',
+    joinedClanId: null,
     isDemoAccount: true,
     isAppAdmin: false,
   },
@@ -147,20 +147,7 @@ export const DEMO_SWITCHABLE_ACCOUNTS: ActiveDemoAccount[] = [
     title: leader.title,
     role: 'CITY_LEADER' as const,
     ledCityId: leader.cityId,
-    joinedClanId:
-      leader.cityId === 'aetheria'
-        ? 'clan-seraph-vanguard'
-        : leader.cityId === 'lunaris'
-        ? 'clan-silver-tide'
-        : leader.cityId === 'velmora'
-        ? 'clan-sylvan-wardens'
-        : leader.cityId === 'eldoria'
-        ? 'clan-golden-sovereign'
-        : leader.cityId === 'drakonia'
-        ? 'clan-crimson-fang'
-        : leader.cityId === 'nivara'
-        ? 'clan-sun-mirage'
-        : 'clan-void-stargazers',
+    joinedClanId: null,
     isDemoAccount: true as const,
     isAppAdmin: false as const,
   })),

@@ -41,7 +41,7 @@ import {
 import { fantasySoundEngine } from '../utils/soundEngine';
 import { supabase } from '../lib/supabase';
 
-const STORAGE_KEY = 'nuenime_world_repository_v2';
+const STORAGE_KEY = 'nuenime_world_repository_v5_pure';
 
 /**
  * Fungsi Rekonsiliasi & Pemeriksaan Konsistensi Data Dunia Nuenime (Bagian 9 & 13)
@@ -127,7 +127,7 @@ interface PersistedRepositoryState {
   cities: WorldCity[];
   cityBosses: CityBossRecord[];
   activeAccountId: string;
-  joinedClanId: string;
+  joinedClanId: string | null;
   playerContribution: number;
   relicShards: number;
   relicLevels: Record<string, number>;
@@ -178,17 +178,12 @@ function buildDefaultLevelHistory(): Record<CityId, CityLevelHistoryRecord[]> {
 export const USER_SIMULATION_CLAN_LOGO =
   'https://i.ibb.co.com/5h3d91xW/Black-and-White-Urban-Graffiti-Spray-Junior-Hype-Logo-2.png';
 
-function applySimulationClanLogo(cities: WorldCity[], joinedClanId?: string): WorldCity[] {
+function applySimulationClanLogo(cities: WorldCity[], joinedClanId?: string | null): WorldCity[] {
+  if (!joinedClanId) return cities;
   return cities.map((city) => ({
     ...city,
     clans: city.clans.map((clan) => {
-      if (
-        (joinedClanId && clan.id === joinedClanId) ||
-        clan.name.toLowerCase().includes('aprizalaa') ||
-        clan.tag.toUpperCase() === 'APR' ||
-        clan.id === 'clan-golden-sovereign' ||
-        clan.id === 'clan-seraph-vanguard'
-      ) {
+      if (clan.id === joinedClanId) {
         return {
           ...clan,
           logoUrl: clan.logoUrl || USER_SIMULATION_CLAN_LOGO,
@@ -216,8 +211,8 @@ function loadInitialRepositoryState(): PersistedRepositoryState {
               ? parsed.cityBosses
               : INITIAL_CITY_BOSSES,
           activeAccountId: parsed.activeAccountId ?? DEMO_SWITCHABLE_ACCOUNTS[0].id,
-          joinedClanId: parsed.joinedClanId ?? 'clan-seraph-vanguard',
-          playerContribution: parsed.playerContribution ?? 45,
+          joinedClanId: parsed.joinedClanId ?? null,
+          playerContribution: parsed.playerContribution ?? 0,
           relicShards: parsed.relicShards ?? 6,
           relicLevels: parsed.relicLevels ?? buildDefaultRelicLevels(reconciledCities),
           districtInfluence:
@@ -234,16 +229,15 @@ function loadInitialRepositoryState(): PersistedRepositoryState {
   }
 
   const baseSeed = verifyAndReconcileWorldCities(SEED_WORLD_CITIES);
-  const reconciledSeed = applySimulationClanLogo(baseSeed, 'clan-seraph-vanguard');
   return {
-    cities: reconciledSeed,
+    cities: baseSeed,
     cityBosses: INITIAL_CITY_BOSSES,
     activeAccountId: DEMO_SWITCHABLE_ACCOUNTS[0].id,
-    joinedClanId: 'clan-seraph-vanguard',
-    playerContribution: 45,
+    joinedClanId: null,
+    playerContribution: 0,
     relicShards: 6,
-    relicLevels: buildDefaultRelicLevels(reconciledSeed),
-    districtInfluence: buildDefaultDistrictInfluence(reconciledSeed),
+    relicLevels: buildDefaultRelicLevels(baseSeed),
+    districtInfluence: buildDefaultDistrictInfluence(baseSeed),
     completedMissionCounts: {},
     missionProgressMap: {},
     expTransactions: [],
@@ -292,7 +286,7 @@ interface NuenimeRpgContextValue {
     memberId: string,
     newRole: string
   ) => { ok: boolean; message: string };
-  joinedClanId: string;
+  joinedClanId: string | null;
   joinClan: (clanId: string) => { ok: boolean; message: string };
 
   // Unique City Bosses (7 Bosses, Separate Boss HP from City HP)
@@ -1111,8 +1105,15 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       processedRequestKeysRef.current.add(txKey);
 
       const targetClan =
-        allClans.find((c) => c.id === repo.joinedClanId) ?? allClans[0];
-      const targetCity = repo.cities.find((c) => c.id === targetClan.cityId)!;
+        allClans.find((c) => c.id === repo.joinedClanId);
+      if (!targetClan) {
+        showToast('Anda harus mendirikan atau bergabung ke klan terlebih dahulu untuk menyelesaikan misi!');
+        return { ok: false, expAdded: 0, cityLeveledUp: false, newCityLevel: 1 };
+      }
+      const targetCity = repo.cities.find((c) => c.id === targetClan.cityId);
+      if (!targetCity) {
+        return { ok: false, expAdded: 0, cityLeveledUp: false, newCityLevel: 1 };
+      }
 
       const expReward = Math.max(1, Math.floor(mission.rewardExp));
       const shardReward = Math.max(0, Math.floor(mission.rewardShard));
@@ -1403,8 +1404,8 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       cities: freshCities,
       cityBosses: INITIAL_CITY_BOSSES,
       activeAccountId: DEMO_SWITCHABLE_ACCOUNTS[0].id,
-      joinedClanId: 'clan-seraph-vanguard',
-      playerContribution: 45,
+      joinedClanId: null,
+      playerContribution: 0,
       relicShards: 6,
       relicLevels: buildDefaultRelicLevels(freshCities),
       districtInfluence: buildDefaultDistrictInfluence(freshCities),

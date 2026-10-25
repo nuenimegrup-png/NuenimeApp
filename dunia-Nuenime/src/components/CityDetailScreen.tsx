@@ -1154,6 +1154,27 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
                 </div>
               );
             })}
+
+            {filteredClans.length === 0 && (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 px-4 py-8 text-center">
+                <Shield className="h-10 w-10 text-slate-600 mb-2" />
+                <p className="text-xs font-semibold text-slate-300">Belum Ada Klan di Kota {city.name}</p>
+                <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
+                  Seluruh klan di kota ini berasal dari hasil pembuatan klan oleh para petualang. Jadilah pendiri klan pertama!
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateClanError(null);
+                    setIsCreateClanOpen(true);
+                  }}
+                  className="mt-3.5 inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/50 bg-emerald-700/80 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-600 active:scale-95 transition-all shadow-md"
+                >
+                  <PlusCircle className="h-4 w-4" />
+                  <span>Dirikan Klan Pertama di {city.name}</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
         ))}

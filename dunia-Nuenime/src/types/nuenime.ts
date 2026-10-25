@@ -82,7 +82,7 @@ export interface ActiveDemoAccount {
   title: string;
   role: 'CITY_LEADER' | 'CLAN_MEMBER';
   ledCityId: CityId | null;
-  joinedClanId: string;
+  joinedClanId: string | null;
   isDemoAccount: boolean;
   isAppAdmin: boolean;
   avatarUrl?: string | null;
