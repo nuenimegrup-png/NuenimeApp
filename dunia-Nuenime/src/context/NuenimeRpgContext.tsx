@@ -502,15 +502,22 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     async function syncFromSupabase() {
       try {
-        const { data: dbClans, error: clanErr } = await supabase
-          .from('rpg_clans')
-          .select('*, members:rpg_clan_members(*)');
+        const [
+          { data: dbClans, error: clanErr },
+          { data: dbCities, error: cityErr },
+          { data: dbBosses, error: bossErr },
+        ] = await Promise.all([
+          supabase.from('rpg_clans').select('*, members:rpg_clan_members(*)'),
+          supabase.from('rpg_cities').select('*'),
+          supabase.from('rpg_city_bosses').select('*'),
+        ]);
 
-        if (!clanErr && dbClans && dbClans.length > 0 && isMounted) {
+        if (isMounted) {
           setRepo((prev) => {
+            // 1. Sinkronisasi Data Kota & Klan Murni dari Database
             const nextCities = prev.cities.map((city) => {
-              const matchedClans = dbClans.filter((c: any) => c.city_id === city.id);
-              if (matchedClans.length === 0) return city;
+              const dbCity = dbCities?.find((c: any) => c.id === city.id);
+              const matchedClans = (dbClans || []).filter((c: any) => c.city_id === city.id);
 
               const formattedClans: Clan[] = matchedClans.map((c: any) => {
                 const members: ClanMember[] = (c.members || []).map((m: any) => ({
@@ -559,14 +566,39 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 };
               });
 
+              const cityTotalExp = dbCity ? Number(dbCity.total_exp) : formattedClans.reduce((sum, c) => sum + c.totalExp, 0);
+              const levelProgress = computeCityLevelProgressFromTotalExp(cityTotalExp);
+
               return {
                 ...city,
+                level: dbCity ? Number(dbCity.level) : levelProgress.level,
+                tier: dbCity ? dbCity.tier_name || levelProgress.tier : levelProgress.tier,
+                totalExp: cityTotalExp,
+                currentHp: dbCity ? Number(dbCity.current_hp) : city.currentHp,
+                maxHp: dbCity ? Number(dbCity.max_hp) : city.maxHp,
+                weather: dbCity ? dbCity.weather || city.weather : city.weather,
+                status: dbCity ? dbCity.status || city.status : city.status,
                 clans: formattedClans,
               };
             });
 
-            const reconciled = verifyAndReconcileWorldCities(nextCities);
-            const nextState = { ...prev, cities: reconciled };
+            // 2. Sinkronisasi Data Bos Kota Murni dari Database (Level 0 dan HP Awal)
+            const nextBosses = prev.cityBosses.map((boss) => {
+              const dbBoss = dbBosses?.find((b: any) => b.city_id === boss.cityId);
+              if (!dbBoss) return boss;
+              return {
+                ...boss,
+                name: dbBoss.name || boss.name,
+                title: dbBoss.title || boss.title,
+                level: Number(dbBoss.level) || 0,
+                currentHp: Number(dbBoss.current_hp) || 10000,
+                maxHp: Number(dbBoss.max_hp) || 10000,
+                status: (dbBoss.status as any) || 'ACTIVE',
+              };
+            });
+
+            const reconciled = verifyAndReconcileWorldCities(nextCities, nextBosses);
+            const nextState = { ...prev, cities: reconciled, cityBosses: nextBosses };
             saveStoredRepository(nextState);
             return nextState;
           });

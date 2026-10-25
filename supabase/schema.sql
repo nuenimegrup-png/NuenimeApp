@@ -988,6 +988,39 @@ CREATE POLICY "Users can manage rpg_clan_members" ON public.rpg_clan_members FOR
 CREATE POLICY "Users can manage rpg_user_profiles" ON public.rpg_user_profiles FOR ALL USING (true);
 CREATE POLICY "Users can insert rpg_exp_transactions" ON public.rpg_exp_transactions FOR INSERT WITH CHECK (true);
 
+-- INITIAL SEED: 7 KOTA RESMI & BOS LEVEL 0 (EXP 0)
+INSERT INTO public.rpg_cities (id, name, title, description, element, region, level, tier, tier_name, total_exp, current_hp, max_hp, status, weather, cover_url, emblem_url, accent_color)
+VALUES
+('aetheria', 'Aetheria', 'Kota Terapung Langit Biru', 'Ibukota peradaban tinggi di atas awan, pusat para penjaga langit dan teknologi aether kuno.', 'Aether / Angin', 'Skyward Reach', 1, 1, 'Perunggu I', 0, 10000, 10000, 'Damai', 'Cerah Berangin', '/assets/nuenime/city_aetheria.svg', '/assets/nuenime/emblem_aetheria.svg', '#38bdf8'),
+('lunaris', 'Lunaris', 'Lembah Malam Abadi', 'Kota mistis bercahaya rembulan perak yang dinaungi kabut sihir kuno dan bunga bercahaya.', 'Bayangan / Bulan', 'Twilight Hollow', 1, 1, 'Perunggu I', 0, 10000, 10000, 'Damai', 'Malam Berbintang', '/assets/nuenime/city_lunaris.svg', '/assets/nuenime/emblem_lunaris.svg', '#a855f7'),
+('velmora', 'Velmora', 'Benteng Karang Pasang Surut', 'Kota pelabuhan megah di atas karang laut samudra luas, pusat perdagangan maritim dan armada ksatria bahari.', 'Air / Laut', 'Azure Coast', 1, 1, 'Perunggu I', 0, 10000, 10000, 'Damai', 'Angin Laut Sejuk', '/assets/nuenime/city_velmora.svg', '/assets/nuenime/emblem_velmora.svg', '#06b6d4'),
+('eldoria', 'Eldoria', 'Hutan Purba Roh Alam', 'Kawasan suci pohon kehidupan raksasa di mana para pemanah dan druid hidup selaras dengan alam liar.', 'Tanah / Alam', 'Verdant Vale', 1, 1, 'Perunggu I', 0, 10000, 10000, 'Damai', 'Embun Pagi Sejuk', '/assets/nuenime/city_eldoria.svg', '/assets/nuenime/emblem_eldoria.svg', '#10b981'),
+('drakonia', 'Drakonia', 'Puncak Lahar Naga Api', 'Kawah vulkanik tempat penempaan baja terkuat di dunia Nuenime yang dijaga oleh garis keturunan naga purba.', 'Api / Magma', 'Inferno Peaks', 1, 1, 'Perunggu I', 0, 10000, 10000, 'Damai', 'Hawa Panas Vulkanik', '/assets/nuenime/city_drakonia.svg', '/assets/nuenime/emblem_drakonia.svg', '#f43f5e'),
+('nivara', 'Nivara', 'Gurun Emas Badai Pasir', 'Kota oasis megah di tengah padang pasir tak berujung, menyimpan makam para raja langit dan rahasia kuno.', 'Kristal / Pasir', 'Golden Wastes', 1, 1, 'Perunggu I', 0, 10000, 10000, 'Damai', 'Terik Badai Pasir', '/assets/nuenime/city_nivara.svg', '/assets/nuenime/emblem_nivara.svg', '#f59e0b'),
+('astralis', 'Astralis', 'Piramida Bintang Galaksi', 'Observatorium langit tertinggi di ujung dunia Nuenime tempat para peramal galaksi menatap masa depan.', 'Kosmik / Astral', 'Celestial Spire', 1, 1, 'Perunggu I', 0, 10000, 10000, 'Damai', 'Hujan Meteor Ringan', '/assets/nuenime/city_astralis.svg', '/assets/nuenime/emblem_astralis.svg', '#6366f1')
+ON CONFLICT (id) DO UPDATE SET
+  total_exp = 0,
+  level = 1,
+  tier = 1,
+  current_hp = 10000,
+  max_hp = 10000,
+  updated_at = NOW();
+
+INSERT INTO public.rpg_city_bosses (city_id, name, title, level, current_hp, max_hp, status, weakness)
+VALUES
+('aetheria', 'Guardian Seraph', 'Penjaga Sayap Cahaya Celestia', 0, 10000, 10000, 'Waspada', 'Petir & Api'),
+('lunaris', 'Moonfang', 'Serigala Pasang Purnama', 0, 10000, 10000, 'Waspada', 'Cahaya Suci'),
+('velmora', 'Verdant Colossus', 'Raksasa Akar Rimba Abadi', 0, 10000, 10000, 'Waspada', 'Listrik Petir'),
+('eldoria', 'Aureon', 'Singa Agung Mahkota Surya', 0, 10000, 10000, 'Waspada', 'Api Lahar'),
+('drakonia', 'Infernal Wyrm', 'Naga Magma Kaldera Hitam', 0, 10000, 10000, 'Waspada', 'Es & Air Murni'),
+('nivara', 'Frostmaw', 'Behemoth Es & Kuarsa Malam Gurun', 0, 10000, 10000, 'Waspada', 'Banjir Aether'),
+('astralis', 'Astral Leviathan', 'Penguasa Dimensi Bintang Jatuh', 0, 10000, 10000, 'Waspada', 'Kekosongan Hampa')
+ON CONFLICT (city_id) DO UPDATE SET
+  level = 0,
+  current_hp = 10000,
+  max_hp = 10000,
+  updated_at = NOW();
+
 -- ==============================================================================
 -- SELESAI: Skrip Database Supabase Nuenime Siap Digunakan!
 -- ==============================================================================

@@ -264,15 +264,27 @@ ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
   title = EXCLUDED.title,
   description = EXCLUDED.description,
+  total_exp = 0,
+  level = 1,
+  tier = 1,
+  current_hp = 10000,
+  max_hp = 10000,
   updated_at = NOW();
 
 INSERT INTO public.rpg_city_bosses (city_id, name, title, level, current_hp, max_hp, status, weakness)
 VALUES
-('aetheria', 'Aero Wyrm Galeon', 'Penjaga Badai Langit', 25, 120000, 120000, 'Waspada', 'Petir & Api'),
-('lunaris', 'Umbra Shade Noctis', 'Bayangan Rembulan Hitam', 30, 150000, 150000, 'Waspada', 'Cahaya Suci'),
-('velmora', 'Leviathan Tidemaker', 'Penguasa Samudra Dalam', 35, 180000, 180000, 'Waspada', 'Listrik Petir'),
-('eldoria', 'Sylva Goliath Prime', 'Penjaga Purba Akar Dunia', 28, 140000, 140000, 'Waspada', 'Api Lahar'),
-('drakonia', 'Ignis Ignarok Tyrant', 'Naga Raja Lahar Hitam', 45, 250000, 250000, 'Waspada', 'Es & Air Murni'),
-('nivara', 'Sol Mirage Scorpion', 'Raksasa Kristal Padang Pasir', 32, 160000, 160000, 'Waspada', 'Banjir Aether'),
-('astralis', 'Astra Chronos Observer', 'Penjaga Gerbang Waktu Kosmik', 50, 300000, 300000, 'Waspada', 'Kekosongan Hampa')
-ON CONFLICT (city_id) DO NOTHING;
+('aetheria', 'Guardian Seraph', 'Penjaga Sayap Cahaya Celestia', 0, 10000, 10000, 'Waspada', 'Petir & Api'),
+('lunaris', 'Moonfang', 'Serigala Pasang Purnama', 0, 10000, 10000, 'Waspada', 'Cahaya Suci'),
+('velmora', 'Verdant Colossus', 'Raksasa Akar Rimba Abadi', 0, 10000, 10000, 'Waspada', 'Listrik Petir'),
+('eldoria', 'Aureon', 'Singa Agung Mahkota Surya', 0, 10000, 10000, 'Waspada', 'Api Lahar'),
+('drakonia', 'Infernal Wyrm', 'Naga Magma Kaldera Hitam', 0, 10000, 10000, 'Waspada', 'Es & Air Murni'),
+('nivara', 'Frostmaw', 'Behemoth Es & Kuarsa Malam Gurun', 0, 10000, 10000, 'Waspada', 'Banjir Aether'),
+('astralis', 'Astral Leviathan', 'Penguasa Dimensi Bintang Jatuh', 0, 10000, 10000, 'Waspada', 'Kekosongan Hampa')
+ON CONFLICT (city_id) DO UPDATE SET
+  name = EXCLUDED.name,
+  title = EXCLUDED.title,
+  level = 0,
+  current_hp = 10000,
+  max_hp = 10000,
+  updated_at = NOW();
+
