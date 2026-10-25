@@ -457,6 +457,45 @@ export default function HomeScreen() {
         <HomeTopLeaderboard />
 
         {/* ══════════════════════════════════════════════════════════════
+            5.1 DUNIA NUENIME ACCESS BANNER (CLOUD HYBRID RPG REALM)
+            ══════════════════════════════════════════════════════════════ */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Masuk ke Dunia Nuenime"
+          onPress={() => {
+            hapticLight();
+            router.push("/dunia" as never);
+          }}
+          // @ts-ignore
+          onClick={() => {
+            hapticLight();
+            router.push("/dunia" as never);
+          }}
+          style={({ pressed }) => [styles.duniaBannerCard, pressed && styles.btnPressed]}
+        >
+          <View style={styles.duniaBannerLeft}>
+            <View style={styles.duniaIconBadge}>
+              <AppIcon name="earth" size={20} color="#38BDF8" />
+            </View>
+            <View style={styles.duniaTextWrap}>
+              <View style={styles.duniaTitleRow}>
+                <Text style={styles.duniaTitle}>Dunia Nuenime</Text>
+                <View style={styles.duniaRpgPill}>
+                  <Text style={styles.duniaRpgText}>RPG CLOUD</Text>
+                </View>
+              </View>
+              <Text style={styles.duniaSubtitle} numberOfLines={1}>
+                Jelajahi peta dunia, klan & kota fantasi
+              </Text>
+            </View>
+          </View>
+          <View style={styles.duniaEnterBtn}>
+            <Text style={styles.duniaEnterText}>Masuk</Text>
+            <AppIcon name="chevron-right" size={13} color="#38BDF8" />
+          </View>
+        </Pressable>
+
+        {/* ══════════════════════════════════════════════════════════════
             5.5. ANIME TERBARU (REKOMENDASI ANIME TERBARU)
             ══════════════════════════════════════════════════════════════ */}
         {(latestAnime.data?.length || rails.data?.ongoing?.length) ? (
@@ -1274,5 +1313,91 @@ const styles = StyleSheet.create({
   genreBtnTextActive: {
     fontFamily: "Nunito-Black",
     color: "#FFFFFF",
+  },
+  duniaBannerCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: "#131722",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.28)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    shadowColor: "#38BDF8",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  duniaBannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+    marginRight: 8,
+  },
+  duniaIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  duniaTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  duniaTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  duniaTitle: {
+    fontFamily: "Nunito-Black",
+    fontSize: 14,
+    color: "#FFFFFF",
+    letterSpacing: -0.2,
+  },
+  duniaRpgPill: {
+    backgroundColor: "rgba(168, 85, 247, 0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(168, 85, 247, 0.4)",
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+  },
+  duniaRpgText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 9,
+    color: "#D8B4FE",
+    letterSpacing: 0.5,
+  },
+  duniaSubtitle: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 11.5,
+    color: "#94A3B8",
+  },
+  duniaEnterBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.3)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  duniaEnterText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11.5,
+    color: "#38BDF8",
   },
 });

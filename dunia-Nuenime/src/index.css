@@ -1,0 +1,259 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-display: 'Cinzel', Georgia, serif;
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: #060a14;
+    color: #f1f5f9;
+    font-family: var(--font-sans);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-sans {
+  font-family: var(--font-sans);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom subtle scrollbars for Android detail panels */
+.nuenime-scroll::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.nuenime-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.nuenime-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+}
+
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translate3d(0, 0px, 0);
+  }
+  50% {
+    transform: translate3d(0, -4px, 0);
+  }
+}
+
+@keyframes pulseRing {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.75;
+  }
+}
+
+.animate-float-slow {
+  animation: floatSlow 3.6s ease-in-out infinite;
+}
+
+.animate-pulse-ring {
+  animation: pulseRing 2.4s ease-in-out infinite;
+}
+
+@keyframes magicOrbitSlow {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.04);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+@keyframes magicOrbitReverse {
+  0% {
+    transform: rotate(360deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(0.96);
+  }
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+}
+
+@keyframes magicBreathe {
+  0%, 100% {
+    transform: scale(0.92);
+    opacity: 0.42;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.82;
+  }
+}
+
+@keyframes particleRise {
+  0% {
+    transform: translate3d(0, 10px, 0) scale(0.75);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.9;
+  }
+  70% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: translate3d(0, -22px, 0) scale(1.1);
+    opacity: 0;
+  }
+}
+
+@keyframes shimmerTwinkle {
+  0%, 100% {
+    transform: scale(0.7) rotate(0deg);
+    opacity: 0.25;
+  }
+  50% {
+    transform: scale(1.18) rotate(25deg);
+    opacity: 0.95;
+  }
+}
+
+@keyframes tidalRipple {
+  0% {
+    transform: scale(0.82);
+    opacity: 0.7;
+  }
+  70% {
+    transform: scale(1.22);
+    opacity: 0.18;
+  }
+  100% {
+    transform: scale(1.28);
+    opacity: 0;
+  }
+}
+
+@keyframes lightningFlicker {
+  0%, 100% {
+    opacity: 0.15;
+  }
+  12% {
+    opacity: 0.85;
+  }
+  18% {
+    opacity: 0.2;
+  }
+  54% {
+    opacity: 0.12;
+  }
+  58% {
+    opacity: 0.92;
+  }
+  64% {
+    opacity: 0.28;
+  }
+}
+
+@keyframes mirageSway {
+  0%, 100% {
+    transform: translate3d(-4px, 0, 0) scaleX(0.96);
+    opacity: 0.35;
+  }
+  50% {
+    transform: translate3d(4px, -2px, 0) scaleX(1.05);
+    opacity: 0.7;
+  }
+}
+
+.animate-magic-orbit {
+  animation: magicOrbitSlow 28s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-magic-orbit-reverse {
+  animation: magicOrbitReverse 22s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-magic-breathe {
+  animation: magicBreathe 4.8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-particle-rise {
+  animation: particleRise 4.4s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-shimmer-twinkle {
+  animation: shimmerTwinkle 3.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-tidal-ripple {
+  animation: tidalRipple 5.2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-lightning-flicker {
+  animation: lightningFlicker 5.5s ease-in-out infinite;
+}
+
+.animate-mirage-sway {
+  animation: mirageSway 4.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-magic-orbit,
+  .animate-magic-orbit-reverse,
+  .animate-magic-breathe,
+  .animate-particle-rise,
+  .animate-shimmer-twinkle,
+  .animate-tidal-ripple,
+  .animate-lightning-flicker,
+  .animate-mirage-sway {
+    animation: none !important;
+  }
+}
+

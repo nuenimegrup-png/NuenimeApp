@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <defs>
+    <linearGradient id="dsky" x1="0" y1="0" x2="0" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#14051E"/>
+      <stop offset="50%" stop-color="#3B0718"/>
+      <stop offset="100%" stop-color="#DC2626"/>
+    </linearGradient>
+    <radialGradient id="dglow" cx="50%" cy="42%" r="45%">
+      <stop offset="0%" stop-color="#FCA5A5" stop-opacity="0.85"/>
+      <stop offset="50%" stop-color="#EF4444" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#450A0A" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#dsky)"/>
+  <circle cx="300" cy="255" r="220" fill="url(#dglow)"/>
+  <path d="M470 50 L420 150 L455 170 L390 280" stroke="#D8B4FE" stroke-width="4" stroke-linecap="round"/>
+  <path d="M120 70 L165 160 L135 180 L185 270" stroke="#F87171" stroke-width="3.5" stroke-linecap="round"/>
+  <polygon points="20,600 130,270 250,410 300,180 365,400 475,260 580,600" fill="#18181B" stroke="#EF4444" stroke-width="3"/>
+  <polygon points="300,80 245,290 355,290" fill="#27272A" stroke="#F87171" stroke-width="3"/>
+  <polygon points="210,150 175,320 245,320" fill="#18181B" stroke="#EF4444" stroke-width="2.5"/>
+  <polygon points="390,150 355,320 425,320" fill="#18181B" stroke="#EF4444" stroke-width="2.5"/>
+  <polygon points="300,230 272,330 328,330" fill="#EF4444"/>
+  <path d="M275 360 Q 300 460 200 600 L 400 600 Q 305 460 325 360 Z" fill="#F97316"/>
+</svg>

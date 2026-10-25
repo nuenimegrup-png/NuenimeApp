@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <defs>
+    <linearGradient id="nsky" x1="0" y1="0" x2="0" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#271304"/>
+      <stop offset="50%" stop-color="#78350F"/>
+      <stop offset="100%" stop-color="#FBBF24"/>
+    </linearGradient>
+    <radialGradient id="nglow" cx="50%" cy="35%" r="42%">
+      <stop offset="0%" stop-color="#FEF9C3" stop-opacity="0.95"/>
+      <stop offset="55%" stop-color="#F59E0B" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#78350F" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#nsky)"/>
+  <circle cx="300" cy="210" r="190" fill="url(#nglow)"/>
+  <circle cx="300" cy="200" r="92" fill="#FEF08A" fill-opacity="0.85"/>
+  <polygon points="150,430 215,250 385,250 450,430" fill="#F59E0B" stroke="#FEF3C7" stroke-width="3"/>
+  <polygon points="300,110 240,260 360,260" fill="#FBBF24" stroke="#FEF9C3" stroke-width="3.5"/>
+  <rect x="278" y="295" width="44" height="105" rx="22" fill="#FEF08A"/>
+  <path d="M0 440 Q 170 390 320 435 T 600 415 L 600 600 L 0 600 Z" fill="#D97706"/>
+  <ellipse cx="300" cy="525" rx="210" ry="48" fill="#06B6D4" stroke="#FDE68A" stroke-width="4"/>
+</svg>

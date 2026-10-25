@@ -1,0 +1,1259 @@
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from 'react';
+import {
+  CityId,
+  TimeOfDayMode,
+  CityBossRecord,
+  SimulationMission,
+  DistrictInfluenceState,
+  ActiveTravelRoute,
+  WorldCity,
+  Clan,
+  ClanMember,
+  CityLeaderProfile,
+  ActiveDemoAccount,
+  EXPTransactionRecord,
+  CityLevelHistoryRecord,
+  UserMissionProgressRecord,
+  GlobalWorldStats,
+  CreateClanInput,
+} from '../types/nuenime';
+import { WORLD_CITIES as SEED_WORLD_CITIES } from '../data/nuenimeWorldData';
+import {
+  INITIAL_CITY_BOSSES,
+  DEMO_CITY_LEADERS,
+  DEMO_SWITCHABLE_ACCOUNTS,
+  CLAN_MISSIONS,
+  calculateTravelRoute,
+} from '../data/nuenimeRpgFeaturesData';
+import {
+  NUENIME_SYSTEM_LIMITS,
+  computeCityLevelProgressFromTotalExp,
+  computeClanLevelFromExp,
+} from '../config/nuenimeSystemConfig';
+import { fantasySoundEngine } from '../utils/soundEngine';
+
+const STORAGE_KEY = 'nuenime_world_repository_v2';
+
+/**
+ * Fungsi Rekonsiliasi & Pemeriksaan Konsistensi Data Dunia Nuenime (Bagian 9 & 13)
+ * Memastikan:
+ * - Satu pengguna tidak dihitung dua kali dalam klan yang sama.
+ * - memberCount === jumlah anggota aktif sebenarnya (maks. 100).
+ * - Total EXP Klan === jumlah contributionScore anggotanya.
+ * - Total EXP Kota === jumlah totalExp seluruh klan di kota tersebut.
+ * - Level & Tier Kota sesuai dengan formula terpusat.
+ * - HP Kota (10.000/10.000) terpisah dari HP Bos.
+ */
+export function verifyAndReconcileWorldCities(
+  citiesInput: WorldCity[],
+  cityBossesInput: CityBossRecord[] = INITIAL_CITY_BOSSES,
+  cityLevelHistoryInput?: Record<CityId, CityLevelHistoryRecord[]>
+): WorldCity[] {
+  return citiesInput.map((city) => {
+    const leaderProfile = DEMO_CITY_LEADERS[city.id] ?? DEMO_CITY_LEADERS.aetheria;
+    const bossRecord =
+      cityBossesInput.find((b) => b.cityId === city.id) ??
+      INITIAL_CITY_BOSSES.find((b) => b.cityId === city.id) ??
+      INITIAL_CITY_BOSSES[0];
+
+    const reconciledClans: Clan[] = city.clans
+      .slice(0, NUENIME_SYSTEM_LIMITS.MAX_CLANS_PER_CITY)
+      .map((clan) => {
+        // Deduplicate members by userId and enforce max 100 members
+        const seenUserIds = new Set<string>();
+        const uniqueMembers: ClanMember[] = [];
+        for (const m of clan.members) {
+          if (
+            !seenUserIds.has(m.userId) &&
+            uniqueMembers.length < NUENIME_SYSTEM_LIMITS.MAX_MEMBERS_PER_CLAN
+          ) {
+            seenUserIds.add(m.userId);
+            uniqueMembers.push({
+              ...m,
+              clanId: clan.id,
+              cityId: city.id,
+              contributionScore: Math.max(0, Math.floor(m.contributionScore)),
+            });
+          }
+        }
+
+        const clanTotalExp = uniqueMembers.reduce((sum, m) => sum + m.contributionScore, 0);
+
+        return {
+          ...clan,
+          cityId: city.id,
+          cityName: city.name,
+          members: uniqueMembers,
+          memberCount: uniqueMembers.length,
+          maxMembers: NUENIME_SYSTEM_LIMITS.MAX_MEMBERS_PER_CLAN,
+          totalExp: clanTotalExp,
+          level: computeClanLevelFromExp(clanTotalExp),
+        };
+      });
+
+    const cityTotalExp = reconciledClans.reduce((sum, c) => sum + c.totalExp, 0);
+    const levelState = computeCityLevelProgressFromTotalExp(cityTotalExp);
+
+    return {
+      ...city,
+      leaderId: leaderProfile.id,
+      leaderProfile,
+      level: levelState.level,
+      tier: levelState.tier,
+      totalExp: levelState.totalExp,
+      currentLevelExp: levelState.currentLevelExp,
+      nextLevelTargetExp: levelState.nextLevelTargetExp,
+      maxHp: city.maxHp || NUENIME_SYSTEM_LIMITS.INITIAL_CITY_LEVEL_1_HP,
+      currentHp: city.currentHp || NUENIME_SYSTEM_LIMITS.INITIAL_CITY_LEVEL_1_HP,
+      maxClans: NUENIME_SYSTEM_LIMITS.MAX_CLANS_PER_CITY,
+      bossId: bossRecord.id,
+      boss: bossRecord,
+      levelHistory: cityLevelHistoryInput?.[city.id] ?? city.levelHistory ?? [],
+      clans: reconciledClans,
+    };
+  });
+}
+
+interface PersistedRepositoryState {
+  cities: WorldCity[];
+  cityBosses: CityBossRecord[];
+  activeAccountId: string;
+  joinedClanId: string;
+  playerContribution: number;
+  relicShards: number;
+  relicLevels: Record<string, number>;
+  districtInfluence: Record<string, DistrictInfluenceState>;
+  completedMissionCounts: Record<string, number>;
+  missionProgressMap: Record<string, UserMissionProgressRecord>;
+  expTransactions: EXPTransactionRecord[];
+  cityLevelHistory: Record<CityId, CityLevelHistoryRecord[]>;
+}
+
+function buildDefaultDistrictInfluence(cities: WorldCity[]): Record<string, DistrictInfluenceState> {
+  const map: Record<string, DistrictInfluenceState> = {};
+  cities.forEach((city) => {
+    city.clans.forEach((clan, idx) => {
+      map[clan.id] = {
+        clanId: clan.id,
+        cityId: city.id,
+        districtName: clan.strongholdDistrict,
+        influencePercent: Math.max(45, 76 - idx * 11),
+      };
+    });
+  });
+  return map;
+}
+
+function buildDefaultRelicLevels(cities: WorldCity[]): Record<string, number> {
+  const map: Record<string, number> = {};
+  cities.forEach((city) => {
+    city.clans.forEach((clan, idx) => {
+      map[clan.id] = idx === 0 ? 2 : 1;
+    });
+  });
+  return map;
+}
+
+function buildDefaultLevelHistory(): Record<CityId, CityLevelHistoryRecord[]> {
+  return {
+    aetheria: [],
+    lunaris: [],
+    velmora: [],
+    eldoria: [],
+    drakonia: [],
+    nivara: [],
+    astralis: [],
+  };
+}
+
+function loadInitialRepositoryState(): PersistedRepositoryState {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<PersistedRepositoryState>;
+      if (parsed.cities && Array.isArray(parsed.cities) && parsed.cities.length === 7) {
+        const reconciledCities = verifyAndReconcileWorldCities(parsed.cities);
+        return {
+          cities: reconciledCities,
+          cityBosses:
+            parsed.cityBosses && parsed.cityBosses.length === 7
+              ? parsed.cityBosses
+              : INITIAL_CITY_BOSSES,
+          activeAccountId: parsed.activeAccountId ?? DEMO_SWITCHABLE_ACCOUNTS[0].id,
+          joinedClanId: parsed.joinedClanId ?? 'clan-seraph-vanguard',
+          playerContribution: parsed.playerContribution ?? 45,
+          relicShards: parsed.relicShards ?? 6,
+          relicLevels: parsed.relicLevels ?? buildDefaultRelicLevels(reconciledCities),
+          districtInfluence:
+            parsed.districtInfluence ?? buildDefaultDistrictInfluence(reconciledCities),
+          completedMissionCounts: parsed.completedMissionCounts ?? {},
+          missionProgressMap: parsed.missionProgressMap ?? {},
+          expTransactions: parsed.expTransactions ?? [],
+          cityLevelHistory: parsed.cityLevelHistory ?? buildDefaultLevelHistory(),
+        };
+      }
+    }
+  } catch {
+    // Fallback to clean seed
+  }
+
+  const reconciledSeed = verifyAndReconcileWorldCities(SEED_WORLD_CITIES);
+  return {
+    cities: reconciledSeed,
+    cityBosses: INITIAL_CITY_BOSSES,
+    activeAccountId: DEMO_SWITCHABLE_ACCOUNTS[0].id,
+    joinedClanId: 'clan-seraph-vanguard',
+    playerContribution: 45,
+    relicShards: 6,
+    relicLevels: buildDefaultRelicLevels(reconciledSeed),
+    districtInfluence: buildDefaultDistrictInfluence(reconciledSeed),
+    completedMissionCounts: {},
+    missionProgressMap: {},
+    expTransactions: [],
+    cityLevelHistory: buildDefaultLevelHistory(),
+  };
+}
+
+interface NuenimeRpgContextValue {
+  // Core World Entities (Dynamic Repository)
+  cities: WorldCity[];
+  allClans: Clan[];
+  getCityById: (cityId: string) => WorldCity | undefined;
+  getClanById: (clanId: string) => Clan | undefined;
+  cityLeaders: Record<CityId, CityLeaderProfile>;
+  getCityLeader: (cityId: CityId) => CityLeaderProfile;
+
+  // Demo Account & Role Switcher
+  availableDemoAccounts: ActiveDemoAccount[];
+  activeAccount: ActiveDemoAccount;
+  switchDemoAccount: (accountId: string) => void;
+  canCreateClanInCity: (cityId: CityId) => { allowed: boolean; reason: string };
+
+  // Clan Creation & Membership (15 Clans/City, 100 Members/Clan)
+  createClanInCity: (
+    input: CreateClanInput,
+    idempotencyKey?: string
+  ) => { ok: boolean; message: string; createdClan?: Clan };
+  joinedClanId: string;
+  joinClan: (clanId: string) => { ok: boolean; message: string };
+
+  // Unique City Bosses (7 Bosses, Separate Boss HP from City HP)
+  worldBosses: CityBossRecord[];
+  getCityBoss: (cityId: CityId) => CityBossRecord;
+  attackWorldBoss: (bossId: string) => { damage: number; defeated: boolean };
+  resetWorldBoss: (bossId: string) => void;
+
+  // Simulation Missions & Atomic EXP Pipeline (Member -> Clan -> City -> Level & Tier)
+  simulationMissions: SimulationMission[];
+  completedMissionCounts: Record<string, number>;
+  missionProgressMap: Record<string, UserMissionProgressRecord>;
+  completeClanMission: (
+    mission: SimulationMission,
+    idempotencyKey?: string
+  ) => { ok: boolean; expAdded: number; cityLeveledUp: boolean; newCityLevel: number };
+  expTransactions: EXPTransactionRecord[];
+  cityLevelHistory: Record<CityId, CityLevelHistoryRecord[]>;
+  reconcileWorldConsistency: () => void;
+  resetDemoWorldData: () => void;
+  resetAllSimulationData: () => void;
+
+  // Global World Stats & Leaderboards
+  globalWorldStats: GlobalWorldStats;
+  getClanTotalScore: (clanId: string) => number;
+  getCityClansLeaderboard: (cityId: CityId) => Clan[];
+  getWorldClansLeaderboard: () => Clan[];
+
+  // Atmosphere, Audio, Relics, District Conquest, & Travel Route
+  timeOfDay: TimeOfDayMode;
+  setTimeOfDay: (mode: TimeOfDayMode) => void;
+  soundEnabled: boolean;
+  toggleSound: () => void;
+  setAmbientLocation: (location: CityId | 'world') => void;
+  playerContribution: number;
+  relicShards: number;
+  relicLevels: Record<string, number>;
+  upgradeClanRelic: (clanId: string) => boolean;
+  districtInfluence: Record<string, DistrictInfluenceState>;
+  reinforceClanDistrict: (clanId: string) => void;
+  activeRoute: ActiveTravelRoute | null;
+  selectTravelRoute: (fromCityId: CityId, toCityId: CityId) => void;
+  clearTravelRoute: () => void;
+  toastMessage: string | null;
+  dismissToast: () => void;
+}
+
+const NuenimeRpgContext = createContext<NuenimeRpgContextValue | null>(null);
+
+export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [repo, setRepo] = useState<PersistedRepositoryState>(loadInitialRepositoryState);
+  const [timeOfDay, setTimeOfDayState] = useState<TimeOfDayMode>('day');
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
+  const [activeRoute, setActiveRoute] = useState<ActiveTravelRoute | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Idempotency lock set to prevent duplicate clan creations or duplicate mission claims
+  const processedRequestKeysRef = useRef<Set<string>>(new Set());
+
+  // Persist repository state to localStorage
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(repo));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [repo]);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+  }, []);
+
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = window.setTimeout(() => setToastMessage(null), 3800);
+    return () => window.clearTimeout(timer);
+  }, [toastMessage]);
+
+  const dismissToast = useCallback(() => setToastMessage(null), []);
+
+  const hydratedCities = useMemo(
+    () =>
+      verifyAndReconcileWorldCities(repo.cities, repo.cityBosses, repo.cityLevelHistory),
+    [repo.cities, repo.cityBosses, repo.cityLevelHistory]
+  );
+
+  const allClans = useMemo(() => hydratedCities.flatMap((c) => c.clans), [hydratedCities]);
+
+  const getCityById = useCallback(
+    (cityId: string) => hydratedCities.find((c) => c.id === cityId),
+    [hydratedCities]
+  );
+
+  const getClanById = useCallback(
+    (clanId: string) => allClans.find((c) => c.id === clanId),
+    [allClans]
+  );
+
+  const getCityLeader = useCallback((cityId: CityId): CityLeaderProfile => {
+    return DEMO_CITY_LEADERS[cityId];
+  }, []);
+
+  const getCityBoss = useCallback(
+    (cityId: CityId): CityBossRecord => {
+      return (
+        repo.cityBosses.find((b) => b.cityId === cityId) ??
+        INITIAL_CITY_BOSSES.find((b) => b.cityId === cityId) ??
+        INITIAL_CITY_BOSSES[0]
+      );
+    },
+    [repo.cityBosses]
+  );
+
+  const activeAccount: ActiveDemoAccount = useMemo(() => {
+    const base =
+      DEMO_SWITCHABLE_ACCOUNTS.find((a) => a.id === repo.activeAccountId) ??
+      DEMO_SWITCHABLE_ACCOUNTS[0];
+    return {
+      ...base,
+      joinedClanId: repo.joinedClanId,
+    };
+  }, [repo.activeAccountId, repo.joinedClanId]);
+
+  const switchDemoAccount = useCallback(
+    (accountId: string) => {
+      const target = DEMO_SWITCHABLE_ACCOUNTS.find((a) => a.id === accountId);
+      if (!target) return;
+      fantasySoundEngine.playTap();
+      setRepo((prev) => ({
+        ...prev,
+        activeAccountId: target.id,
+        joinedClanId: target.joinedClanId || prev.joinedClanId,
+      }));
+      showToast(
+        target.role === 'CITY_LEADER'
+          ? `Beralih ke Akun Demo: ${target.displayName}`
+          : `Beralih ke Akun Demo Anggota: ${target.displayName}`
+      );
+    },
+    [showToast]
+  );
+
+  /**
+   * Memeriksa hak akses pembuatan klan di suatu kota (Bagian 2 & 3):
+   * - Pemimpin Kota hanya boleh membuat klan di kota yang dipimpinnya.
+   * - Kapasitas maksimal adalah 15 klan per kota.
+   */
+  const canCreateClanInCity = useCallback(
+    (cityId: CityId): { allowed: boolean; reason: string } => {
+      const city = repo.cities.find((c) => c.id === cityId);
+      if (!city) {
+        return { allowed: false, reason: 'Kota tidak ditemukan di Dunia Nuenime.' };
+      }
+      if (city.clans.length >= NUENIME_SYSTEM_LIMITS.MAX_CLANS_PER_CITY) {
+        return {
+          allowed: false,
+          reason: `Kapasitas kota ${city.name} telah penuh (${city.clans.length}/${NUENIME_SYSTEM_LIMITS.MAX_CLANS_PER_CITY} Klan).`,
+        };
+      }
+      if (activeAccount.role !== 'CITY_LEADER') {
+        return {
+          allowed: false,
+          reason: `Hanya Pemimpin Kota ${city.name} (${DEMO_CITY_LEADERS[cityId].displayName}) yang memiliki hak membuat klan di kota ini.`,
+        };
+      }
+      if (activeAccount.ledCityId !== cityId) {
+        const ownCityName = activeAccount.ledCityId
+          ? DEMO_CITY_LEADERS[activeAccount.ledCityId]?.cityName
+          : '-';
+        return {
+          allowed: false,
+          reason: `Anda adalah Pemimpin Kota ${ownCityName}. Pemimpin kota tidak dapat membuat klan di kota lain (${city.name}).`,
+        };
+      }
+      return {
+        allowed: true,
+        reason: `Anda berhak membuat klan di ${city.name} (${city.clans.length}/${NUENIME_SYSTEM_LIMITS.MAX_CLANS_PER_CITY} Klan).`,
+      };
+    },
+    [activeAccount.ledCityId, activeAccount.role, repo.cities]
+  );
+
+  /**
+   * 3. PEMBUATAN KLAN BARU (MAKSIMAL 15 KLAN PER KOTA)
+   * Divalidasi penuh di tingkat repository (kepemilikan kota, kapasitas 15 klan,
+   * validasi nama & tag, serta idempotency key anti-klik ganda).
+   */
+  const createClanInCity = useCallback(
+    (
+      input: CreateClanInput,
+      idempotencyKey?: string
+    ): { ok: boolean; message: string; createdClan?: Clan } => {
+      const reqKey =
+        idempotencyKey ?? `create-clan:${input.cityId}:${input.name.trim().toLowerCase()}`;
+      if (processedRequestKeysRef.current.has(reqKey)) {
+        return {
+          ok: false,
+          message: 'Permintaan pembuatan klan sedang diproses (mencegah duplikasi).',
+        };
+      }
+
+      const permission = canCreateClanInCity(input.cityId);
+      if (!permission.allowed) {
+        return { ok: false, message: permission.reason };
+      }
+
+      const cleanName = input.name.trim();
+      const cleanTag = input.tag.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+      const cleanDesc = input.description.trim();
+      const cleanMotto = (input.motto ?? '').trim() || `Demi kehormatan ${cleanName}!`;
+
+      if (cleanName.length < 3 || cleanName.length > 36) {
+        return {
+          ok: false,
+          message: 'Nama klan wajib diisi antara 3 hingga 36 karakter.',
+        };
+      }
+      if (cleanTag.length < 2 || cleanTag.length > 5) {
+        return {
+          ok: false,
+          message: 'Tag klan wajib 2–5 karakter huruf/angka (contoh: AETH).',
+        };
+      }
+      if (cleanDesc.length < 10) {
+        return {
+          ok: false,
+          message: 'Deskripsi klan minimal 10 karakter.',
+        };
+      }
+
+      const duplicateName = allClans.some(
+        (c) => c.name.toLowerCase() === cleanName.toLowerCase()
+      );
+      if (duplicateName) {
+        return {
+          ok: false,
+          message: `Nama klan "${cleanName}" sudah terdaftar di Dunia Nuenime.`,
+        };
+      }
+
+      const duplicateTag = allClans.some((c) => c.tag.toUpperCase() === cleanTag);
+      if (duplicateTag) {
+        return {
+          ok: false,
+          message: `Tag klan [${cleanTag}] sudah digunakan oleh klan lain.`,
+        };
+      }
+
+      processedRequestKeysRef.current.add(reqKey);
+
+      const targetCity = repo.cities.find((c) => c.id === input.cityId)!;
+      if (targetCity.clans.length >= NUENIME_SYSTEM_LIMITS.MAX_CLANS_PER_CITY) {
+        return {
+          ok: false,
+          message: `Kapasitas kota ${targetCity.name} sudah mencapai batas 15/15 Klan.`,
+        };
+      }
+
+      const nowIso = new Date().toISOString();
+      const newClanId = `clan-${input.cityId}-${Date.now()}`;
+      const existingCount = targetCity.clans.length;
+
+      // Hitung posisi markas baru di Peta Kota secara melingkar agar rapi
+      const angle = (existingCount * 137.5 * Math.PI) / 180;
+      const radius = 16 + (existingCount % 3) * 6;
+      const mapX = Math.round(Math.max(20, Math.min(80, 50 + Math.cos(angle) * radius)));
+      const mapY = Math.round(Math.max(22, Math.min(72, 46 + Math.sin(angle) * radius)));
+
+      const founderMember: ClanMember = {
+        id: `mem-${Date.now()}`,
+        userId: `founder-${newClanId}`,
+        clanId: newClanId,
+        cityId: targetCity.id,
+        name: activeAccount.displayName.replace(/\s*\(.*\)/, ''),
+        role: 'Pemimpin Klan',
+        title: `Pendiri ${cleanName}`,
+        elementAffinity: targetCity.element,
+        joinedAt: nowIso,
+        contributionScore: 0,
+        completedMissionsCount: 0,
+        status: 'ACTIVE',
+      };
+
+      const newClan: Clan = {
+        id: newClanId,
+        cityId: targetCity.id,
+        cityName: targetCity.name,
+        name: cleanName,
+        tag: cleanTag,
+        emblemVariant: input.emblemVariant,
+        accentColor: input.accentColor || targetCity.accentHex,
+        motto: cleanMotto,
+        description: cleanDesc,
+        historyLore: `Didirikan secara resmi di ${targetCity.name} oleh Pemimpin Kota ${activeAccount.displayName} untuk memperkuat distrik ${input.strongholdDistrict}.`,
+        founderId: activeAccount.id,
+        leaderId: founderMember.userId,
+        leaderName: founderMember.name,
+        leaderTitle: founderMember.title,
+        memberCount: 1,
+        maxMembers: NUENIME_SYSTEM_LIMITS.MAX_MEMBERS_PER_CLAN,
+        totalExp: 0,
+        level: 1,
+        foundedEra: 'Era Komunitas Baru',
+        createdAt: nowIso,
+        lastContributionAt: nowIso,
+        strongholdDistrict:
+          input.strongholdDistrict || targetCity.districts[0]?.name || 'Distrik Pusat',
+        cityMapXPercent: mapX,
+        cityMapYPercent: mapY,
+        specialization: input.specialization || 'Pertahanan & Kontribusi Komunitas',
+        reputationRank: `Peringkat ${existingCount + 1} — ${targetCity.name}`,
+        members: [founderMember],
+      };
+
+      fantasySoundEngine.playClanJoinFanfare();
+
+      setRepo((prev) => {
+        const nextCities = prev.cities.map((c) => {
+          if (c.id !== input.cityId) return c;
+          if (c.clans.length >= NUENIME_SYSTEM_LIMITS.MAX_CLANS_PER_CITY) return c;
+          return {
+            ...c,
+            clans: [...c.clans, newClan],
+          };
+        });
+
+        return {
+          ...prev,
+          cities: verifyAndReconcileWorldCities(nextCities),
+          joinedClanId: newClan.id,
+          relicLevels: {
+            ...prev.relicLevels,
+            [newClan.id]: 1,
+          },
+          districtInfluence: {
+            ...prev.districtInfluence,
+            [newClan.id]: {
+              clanId: newClan.id,
+              cityId: targetCity.id,
+              districtName: newClan.strongholdDistrict,
+              influencePercent: 60,
+            },
+          },
+        };
+      });
+
+      const updatedCount = existingCount + 1;
+      showToast(
+        `Klan "${cleanName}" berhasil didirikan di ${targetCity.name} (${updatedCount}/${NUENIME_SYSTEM_LIMITS.MAX_CLANS_PER_CITY} Klan)!`
+      );
+
+      return {
+        ok: true,
+        message: `Klan ${cleanName} berhasil dibuat.`,
+        createdClan: newClan,
+      };
+    },
+    [activeAccount.displayName, activeAccount.id, allClans, canCreateClanInCity, repo.cities, showToast]
+  );
+
+  /**
+   * 4. BERGABUNG KE KLAN (MAKSIMAL 100 ANGGOTA PER KLAN)
+   * Memastikan:
+   * - Satu pengguna tidak dihitung dua kali dalam klan yang sama.
+   * - Jumlah anggota tidak melebihi 100.
+   * - Jumlah anggota konsisten dengan array members sebenarnya.
+   */
+  const joinClan = useCallback(
+    (clanId: string): { ok: boolean; message: string } => {
+      const targetClan = allClans.find((c) => c.id === clanId);
+      if (!targetClan) {
+        return { ok: false, message: 'Klan tidak ditemukan.' };
+      }
+
+      const alreadyInClan = targetClan.members.some((m) => m.userId === activeAccount.id);
+      if (repo.joinedClanId === clanId && alreadyInClan) {
+        showToast(`Anda sudah tercatat sebagai anggota aktif di ${targetClan.name}.`);
+        return { ok: true, message: 'Sudah menjadi anggota klan ini.' };
+      }
+
+      if (
+        !alreadyInClan &&
+        targetClan.members.length >= NUENIME_SYSTEM_LIMITS.MAX_MEMBERS_PER_CLAN
+      ) {
+        const msg = `Kapasitas klan ${targetClan.name} telah penuh (${targetClan.members.length}/${NUENIME_SYSTEM_LIMITS.MAX_MEMBERS_PER_CLAN} Anggota).`;
+        showToast(msg);
+        return { ok: false, message: msg };
+      }
+
+      fantasySoundEngine.playClanJoinFanfare();
+
+      setRepo((prev) => {
+        const nowIso = new Date().toISOString();
+        const nextCities = prev.cities.map((city) => {
+          if (city.id !== targetClan.cityId) return city;
+          return {
+            ...city,
+            clans: city.clans.map((clan) => {
+              if (clan.id !== clanId) return clan;
+              const exists = clan.members.some((m) => m.userId === activeAccount.id);
+              if (exists) return clan;
+              if (clan.members.length >= NUENIME_SYSTEM_LIMITS.MAX_MEMBERS_PER_CLAN) return clan;
+
+              const newMember: ClanMember = {
+                id: `mem-${activeAccount.id}-${Date.now()}`,
+                userId: activeAccount.id,
+                clanId: clan.id,
+                cityId: city.id,
+                name: activeAccount.displayName.replace(/\s*\(.*\)/, ''),
+                role: 'Anggota',
+                title: activeAccount.title,
+                elementAffinity: city.element,
+                joinedAt: nowIso,
+                contributionScore: 0,
+                completedMissionsCount: 0,
+                status: 'ACTIVE',
+              };
+
+              const updatedMembers = [...clan.members, newMember];
+              return {
+                ...clan,
+                members: updatedMembers,
+                memberCount: updatedMembers.length,
+              };
+            }),
+          };
+        });
+
+        return {
+          ...prev,
+          cities: verifyAndReconcileWorldCities(nextCities),
+          joinedClanId: clanId,
+        };
+      });
+
+      showToast(`Berhasil bergabung sebagai anggota aktif di ${targetClan.name}!`);
+      return { ok: true, message: `Bergabung ke ${targetClan.name}` };
+    },
+    [activeAccount.displayName, activeAccount.id, activeAccount.title, allClans, repo.joinedClanId, showToast]
+  );
+
+  /**
+   * 8 & 9. ALUR EXP ATOMIK DARI ANGGOTA -> KLAN -> KOTA -> LEVEL & TIER KOTA
+   * Aktivitas anggota -> EXP kontribusi anggota -> EXP klan -> total EXP kota -> progres level kota.
+   * Catatan: Aktivitas misi anime menghasilkan EXP dan TIDAK mengurangi HP Bos secara otomatis.
+   */
+  const completeClanMission = useCallback(
+    (
+      mission: SimulationMission,
+      idempotencyKey?: string
+    ): { ok: boolean; expAdded: number; cityLeveledUp: boolean; newCityLevel: number } => {
+      if (!mission.isActive) {
+        showToast('Misi ini sedang tidak aktif.');
+        return { ok: false, expAdded: 0, cityLeveledUp: false, newCityLevel: 1 };
+      }
+
+      const txKey =
+        idempotencyKey ?? `mission-claim:${activeAccount.id}:${mission.id}:${Date.now()}`;
+      if (processedRequestKeysRef.current.has(txKey)) {
+        return { ok: false, expAdded: 0, cityLeveledUp: false, newCityLevel: 1 };
+      }
+      processedRequestKeysRef.current.add(txKey);
+
+      const targetClan =
+        allClans.find((c) => c.id === repo.joinedClanId) ?? allClans[0];
+      const targetCity = repo.cities.find((c) => c.id === targetClan.cityId)!;
+
+      const expReward = Math.max(1, Math.floor(mission.rewardExp));
+      const shardReward = Math.max(0, Math.floor(mission.rewardShard));
+      const nowIso = new Date().toISOString();
+
+      const cityLevelBefore = targetCity.level;
+      const cityTierBefore = targetCity.tier;
+      const newCityTotalExp = targetCity.totalExp + expReward;
+      const nextCityProgress = computeCityLevelProgressFromTotalExp(newCityTotalExp);
+      const cityLevelAfter = nextCityProgress.level;
+      const cityTierAfter = nextCityProgress.tier;
+      const leveledUp = cityLevelAfter > cityLevelBefore;
+
+      fantasySoundEngine.playClanJoinFanfare();
+
+      setRepo((prev) => {
+        // 1. Update Member -> Clan -> City atomically
+        const updatedCities = prev.cities.map((city) => {
+          if (city.id !== targetCity.id) return city;
+
+          const updatedClans = city.clans.map((clan) => {
+            if (clan.id !== targetClan.id) return clan;
+
+            const memberExists = clan.members.some((m) => m.userId === activeAccount.id);
+            let updatedMembers: ClanMember[];
+
+            if (memberExists) {
+              updatedMembers = clan.members.map((m) =>
+                m.userId === activeAccount.id
+                  ? {
+                      ...m,
+                      contributionScore: m.contributionScore + expReward,
+                      completedMissionsCount: m.completedMissionsCount + 1,
+                    }
+                  : m
+              );
+            } else if (clan.members.length < NUENIME_SYSTEM_LIMITS.MAX_MEMBERS_PER_CLAN) {
+              updatedMembers = [
+                ...clan.members,
+                {
+                  id: `mem-${activeAccount.id}`,
+                  userId: activeAccount.id,
+                  clanId: clan.id,
+                  cityId: city.id,
+                  name: activeAccount.displayName.replace(/\s*\(.*\)/, ''),
+                  role: 'Anggota',
+                  title: activeAccount.title,
+                  elementAffinity: city.element,
+                  joinedAt: nowIso,
+                  contributionScore: expReward,
+                  completedMissionsCount: 1,
+                  status: 'ACTIVE',
+                },
+              ];
+            } else {
+              // If clan is at 100/100 capacity and user wasn't listed, credit the clan leader's record
+              updatedMembers = clan.members.map((m, idx) =>
+                idx === 0
+                  ? {
+                      ...m,
+                      contributionScore: m.contributionScore + expReward,
+                      completedMissionsCount: m.completedMissionsCount + 1,
+                    }
+                  : m
+              );
+            }
+
+            const newClanTotalExp = updatedMembers.reduce(
+              (sum, m) => sum + m.contributionScore,
+              0
+            );
+
+            return {
+              ...clan,
+              members: updatedMembers,
+              memberCount: updatedMembers.length,
+              totalExp: newClanTotalExp,
+              level: computeClanLevelFromExp(newClanTotalExp),
+              lastContributionAt: nowIso,
+            };
+          });
+
+          const recalculatedCityExp = updatedClans.reduce((sum, c) => sum + c.totalExp, 0);
+          const progress = computeCityLevelProgressFromTotalExp(recalculatedCityExp);
+
+          return {
+            ...city,
+            level: progress.level,
+            tier: progress.tier,
+            totalExp: progress.totalExp,
+            currentLevelExp: progress.currentLevelExp,
+            nextLevelTargetExp: progress.nextLevelTargetExp,
+            clans: updatedClans,
+          };
+        });
+
+        // 2. Record EXPTransaction in ContributionLedger
+        const newTransaction: EXPTransactionRecord = {
+          id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          idempotencyKey: txKey,
+          userId: activeAccount.id,
+          userName: activeAccount.displayName,
+          clanId: targetClan.id,
+          clanName: targetClan.name,
+          cityId: targetCity.id,
+          cityName: targetCity.name,
+          missionId: mission.id,
+          missionTitle: mission.title,
+          activityType: mission.activityType,
+          expAmount: expReward,
+          source: 'simulation',
+          cityLevelBefore,
+          cityLevelAfter,
+          timestamp: nowIso,
+        };
+
+        // 3. Record CityLevelHistory if one or multiple levels were gained
+        const nextLevelHistory = { ...prev.cityLevelHistory };
+        if (leveledUp) {
+          const newEntries: CityLevelHistoryRecord[] = [];
+          for (let lv = cityLevelBefore + 1; lv <= cityLevelAfter; lv++) {
+            const prevLv = lv - 1;
+            const prevTier = computeCityLevelProgressFromTotalExp(0).tier; // fallback
+            newEntries.push({
+              id: `lvlup-${targetCity.id}-${lv}-${Date.now()}`,
+              cityId: targetCity.id,
+              cityName: targetCity.name,
+              previousLevel: prevLv,
+              newLevel: lv,
+              previousTier: lv - 1 === cityLevelBefore ? cityTierBefore : prevTier,
+              newTier: lv === cityLevelAfter ? cityTierAfter : cityTierBefore,
+              totalExpAtUpgrade: newCityTotalExp,
+              triggeredByClanId: targetClan.id,
+              triggeredByClanName: targetClan.name,
+              triggeredByUserId: activeAccount.id,
+              triggeredByUserName: activeAccount.displayName,
+              timestamp: nowIso,
+            });
+          }
+          nextLevelHistory[targetCity.id] = [
+            ...newEntries.reverse(),
+            ...(nextLevelHistory[targetCity.id] ?? []),
+          ].slice(0, 30);
+        }
+
+        // 4. Update UserMissionProgress
+        const prevProg = prev.missionProgressMap[mission.id] ?? {
+          missionId: mission.id,
+          userId: activeAccount.id,
+          currentProgress: 0,
+          targetCount: mission.targetCount,
+          totalClaimedCount: 0,
+          totalExpEarned: 0,
+          lastClaimedAt: null,
+        };
+
+        return {
+          ...prev,
+          cities: verifyAndReconcileWorldCities(updatedCities),
+          playerContribution: prev.playerContribution + expReward,
+          relicShards: prev.relicShards + shardReward,
+          completedMissionCounts: {
+            ...prev.completedMissionCounts,
+            [mission.id]: (prev.completedMissionCounts[mission.id] ?? 0) + 1,
+          },
+          missionProgressMap: {
+            ...prev.missionProgressMap,
+            [mission.id]: {
+              ...prevProg,
+              currentProgress: mission.targetCount,
+              totalClaimedCount: prevProg.totalClaimedCount + 1,
+              totalExpEarned: prevProg.totalExpEarned + expReward,
+              lastClaimedAt: nowIso,
+            },
+          },
+          expTransactions: [newTransaction, ...prev.expTransactions].slice(0, 80),
+          cityLevelHistory: nextLevelHistory,
+        };
+      });
+
+      if (leveledUp) {
+        showToast(
+          `LEVEL UP KOTA! ${targetCity.name} naik ke Level ${cityLevelAfter} (${cityTierAfter}) berkat +${expReward} EXP dari ${targetClan.name}!`
+        );
+      } else {
+        showToast(
+          `[SIMULASI] +${expReward} EXP disalurkan ke Anggota → ${targetClan.name} → Kota ${targetCity.name}!`
+        );
+      }
+
+      return {
+        ok: true,
+        expAdded: expReward,
+        cityLeveledUp: leveledUp,
+        newCityLevel: cityLevelAfter,
+      };
+    },
+    [activeAccount.displayName, activeAccount.id, activeAccount.title, allClans, repo.cities, repo.joinedClanId, showToast]
+  );
+
+  /**
+   * 6B. PERTARUNGAN BOS KOTA (TERPISAH DARI MISI ANIME & TERPISAH DARI HP KOTA)
+   * Perubahan HP Bos hanya terjadi melalui mekanisme pertarungan bos yang tervalidasi,
+   * bukan otomatis dari menonton anime.
+   */
+  const attackWorldBoss = useCallback(
+    (bossId: string) => {
+      const joinedClan = allClans.find((c) => c.id === repo.joinedClanId);
+      const relicLv = repo.relicLevels[repo.joinedClanId] ?? 1;
+      const baseDamage = 2400 + relicLv * 550 + Math.floor(Math.random() * 650);
+
+      let defeatedNow = false;
+      let targetBossName = 'Bos Kota';
+
+      fantasySoundEngine.playBossStrike();
+
+      setRepo((prev) => {
+        const nextBosses = prev.cityBosses.map((b) => {
+          if (b.id !== bossId) return b;
+          targetBossName = b.name;
+          if (b.currentHp <= 0) return b;
+          const nextHp = Math.max(0, b.currentHp - baseDamage);
+          if (nextHp === 0 && b.currentHp > 0) {
+            defeatedNow = true;
+          }
+          return {
+            ...b,
+            currentHp: nextHp,
+            status: nextHp === 0 ? ('DORMANT' as const) : ('ENRANGED' as const),
+            battleHistoryCount: b.battleHistoryCount + 1,
+            lastUpdatedAt: new Date().toISOString(),
+          };
+        });
+
+        return {
+          ...prev,
+          cityBosses: nextBosses,
+        };
+      });
+
+      if (defeatedNow) {
+        fantasySoundEngine.playClanJoinFanfare();
+        showToast(
+          `${targetBossName} berhasil ditaklukkan oleh pasukan ${joinedClan?.name ?? 'Klan'}!`
+        );
+      }
+
+      return { damage: baseDamage, defeated: defeatedNow };
+    },
+    [allClans, repo.joinedClanId, repo.relicLevels, showToast]
+  );
+
+  const resetWorldBoss = useCallback(
+    (bossId: string) => {
+      fantasySoundEngine.playTap();
+      setRepo((prev) => ({
+        ...prev,
+        cityBosses: prev.cityBosses.map((b) =>
+          b.id === bossId
+            ? {
+                ...b,
+                currentHp: b.maxHp,
+                status: 'ACTIVE',
+                lastUpdatedAt: new Date().toISOString(),
+              }
+            : b
+        ),
+      }));
+      showToast('HP Bos Kota telah dipulihkan ke kondisi penuh untuk simulasi pertarungan.');
+    },
+    [showToast]
+  );
+
+  const reconcileWorldConsistency = useCallback(() => {
+    fantasySoundEngine.playTap();
+    setRepo((prev) => ({
+      ...prev,
+      cities: verifyAndReconcileWorldCities(prev.cities),
+    }));
+    showToast('Konsistensi EXP Anggota, Klan, Kota, dan Level telah diverifikasi 100% akurat.');
+  }, [showToast]);
+
+  const resetDemoWorldData = useCallback(() => {
+    fantasySoundEngine.playTap();
+    processedRequestKeysRef.current.clear();
+    const freshCities = verifyAndReconcileWorldCities(SEED_WORLD_CITIES);
+    setRepo({
+      cities: freshCities,
+      cityBosses: INITIAL_CITY_BOSSES,
+      activeAccountId: DEMO_SWITCHABLE_ACCOUNTS[0].id,
+      joinedClanId: 'clan-seraph-vanguard',
+      playerContribution: 45,
+      relicShards: 6,
+      relicLevels: buildDefaultRelicLevels(freshCities),
+      districtInfluence: buildDefaultDistrictInfluence(freshCities),
+      completedMissionCounts: {},
+      missionProgressMap: {},
+      expTransactions: [],
+      cityLevelHistory: buildDefaultLevelHistory(),
+    });
+    showToast('Data simulasi Dunia Nuenime dikembalikan ke kondisi awal (Level 1 · 10.000 HP).');
+  }, [showToast]);
+
+  /**
+   * 10. LEADERBOARD KLAN (DALAM KOTA & SELURUH DUNIA)
+   * Diurutkan berdasarkan totalExp tertinggi dengan aturan tie-break waktu kontribusi terakhir.
+   */
+  const sortClansForLeaderboard = useCallback((clansList: Clan[]): Clan[] => {
+    return [...clansList].sort((a, b) => {
+      if (b.totalExp !== a.totalExp) {
+        return b.totalExp - a.totalExp;
+      }
+      // Tie-breaker 1: waktu kontribusi terakhir lebih awal
+      const timeA = Date.parse(a.lastContributionAt || a.createdAt || '2026-01-01');
+      const timeB = Date.parse(b.lastContributionAt || b.createdAt || '2026-01-01');
+      if (timeA !== timeB) {
+        return timeA - timeB;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }, []);
+
+  const getCityClansLeaderboard = useCallback(
+    (cityId: CityId): Clan[] => {
+      const city = repo.cities.find((c) => c.id === cityId);
+      if (!city) return [];
+      return sortClansForLeaderboard(city.clans);
+    },
+    [repo.cities, sortClansForLeaderboard]
+  );
+
+  const getWorldClansLeaderboard = useCallback((): Clan[] => {
+    return sortClansForLeaderboard(allClans);
+  }, [allClans, sortClansForLeaderboard]);
+
+  const getClanTotalScore = useCallback(
+    (clanId: string): number => {
+      const clan = allClans.find((c) => c.id === clanId);
+      return clan ? clan.totalExp : 0;
+    },
+    [allClans]
+  );
+
+  /**
+   * 11. STATISTIK GLOBAL DUNIA NUENIME
+   * Agregasi dari 7 kota independen tanpa mencampurkan progres masing-masing kota.
+   */
+  const globalWorldStats: GlobalWorldStats = useMemo(() => {
+    const totalWorldExp = repo.cities.reduce((sum, c) => sum + c.totalExp, 0);
+    const totalClansCount = allClans.length;
+    const totalClanMembersCount = allClans.reduce((sum, c) => sum + c.memberCount, 0);
+
+    const sortedCities = [...repo.cities].sort((a, b) => {
+      if (b.level !== a.level) return b.level - a.level;
+      return b.totalExp - a.totalExp;
+    });
+    const topCity = sortedCities[0] ?? repo.cities[0];
+
+    const worldLeaderboard = sortClansForLeaderboard(allClans);
+    const topClan = worldLeaderboard[0] ?? allClans[0];
+
+    return {
+      totalWorldExp,
+      totalSimulationExp: totalWorldExp,
+      totalProductionExp: 0,
+      totalClansCount,
+      maxWorldClansCapacity: repo.cities.length * NUENIME_SYSTEM_LIMITS.MAX_CLANS_PER_CITY,
+      totalClanMembersCount,
+      highestLevelCity: {
+        cityId: topCity.id,
+        name: topCity.name,
+        level: topCity.level,
+        tier: topCity.tier,
+        totalExp: topCity.totalExp,
+      },
+      topExpClan: {
+        clanId: topClan.id,
+        name: topClan.name,
+        tag: topClan.tag,
+        cityId: topClan.cityId,
+        cityName: topClan.cityName,
+        totalExp: topClan.totalExp,
+      },
+    };
+  }, [allClans, repo.cities, sortClansForLeaderboard]);
+
+  const setTimeOfDay = useCallback(
+    (mode: TimeOfDayMode) => {
+      setTimeOfDayState(mode);
+      fantasySoundEngine.playTap();
+      const label =
+        mode === 'day'
+          ? 'Siang Cerah'
+          : mode === 'dusk'
+          ? 'Senja Keemasan'
+          : 'Malam Astral Berkilau';
+      showToast(`Mode atmosfer peta: ${label}`);
+    },
+    [showToast]
+  );
+
+  const toggleSound = useCallback(() => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    fantasySoundEngine.setEnabled(next);
+    showToast(next ? 'Audio RPG & Ambient diaktifkan' : 'Audio RPG & Ambient dimatikan');
+  }, [soundEnabled, showToast]);
+
+  const setAmbientLocation = useCallback((location: CityId | 'world') => {
+    fantasySoundEngine.setAmbientCity(location);
+  }, []);
+
+  const upgradeClanRelic = useCallback(
+    (clanId: string): boolean => {
+      const currentLv = repo.relicLevels[clanId] ?? 1;
+      const cost = currentLv * 2;
+      if (repo.relicShards < cost) {
+        showToast(
+          `Butuh ${cost} Pecahan Relik (Anda punya ${repo.relicShards}). Selesaikan Misi Simulasi!`
+        );
+        return false;
+      }
+
+      fantasySoundEngine.playClanJoinFanfare();
+      setRepo((prev) => ({
+        ...prev,
+        relicShards: prev.relicShards - cost,
+        relicLevels: {
+          ...prev.relicLevels,
+          [clanId]: currentLv + 1,
+        },
+      }));
+      showToast(`Artefak Pusaka Klan berhasil ditempa ke Level ${currentLv + 1}!`);
+      return true;
+    },
+    [repo.relicLevels, repo.relicShards, showToast]
+  );
+
+  const reinforceClanDistrict = useCallback(
+    (clanId: string) => {
+      fantasySoundEngine.playBossStrike();
+      setRepo((prev) => {
+        const current = prev.districtInfluence[clanId];
+        const nextPct = Math.min(100, (current?.influencePercent ?? 60) + 8);
+        return {
+          ...prev,
+          districtInfluence: {
+            ...prev.districtInfluence,
+            [clanId]: {
+              clanId,
+              cityId: current?.cityId ?? 'aetheria',
+              districtName: current?.districtName ?? 'Distrik Utama',
+              influencePercent: nextPct,
+            },
+          },
+        };
+      });
+      showToast('Pengaruh klan di distrik kota berhasil diperkuat (+8%)!');
+    },
+    [showToast]
+  );
+
+  const selectTravelRoute = useCallback(
+    (fromCityId: CityId, toCityId: CityId) => {
+      const fromCity = repo.cities.find((c) => c.id === fromCityId);
+      const toCity = repo.cities.find((c) => c.id === toCityId);
+      if (!fromCity || !toCity || fromCityId === toCityId) return;
+
+      const route = calculateTravelRoute(fromCity, toCity);
+      setActiveRoute(route);
+      fantasySoundEngine.playRouteDepart();
+      showToast(
+        `Ekspedisi ${route.transportName}: ${fromCity.name} → ${toCity.name} (${route.distanceLeagues} League)`
+      );
+    },
+    [repo.cities, showToast]
+  );
+
+  const clearTravelRoute = useCallback(() => {
+    setActiveRoute(null);
+    fantasySoundEngine.playTap();
+  }, []);
+
+  return (
+    <NuenimeRpgContext.Provider
+      value={{
+        cities: hydratedCities,
+        allClans,
+        getCityById,
+        getClanById,
+        cityLeaders: DEMO_CITY_LEADERS,
+        getCityLeader,
+        availableDemoAccounts: DEMO_SWITCHABLE_ACCOUNTS,
+        activeAccount,
+        switchDemoAccount,
+        canCreateClanInCity,
+        createClanInCity,
+        joinedClanId: repo.joinedClanId,
+        joinClan,
+        worldBosses: repo.cityBosses,
+        getCityBoss,
+        attackWorldBoss,
+        resetWorldBoss,
+        simulationMissions: CLAN_MISSIONS,
+        completedMissionCounts: repo.completedMissionCounts,
+        missionProgressMap: repo.missionProgressMap,
+        completeClanMission,
+        expTransactions: repo.expTransactions,
+        cityLevelHistory: repo.cityLevelHistory,
+        reconcileWorldConsistency,
+        resetDemoWorldData,
+        resetAllSimulationData: resetDemoWorldData,
+        globalWorldStats,
+        getClanTotalScore,
+        getCityClansLeaderboard,
+        getWorldClansLeaderboard,
+        timeOfDay,
+        setTimeOfDay,
+        soundEnabled,
+        toggleSound,
+        setAmbientLocation,
+        playerContribution: repo.playerContribution,
+        relicShards: repo.relicShards,
+        relicLevels: repo.relicLevels,
+        upgradeClanRelic,
+        districtInfluence: repo.districtInfluence,
+        reinforceClanDistrict,
+        activeRoute,
+        selectTravelRoute,
+        clearTravelRoute,
+        toastMessage,
+        dismissToast,
+      }}
+    >
+      {children}
+    </NuenimeRpgContext.Provider>
+  );
+};
+
+export function useNuenimeRpg() {
+  const ctx = useContext(NuenimeRpgContext);
+  if (!ctx) {
+    throw new Error('useNuenimeRpg harus digunakan di dalam NuenimeRpgProvider');
+  }
+  return ctx;
+}
+
+export { CLAN_MISSIONS };

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#06142E"/>
+      <stop offset="50%" stop-color="#0F3156"/>
+      <stop offset="100%" stop-color="#38BDF8"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="50%" cy="38%" r="42%">
+      <stop offset="0%" stop-color="#E0F2FE" stop-opacity="0.9"/>
+      <stop offset="45%" stop-color="#38BDF8" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#0284C7" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="icePeak" x1="0" y1="220" x2="0" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="55%" stop-color="#BAE6FD"/>
+      <stop offset="100%" stop-color="#1E3A5F"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#sky)"/>
+  <circle cx="300" cy="230" r="220" fill="url(#halo)"/>
+  <circle cx="300" cy="220" r="135" stroke="#BAE6FD" stroke-width="3" stroke-opacity="0.7" stroke-dasharray="14 8"/>
+  <circle cx="300" cy="220" r="105" stroke="#FFFFFF" stroke-width="2" stroke-opacity="0.85"/>
+  <polygon points="0,600 0,390 130,270 250,410 380,250 510,380 600,310 600,600" fill="#1E3A5F"/>
+  <polygon points="40,600 175,280 300,430 435,270 570,600" fill="url(#icePeak)"/>
+  <rect x="210" y="250" width="180" height="190" rx="6" fill="#E2E8F0" stroke="#94A3B8" stroke-width="3"/>
+  <polygon points="300,75 255,250 345,250" fill="#F8FAFC" stroke="#7DD3FC" stroke-width="3"/>
+  <polygon points="225,135 195,280 255,280" fill="#F1F5F9" stroke="#7DD3FC" stroke-width="2.5"/>
+  <polygon points="375,135 345,280 405,280" fill="#F1F5F9" stroke="#7DD3FC" stroke-width="2.5"/>
+  <rect x="282" y="290" width="36" height="90" rx="18" fill="#38BDF8"/>
+  <circle cx="300" cy="215" r="16" fill="#E0F2FE" stroke="#38BDF8" stroke-width="4"/>
+  <path d="M0 470 Q 150 430 300 455 T 600 445 L 600 600 L 0 600 Z" fill="#0F294A"/>
+  <path d="M120 465 L 300 395 L 480 465" stroke="#BAE6FD" stroke-width="6" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <defs>
+    <linearGradient id="lsky" x1="0" y1="0" x2="0" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#041527"/>
+      <stop offset="55%" stop-color="#0A3B5C"/>
+      <stop offset="100%" stop-color="#06B6D4"/>
+    </linearGradient>
+    <radialGradient id="lglow" cx="50%" cy="40%" r="45%">
+      <stop offset="0%" stop-color="#CFFAFE" stop-opacity="0.85"/>
+      <stop offset="55%" stop-color="#22D3EE" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#083344" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#lsky)"/>
+  <circle cx="300" cy="240" r="220" fill="url(#lglow)"/>
+  <path d="M350 95C285 105 245 162 255 225C264 282 315 320 375 312C328 338 262 325 225 280C188 232 195 158 245 115C275 90 315 84 350 95Z" fill="#ECFEFF" fill-opacity="0.85"/>
+  <ellipse cx="300" cy="470" rx="260" ry="75" fill="#083344" stroke="#22D3EE" stroke-width="5"/>
+  <ellipse cx="300" cy="470" rx="205" ry="52" fill="#0E7490" stroke="#A5F3FC" stroke-width="4" stroke-dasharray="18 10"/>
+  <polygon points="150,450 210,330 390,330 450,450" fill="#CBD5E1"/>
+  <rect x="225" y="235" width="150" height="175" rx="8" fill="#F1F5F9" stroke="#67E8F9" stroke-width="3"/>
+  <polygon points="300,105 260,240 340,240" fill="#ECFEFF" stroke="#22D3EE" stroke-width="3"/>
+  <polygon points="215,175 188,290 242,290" fill="#E2E8F0" stroke="#38BDF8" stroke-width="2.5"/>
+  <polygon points="385,175 358,290 412,290" fill="#E2E8F0" stroke="#38BDF8" stroke-width="2.5"/>
+  <rect x="284" y="295" width="32" height="90" rx="16" fill="#22D3EE"/>
+</svg>

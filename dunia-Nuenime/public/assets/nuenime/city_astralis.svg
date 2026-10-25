@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <defs>
+    <linearGradient id="asky" x1="0" y1="0" x2="0" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0D051D"/>
+      <stop offset="50%" stop-color="#2E1065"/>
+      <stop offset="100%" stop-color="#A855F7"/>
+    </linearGradient>
+    <radialGradient id="aglow" cx="50%" cy="38%" r="45%">
+      <stop offset="0%" stop-color="#F3E8FF" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#C084FC" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#3B0764" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#asky)"/>
+  <circle cx="300" cy="235" r="220" fill="url(#aglow)"/>
+  <ellipse cx="300" cy="230" rx="165" ry="65" stroke="#E9D5FF" stroke-width="3" stroke-dasharray="14 8" transform="rotate(-15 300 230)"/>
+  <polygon points="300,70 245,250 265,435 335,435 355,250" fill="#C084FC" stroke="#F3E8FF" stroke-width="3.5"/>
+  <polygon points="205,155 170,295 190,435 240,435 245,295" fill="#9333EA" stroke="#E9D5FF" stroke-width="3"/>
+  <polygon points="395,155 355,295 360,435 410,435 430,295" fill="#9333EA" stroke="#E9D5FF" stroke-width="3"/>
+  <polygon points="300,145 278,260 300,365 322,260" fill="#F3E8FF"/>
+  <path d="M80 445 Q 300 410 520 445 L 440 545 Q 300 575 160 545 Z" fill="#1E1B4B" stroke="#C084FC" stroke-width="3.5"/>
+</svg>

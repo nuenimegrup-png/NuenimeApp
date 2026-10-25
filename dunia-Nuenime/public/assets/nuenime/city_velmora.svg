@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <defs>
+    <linearGradient id="vsky" x1="0" y1="0" x2="0" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#041E19"/>
+      <stop offset="55%" stop-color="#064E3B"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    <radialGradient id="vglow" cx="50%" cy="42%" r="44%">
+      <stop offset="0%" stop-color="#D1FAE5" stop-opacity="0.85"/>
+      <stop offset="55%" stop-color="#34D399" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#064E3B" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#vsky)"/>
+  <circle cx="300" cy="250" r="230" fill="url(#vglow)"/>
+  <circle cx="300" cy="195" r="145" fill="#047857" stroke="#6EE7B7" stroke-width="3"/>
+  <circle cx="205" cy="230" r="95" fill="#065F46"/>
+  <circle cx="395" cy="230" r="95" fill="#065F46"/>
+  <path d="M235 260 Q 255 370 160 510 L 440 510 Q 345 370 365 260 Z" fill="#3F2E21" stroke="#6EE7B7" stroke-width="2.5"/>
+  <polygon points="300,115 258,255 342,255" fill="#ECFDF5" stroke="#34D399" stroke-width="3"/>
+  <rect x="255" y="255" width="90" height="145" rx="12" fill="#D1FAE5" stroke="#10B981" stroke-width="3"/>
+  <rect x="282" y="295" width="36" height="85" rx="18" fill="#34D399"/>
+  <path d="M0 475 Q 180 435 300 465 T 600 455 L 600 600 L 0 600 Z" fill="#022C22"/>
+  <path d="M265 400 Q 300 480 230 600 L 370 600 Q 315 480 335 400 Z" fill="#34D399" fill-opacity="0.7"/>
+</svg>
