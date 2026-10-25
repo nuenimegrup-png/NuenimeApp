@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Shield, Sparkles, Trophy, Users } from 'lucide-react';
+import { Shield, Trophy, Users } from 'lucide-react';
 import { NuenimeCrestIcon, CompassRoseIcon } from './icons/NuenimeAssets';
 
 interface ClanMenuLoadingScreenProps {
@@ -123,7 +123,7 @@ export const ClanMenuLoadingScreen: React.FC<ClanMenuLoadingScreenProps> = ({
       {/* RPG Loading Title & Subtitle */}
       <div className="relative z-10 mt-4 text-center">
         <div className="inline-flex items-center gap-1.5 rounded-full border border-sky-400/40 bg-sky-950/75 px-3 py-0.5 text-[10px] font-bold tracking-wider text-sky-200 uppercase">
-          <Sparkles className="h-3 w-3 text-amber-300" />
+          <Shield className="h-3 w-3 text-amber-300" />
           <span>Gerbang Komunitas Klan</span>
         </div>
 

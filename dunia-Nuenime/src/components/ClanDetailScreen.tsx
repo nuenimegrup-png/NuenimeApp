@@ -7,7 +7,6 @@ import {
   Award,
   Calendar,
   Compass,
-  Sparkles,
   CheckCircle2,
   Swords,
   ArrowUpCircle,
@@ -197,7 +196,7 @@ export const ClanDetailScreen: React.FC<ClanDetailScreenProps> = ({
           <div className="rounded-2xl border border-amber-400/35 bg-gradient-to-br from-slate-900/95 via-slate-900/85 to-amber-950/25 p-3.5 space-y-2.5">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-amber-300" />
+                <Award className="h-4 w-4 text-amber-300" />
                 <h2 className="font-display text-sm font-bold text-white">
                   Artefak Pusaka & Buff Elemen
                 </h2>

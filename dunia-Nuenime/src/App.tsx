@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Shield, Smartphone, Maximize2, Minimize2, MapPin, Sparkles } from 'lucide-react';
+import { Shield, Smartphone, Maximize2, Minimize2, MapPin, Bell } from 'lucide-react';
 import { WorldCity, Clan, BottomNavTab, ScreenViewState, CityId } from './types/nuenime';
 import { NuenimeRpgProvider, useNuenimeRpg } from './context/NuenimeRpgContext';
 import { WorldMapScreen } from './components/WorldMapScreen';
@@ -479,7 +479,7 @@ function NuenimeWorldAppInner() {
               onClick={dismissToast}
               className="pointer-events-auto absolute top-[96px] left-2.5 right-2.5 z-50 flex cursor-pointer items-center gap-2 rounded-xl border border-amber-300/70 bg-[#070e1b]/98 px-3 py-2 text-xs font-semibold text-amber-100 shadow-2xl backdrop-blur-xl"
             >
-              <Sparkles className="h-4 w-4 shrink-0 text-amber-300" />
+              <Bell className="h-4 w-4 shrink-0 text-amber-300" />
               <span className="truncate">{toastMessage}</span>
             </div>
           )}

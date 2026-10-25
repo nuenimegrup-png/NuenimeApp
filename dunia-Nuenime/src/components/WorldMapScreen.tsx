@@ -2,7 +2,6 @@ import React, { useState, useCallback } from 'react';
 import {
   X,
   Compass,
-  Sparkles,
   MapPin,
   Shield,
   Navigation,
@@ -688,18 +687,9 @@ export const WorldMapScreen: React.FC<WorldMapScreenProps> = ({
                 <div className="flex items-start gap-2.5 rounded-xl border border-slate-800 bg-slate-900/60 p-2.5">
                   <Shield className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
                   <div>
-                    <div className="font-semibold text-white">Sistem Klan (Maks 15/Kota & 100 Anggota)</div>
+                    <div className="font-semibold text-white">Sistem Klan Komunitas (Maks 15/Kota & 100 Anggota)</div>
                     <p className="mt-0.5 text-[11px] text-slate-400">
-                      Pemimpin Kota dapat membuat klan di kotanya hingga 15 klan. Setiap misi simulasi anggota menambah EXP Anggota → EXP Klan → Total EXP Kota.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2.5 rounded-xl border border-slate-800 bg-slate-900/60 p-2.5">
-                  <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-purple-300" />
-                  <div>
-                    <div className="font-semibold text-white">Pemilih Akun Demo</div>
-                    <p className="mt-0.5 text-[11px] text-slate-400">
-                      Ketuk tombol Akun di kanan atas peta untuk beralih antara 7 Pemimpin Kota dan Anggota Klan.
+                      Semua warga Nuenime bebas membuat klan di kota mana pun dengan biaya 2.000 Crystal. Misi simulasi menambah EXP Klan dan Total EXP Kota.
                     </p>
                   </div>
                 </div>

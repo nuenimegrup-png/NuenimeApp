@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronRight, Users, X, Shield, Heart, Sparkles, Flame } from 'lucide-react';
+import { ChevronRight, Users, X, Shield, Heart, Flame } from 'lucide-react';
 import { WorldCity } from '../types/nuenime';
 import { CityEmblemBadge } from './icons/NuenimeAssets';
 
@@ -126,9 +126,8 @@ export const CityInfoPanel: React.FC<CityInfoPanelProps> = ({
             {/* City EXP Progress Bar */}
             <div className="mt-1">
               <div className="flex items-center justify-between text-[9.5px]">
-                <span className="inline-flex items-center gap-1 font-medium text-slate-300 truncate">
-                  <Sparkles className="h-2.5 w-2.5 shrink-0 text-sky-300" />
-                  <span>EXP: <strong className="font-mono text-sky-200 font-bold">{city.totalExp.toLocaleString('id-ID')}</strong></span>
+                <span className="font-medium text-slate-300 truncate">
+                  EXP: <strong className="font-mono text-sky-200 font-bold">{city.totalExp.toLocaleString('id-ID')}</strong>
                 </span>
                 <span className="font-mono text-slate-400 tabular-nums shrink-0 ml-1">
                   +{remainingExp.toLocaleString('id-ID')} ke Lv.{city.level + 1}

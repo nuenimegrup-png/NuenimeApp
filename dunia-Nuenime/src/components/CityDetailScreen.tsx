@@ -4,7 +4,6 @@ import {
   Users,
   Shield,
   BookOpen,
-  Sparkles,
   Map as MapIcon,
   ChevronRight,
   Search,
@@ -833,8 +832,7 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
               </div>
 
               <div className="flex items-center justify-between rounded-xl border border-sky-500/35 bg-sky-950/30 px-2.5 py-1.5">
-                <span className="inline-flex items-center gap-1 text-sky-300 font-semibold">
-                  <Sparkles className="h-3.5 w-3.5" />
+                <span className="text-sky-300 font-semibold text-xs">
                   Total EXP
                 </span>
                 <span className="font-mono font-bold text-white tabular-nums">
@@ -1274,7 +1272,7 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
                 </div>
               </div>
               <div className="flex items-start gap-2">
-                <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
                 <div>
                   <span className="font-semibold text-slate-200">Fenomena Sihir: </span>
                   <span className="text-slate-400">{city.magicPhenomenon}</span>
