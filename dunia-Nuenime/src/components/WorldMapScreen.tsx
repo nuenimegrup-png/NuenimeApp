@@ -739,7 +739,7 @@ export const WorldMapScreen: React.FC<WorldMapScreenProps> = ({
                               </span>
                             </div>
                             <div className="truncate text-[10.5px] text-slate-400">
-                              Pemimpin: {c.leaderProfile.displayName} · Bos: {c.boss.name}
+                              Kota Terbuka · Bos: {c.boss.name}
                             </div>
                           </div>
                         </div>

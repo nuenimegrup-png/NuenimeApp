@@ -17,6 +17,7 @@ import { hapticLight, hapticSuccess, hapticWarning } from "@/lib/haptics";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { getTierForLevel } from "@/components/level-progress-modal";
 import { DuniaView } from "@/components/dunia/dunia-view";
+import { getCrystalBalance, deductCrystalBalance } from "@/lib/topup-service";
 
 // Default URL deploy Vercel atau local dev server
 const DEFAULT_DUNIA_URL =
@@ -89,6 +90,41 @@ export default function DuniaNuenimeScreen() {
     return () => clearInterval(interval);
   }, []);
 
+  // Saldo Crystal Nuenime untuk Pembuatan Klan (2.000 Crystal)
+  const [userCrystals, setUserCrystals] = useState<number>(0);
+
+  useEffect(() => {
+    let mounted = true;
+    getCrystalBalance(auth.user?.id)
+      .then((bal) => {
+        if (mounted) setUserCrystals(bal);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [auth.user?.id]);
+
+  // Handle postMessage dari Dunia Nuenime webview/iframe untuk potong saldo crystal
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+
+    const handleWebMessage = async (event: MessageEvent) => {
+      try {
+        const data = event.data;
+        if (data && data.type === "DEDUCT_CRYSTALS") {
+          const amount = Number(data.amount) || 2000;
+          await deductCrystalBalance(auth.user?.id, amount);
+          const newBal = await getCrystalBalance(auth.user?.id);
+          setUserCrystals(newBal);
+        }
+      } catch {}
+    };
+
+    window.addEventListener("message", handleWebMessage);
+    return () => window.removeEventListener("message", handleWebMessage);
+  }, [auth.user?.id]);
+
   // Susun URL dengan identitas akun Nuenime terintegrasi
   const userLevel = Number(auth.profile?.level) || 1;
   const tierInfo = getTierForLevel(userLevel);
@@ -109,9 +145,10 @@ export default function DuniaNuenimeScreen() {
       avatar: avatarUrl,
       border: equippedBorder,
       vip: isVip ? "1" : "0",
+      crystals: String(userCrystals),
     });
     return `${baseUrl}/?${params.toString()}`;
-  }, [userId, displayName, userLevel, rankName, avatarUrl, equippedBorder, isVip]);
+  }, [userId, displayName, userLevel, rankName, avatarUrl, equippedBorder, isVip, userCrystals]);
 
   const handleBack = () => {
     hapticLight();

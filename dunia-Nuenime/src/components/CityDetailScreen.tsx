@@ -110,6 +110,7 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
     switchDemoAccount,
     canCreateClanInCity,
     createClanInCity,
+    userCrystals,
     getCityClansLeaderboard,
     attackWorldBoss,
     resetWorldBoss,
@@ -446,6 +447,14 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
     e.preventDefault();
     if (isSubmittingClan) return;
     setCreateClanError(null);
+
+    if (userCrystals < 2000) {
+      setCreateClanError(
+        `Crystal tidak mencukupi! Anda butuh 2.000 Crystal untuk mendirikan klan (Saldo Anda: ${userCrystals.toLocaleString('id-ID')}).`
+      );
+      return;
+    }
+
     setIsSubmittingClan(true);
 
     const requestKey = `create-${city.id}-${newClanName.trim().toLowerCase()}-${Math.floor(Date.now() / 2000)}`;
@@ -777,33 +786,38 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
           <ClanMenuLoadingScreen
             compact
             title={`Memuat Aula Klan Kota ${city.name}`}
-            subtitle={`Kapasitas ${city.clans.length}/${city.maxClans} Klan · Pemimpin ${city.leaderProfile.displayName}`}
+            subtitle={`Kapasitas ${city.clans.length}/${city.maxClans} Klan · Wilayah Terbuka Komunitas`}
             accentColor={city.accentHex}
           />
         ) : (
         <div className="nuenime-scroll flex-1 space-y-3.5 overflow-y-auto px-3.5 py-3.5">
-          {/* Card 1: Status Progres Kota, Pemimpin Kota & Pembuatan Klan (Maks 15 Klan) */}
+          {/* Card 1: Status Progres Kota & Pembuatan Klan (Biaya 2.000 Crystal, Bebas Masuk) */}
           <div className="rounded-2xl border border-sky-400/35 bg-slate-900/85 p-3.5 space-y-2.5">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-sky-300">
-                  <span>Progres Independen Kota {city.name}</span>
+                  <span>Kota Terbuka Komunitas Nuenime</span>
                   <span>·</span>
                   <span className="font-mono text-amber-300">
                     Lv.{city.level} ({city.tier})
                   </span>
                 </div>
                 <h2 className="font-display text-sm font-bold text-white">
-                  Pemimpin: {city.leaderProfile.displayName}{' '}
+                  Kota {city.name}{' '}
                   <span className="text-[10.5px] font-normal text-slate-400">
-                    ({city.leaderProfile.title})
+                    ({city.epithet})
                   </span>
                 </h2>
               </div>
 
-              <span className="rounded-lg border border-amber-400/50 bg-amber-950/70 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-200 shrink-0">
-                {city.clans.length}/{city.maxClans} Klan
-              </span>
+              <div className="flex flex-col items-end gap-1">
+                <span className="rounded-lg border border-amber-400/50 bg-amber-950/70 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-200 shrink-0">
+                  {city.clans.length}/{city.maxClans} Klan
+                </span>
+                <span className="rounded-md border border-sky-400/40 bg-sky-950/80 px-1.5 py-0.5 font-mono text-[9.5px] font-bold text-sky-200">
+                  💎 {userCrystals.toLocaleString('id-ID')}
+                </span>
+              </div>
             </div>
 
             {/* City HP & EXP Bar */}
@@ -847,7 +861,7 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
               </div>
             </div>
 
-            {/* Create Clan Action / Role Permission Notice */}
+            {/* Create Clan Action / Crystal Fee Notice */}
             <div className="border-t border-slate-800 pt-2.5">
               {createPermission.allowed ? (
                 <button
@@ -860,25 +874,16 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
                 >
                   <PlusCircle className="h-4 w-4" />
                   <span>
-                    Buat Klan Baru di {city.name} ({city.clans.length}/{city.maxClans})
+                    Buat Klan Baru di {city.name} (Biaya: 2.000 💎)
                   </span>
                 </button>
               ) : (
-                <div className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/80 p-2.5 text-[11px]">
+                <div className="flex flex-col gap-2 rounded-xl border border-rose-500/40 bg-slate-950/80 p-2.5 text-[11px]">
                   <div className="text-slate-300">{createPermission.reason}</div>
-                  {activeAccount.id !== city.leaderId &&
-                    city.clans.length < city.maxClans && (
-                      <button
-                        type="button"
-                        onClick={() => switchDemoAccount(city.leaderId)}
-                        className="flex min-h-[34px] items-center justify-center gap-1.5 rounded-lg border border-amber-400/50 bg-amber-500/20 px-3 py-1 text-xs font-semibold text-amber-200 hover:bg-amber-500/30"
-                      >
-                        <UserCheck className="h-3.5 w-3.5" />
-                        <span>
-                          Beralih ke Akun Demo Pemimpin {city.name} ({city.leaderProfile.displayName})
-                        </span>
-                      </button>
-                    )}
+                  <div className="flex items-center justify-between text-[10.5px] text-slate-400">
+                    <span>Saldo Crystal Anda:</span>
+                    <span className="font-mono font-bold text-amber-300">{userCrystals.toLocaleString('id-ID')} 💎</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -1316,6 +1321,27 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
             </div>
 
             <form onSubmit={handleCreateClanSubmit} className="mt-3 space-y-3 text-xs">
+              {/* Kartu Biaya Crystal Pendirian Klan */}
+              <div className="flex items-center justify-between rounded-xl border border-sky-400/40 bg-sky-950/60 p-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">💎</span>
+                  <div>
+                    <div className="text-xs font-bold text-sky-200">Biaya Pendirian Klan</div>
+                    <div className="text-[10.5px] text-slate-300">2.000 Crystal Nuenime</div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-slate-400">Saldo Crystal Anda</div>
+                  <div
+                    className={`font-mono text-xs font-bold ${
+                      userCrystals >= 2000 ? 'text-emerald-300' : 'text-rose-400'
+                    }`}
+                  >
+                    {userCrystals.toLocaleString('id-ID')} 💎
+                  </div>
+                </div>
+              </div>
+
               {createClanError && (
                 <div className="rounded-xl border border-rose-500/50 bg-rose-950/40 p-2.5 text-rose-200">
                   {createClanError}

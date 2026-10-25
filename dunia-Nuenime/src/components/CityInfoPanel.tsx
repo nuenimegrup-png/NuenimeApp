@@ -117,8 +117,8 @@ export const CityInfoPanel: React.FC<CityInfoPanelProps> = ({
 
               <div className="flex items-center gap-1 rounded-lg border border-amber-500/35 bg-amber-950/35 px-2 py-1 text-amber-200">
                 <Shield className="h-3 w-3 shrink-0 text-amber-300" />
-                <span className="truncate" title={city.leaderProfile.displayName}>
-                  {city.leaderProfile.displayName}
+                <span className="truncate">
+                  Kota Terbuka ({city.clans.length} Klan)
                 </span>
               </div>
             </div>

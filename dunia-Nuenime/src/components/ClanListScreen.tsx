@@ -121,7 +121,7 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
           }
           subtitle={
             activeCityObj
-              ? `Menyinkronkan ${activeCityObj.clans.length}/${activeCityObj.maxClans} Klan · Pemimpin ${activeCityObj.leaderProfile.displayName}`
+              ? `Menyinkronkan ${activeCityObj.clans.length}/${activeCityObj.maxClans} Klan · Wilayah Terbuka ${activeCityObj.name}`
               : `Memuat ${globalWorldStats.totalClansCount} Klan & ${globalWorldStats.totalClanMembersCount} Anggota Dunia Nuenime`
           }
           accentColor={activeCityObj?.accentHex ?? '#38BDF8'}

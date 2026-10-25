@@ -58,6 +58,7 @@ export const CompanionTabScreens: React.FC<CompanionTabProps> = ({
     joinedClanId,
     playerContribution,
     globalWorldStats,
+    userCrystals,
   } = useNuenimeRpg();
 
   if (activeTab === 'beranda') {
@@ -193,9 +194,9 @@ export const CompanionTabScreens: React.FC<CompanionTabProps> = ({
 
           <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-800 pt-3 text-center">
             <div>
-              <div className="text-[10.5px] text-slate-400">Peran Sistem</div>
+              <div className="text-[10.5px] text-slate-400">Saldo Crystal</div>
               <div className="mt-0.5 text-xs font-bold text-amber-300">
-                {activeAccount.role === 'CITY_LEADER' ? 'Pemimpin Kota' : 'Anggota Klan'}
+                💎 {userCrystals.toLocaleString('id-ID')}
               </div>
             </div>
             <div>

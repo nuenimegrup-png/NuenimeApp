@@ -237,6 +237,11 @@ interface NuenimeRpgContextValue {
   switchDemoAccount: (accountId: string) => void;
   canCreateClanInCity: (cityId: CityId) => { allowed: boolean; reason: string };
 
+  // Crystals & Economy (Pembuatan Klan Biaya 2.000 Crystal)
+  userCrystals: number;
+  deductCrystals: (amount: number) => boolean;
+  addCrystals: (amount: number) => void;
+
   // Clan Creation & Membership (15 Clans/City, 100 Members/Clan)
   createClanInCity: (
     input: CreateClanInput,
@@ -356,7 +361,75 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [repo.cityBosses]
   );
 
+  // Saldo Crystal (Diinisialisasi dari parameter 'crystals' Nuenime App atau LocalStorage)
+  const [userCrystals, setUserCrystals] = useState<number>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const queryCrystals = params.get('crystals');
+        if (queryCrystals !== null && !isNaN(parseInt(queryCrystals, 10))) {
+          return parseInt(queryCrystals, 10);
+        }
+        const saved = window.localStorage.getItem('nuenime_rpg_crystals');
+        if (saved !== null && !isNaN(parseInt(saved, 10))) {
+          return parseInt(saved, 10);
+        }
+      }
+    } catch {}
+    return 2500; // Default uji coba lokal agar cukup mendirikan klan (2.000 Crystal)
+  });
+
+  const deductCrystals = useCallback((amount: number): boolean => {
+    if (userCrystals < amount) return false;
+    const next = userCrystals - amount;
+    setUserCrystals(next);
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('nuenime_rpg_crystals', String(next));
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'DEDUCT_CRYSTALS', amount }, '*');
+        }
+      }
+    } catch {}
+    return true;
+  }, [userCrystals]);
+
+  const addCrystals = useCallback((amount: number) => {
+    setUserCrystals((prev) => {
+      const next = prev + amount;
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('nuenime_rpg_crystals', String(next));
+        }
+      } catch {}
+      return next;
+    });
+  }, []);
+
   const activeAccount: ActiveDemoAccount = useMemo(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const name = params.get('name');
+        const uid = params.get('uid');
+        const rank = params.get('rank');
+        const level = params.get('level');
+        if (name) {
+          return {
+            id: uid || 'nuenime-adventurer',
+            displayName: name,
+            handle: `@${name.toLowerCase().replace(/\s+/g, '_')}`,
+            title: `Petualang Nuenime (${rank || 'ETERNAL'} Lv.${level || '1'})`,
+            role: 'CLAN_MEMBER',
+            ledCityId: null,
+            joinedClanId: repo.joinedClanId,
+            isDemoAccount: true,
+            isAppAdmin: false,
+          };
+        }
+      }
+    } catch {}
+
     const base =
       DEMO_SWITCHABLE_ACCOUNTS.find((a) => a.id === repo.activeAccountId) ??
       DEMO_SWITCHABLE_ACCOUNTS[0];
@@ -376,18 +449,15 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         activeAccountId: target.id,
         joinedClanId: target.joinedClanId || prev.joinedClanId,
       }));
-      showToast(
-        target.role === 'CITY_LEADER'
-          ? `Beralih ke Akun Demo: ${target.displayName}`
-          : `Beralih ke Akun Demo Anggota: ${target.displayName}`
-      );
+      showToast(`Beralih ke Akun: ${target.displayName}`);
     },
     [showToast]
   );
 
   /**
-   * Memeriksa hak akses pembuatan klan di suatu kota (Bagian 2 & 3):
-   * - Pemimpin Kota hanya boleh membuat klan di kota yang dipimpinnya.
+   * Memeriksa hak akses pembuatan klan di suatu kota:
+   * - SEMUA user di Nuenime dapat mendirikan klan di kota mana saja tanpa batasan pemimpin kota.
+   * - Biaya pembuatan klan adalah 2.000 Crystal.
    * - Kapasitas maksimal adalah 15 klan per kota.
    */
   const canCreateClanInCity = useCallback(
@@ -402,27 +472,18 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           reason: `Kapasitas kota ${city.name} telah penuh (${city.clans.length}/${NUENIME_SYSTEM_LIMITS.MAX_CLANS_PER_CITY} Klan).`,
         };
       }
-      if (activeAccount.role !== 'CITY_LEADER') {
+      if (userCrystals < 2000) {
         return {
           allowed: false,
-          reason: `Hanya Pemimpin Kota ${city.name} (${DEMO_CITY_LEADERS[cityId].displayName}) yang memiliki hak membuat klan di kota ini.`,
-        };
-      }
-      if (activeAccount.ledCityId !== cityId) {
-        const ownCityName = activeAccount.ledCityId
-          ? DEMO_CITY_LEADERS[activeAccount.ledCityId]?.cityName
-          : '-';
-        return {
-          allowed: false,
-          reason: `Anda adalah Pemimpin Kota ${ownCityName}. Pemimpin kota tidak dapat membuat klan di kota lain (${city.name}).`,
+          reason: `Crystal tidak mencukupi! Membutuhkan 2.000 Crystal untuk mendirikan klan di ${city.name} (Crystal Anda: ${userCrystals.toLocaleString('id-ID')}).`,
         };
       }
       return {
         allowed: true,
-        reason: `Anda berhak membuat klan di ${city.name} (${city.clans.length}/${NUENIME_SYSTEM_LIMITS.MAX_CLANS_PER_CITY} Klan).`,
+        reason: `Semua petualang Nuenime bebas mendirikan klan di ${city.name} dengan biaya 2.000 Crystal (Crystal Anda: ${userCrystals.toLocaleString('id-ID')}).`,
       };
     },
-    [activeAccount.ledCityId, activeAccount.role, repo.cities]
+    [repo.cities, userCrystals]
   );
 
   /**
@@ -447,6 +508,14 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const permission = canCreateClanInCity(input.cityId);
       if (!permission.allowed) {
         return { ok: false, message: permission.reason };
+      }
+
+      // Periksa saldo Crystal untuk mendirikan klan (2.000 Crystal)
+      if (userCrystals < 2000) {
+        return {
+          ok: false,
+          message: `Crystal Anda tidak mencukupi untuk membuat klan! Membutuhkan 2.000 Crystal (Saldo Anda: ${userCrystals.toLocaleString('id-ID')}).`,
+        };
       }
 
       const cleanName = input.name.trim();
@@ -501,6 +570,9 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         };
       }
 
+      // Potong 2.000 Crystal
+      deductCrystals(2000);
+
       const nowIso = new Date().toISOString();
       const newClanId = `clan-${input.cityId}-${Date.now()}`;
       const existingCount = targetCity.clans.length;
@@ -536,7 +608,7 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         accentColor: input.accentColor || targetCity.accentHex,
         motto: cleanMotto,
         description: cleanDesc,
-        historyLore: `Didirikan secara resmi di ${targetCity.name} oleh Pemimpin Kota ${activeAccount.displayName} untuk memperkuat distrik ${input.strongholdDistrict}.`,
+        historyLore: `Didirikan secara resmi di ${targetCity.name} oleh ${activeAccount.displayName} untuk memperkuat distrik ${input.strongholdDistrict}.`,
         founderId: activeAccount.id,
         leaderId: founderMember.userId,
         leaderName: founderMember.name,
@@ -591,7 +663,7 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       const updatedCount = existingCount + 1;
       showToast(
-        `Klan "${cleanName}" berhasil didirikan di ${targetCity.name} (${updatedCount}/${NUENIME_SYSTEM_LIMITS.MAX_CLANS_PER_CITY} Klan)!`
+        `Klan "${cleanName}" resmi didirikan di ${targetCity.name} (-2.000 Crystal)! (${updatedCount}/${NUENIME_SYSTEM_LIMITS.MAX_CLANS_PER_CITY} Klan)`
       );
 
       return {
@@ -600,7 +672,7 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         createdClan: newClan,
       };
     },
-    [activeAccount.displayName, activeAccount.id, allClans, canCreateClanInCity, repo.cities, showToast]
+    [activeAccount.displayName, activeAccount.id, allClans, canCreateClanInCity, deductCrystals, repo.cities, showToast, userCrystals]
   );
 
   /**
@@ -1206,6 +1278,9 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         switchDemoAccount,
         canCreateClanInCity,
         createClanInCity,
+        userCrystals,
+        deductCrystals,
+        addCrystals,
         joinedClanId: repo.joinedClanId,
         joinClan,
         worldBosses: repo.cityBosses,

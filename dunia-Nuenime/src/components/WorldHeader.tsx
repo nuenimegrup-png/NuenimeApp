@@ -39,6 +39,7 @@ export const WorldHeader: React.FC<WorldHeaderProps> = ({
     activeRoute,
     activeAccount,
     cities,
+    userCrystals,
   } = useNuenimeRpg();
 
   const cycleTimeOfDay = () => {
@@ -49,10 +50,6 @@ export const WorldHeader: React.FC<WorldHeaderProps> = ({
     };
     setTimeOfDay(next[timeOfDay]);
   };
-
-  const ledCity = activeAccount.ledCityId
-    ? cities.find((c) => c.id === activeAccount.ledCityId)
-    : undefined;
 
   return (
     <header className="pointer-events-none absolute top-0 left-0 right-0 z-30 flex flex-col gap-1.5 px-2.5 pt-2.5">
@@ -80,19 +77,25 @@ export const WorldHeader: React.FC<WorldHeaderProps> = ({
                 <h1 className="font-display truncate text-[14.5px] leading-tight font-bold tracking-wide text-white">
                   Dunia Nuenime
                 </h1>
-                <span className="rounded border border-amber-400/50 bg-amber-950/90 px-1 py-0.2 font-mono text-[8.5px] font-bold text-amber-200 whitespace-nowrap">
-                  DEMO
+                <span className="rounded border border-sky-400/50 bg-sky-950/90 px-1.5 py-0.2 font-mono text-[8.5px] font-bold text-sky-200 whitespace-nowrap">
+                  RPG
                 </span>
               </div>
               <p className="truncate text-[10px] leading-tight font-medium text-slate-300">
-                {activeAccount.role === 'CITY_LEADER'
-                  ? `Pemimpin Kota ${ledCity?.name ?? ''} (${activeAccount.displayName})`
-                  : `Anggota Klan (${activeAccount.displayName})`}
+                {activeAccount.displayName} · Petualang Nuenime
               </p>
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1.5">
+            {/* Saldo Crystal Nuenime Badge */}
+            <div
+              title="Saldo Crystal Anda (Diperlukan 2.000 Crystal untuk membuat klan)"
+              className="flex h-8 items-center gap-1 rounded-full border border-sky-400/50 bg-sky-950/90 px-2 font-mono text-[11px] font-bold text-sky-200 shadow-sm"
+            >
+              <span className="text-xs">💎</span>
+              <span className="tabular-nums">{userCrystals.toLocaleString('id-ID')}</span>
+            </div>
             {/* Demo Account Switcher Button (7 Pemimpin Kota & Anggota) */}
             <button
               type="button"
