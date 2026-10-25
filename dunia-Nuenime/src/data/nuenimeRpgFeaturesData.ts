@@ -343,94 +343,14 @@ export function getClanRelicInfo(
   cityName: string,
   specialization: string
 ): ClanRelicInfo {
-  const catalog: Record<string, Omit<ClanRelicInfo, 'clanId'>> = {
-    'clan-seraph-vanguard': {
-      relicName: 'Tombak Cahaya Seraphim',
-      relicTitle: 'Pusaka Suci Puncak Celestia',
-      elementBuffName: 'Perisai Cahaya & Pemulihan',
-      baseBonusPercent: 15,
-      bonusPerLevel: 4,
-      lore: 'Tombak kristal perak yang memancarkan sinar aurora dan meningkatkan pertahanan seluruh anggota klan.',
-    },
-    'clan-frostguard': {
-      relicName: 'Perisai Es Abadi Boreas',
-      relicTitle: 'Relik Garda Gletser',
-      elementBuffName: 'Penetrasi Es & Ketahanan Beku',
-      baseBonusPercent: 14,
-      bonusPerLevel: 4,
-      lore: 'Perisai yang ditempa dari es seribu tahun yang tak pernah retak oleh serangan naga.',
-    },
-    'clan-aurora-archive': {
-      relicName: 'Lentera Bintang Utara',
-      relicTitle: 'Fokus Arcane Observatorium',
-      elementBuffName: 'Kapasitas Mana & Akurasi Mantra',
-      baseBonusPercent: 16,
-      bonusPerLevel: 5,
-      lore: 'Lentera suci yang menyimpan cahaya bintang fajar untuk memperkuat mantra barikade.',
-    },
-    'clan-silver-tide': {
-      relicName: 'Trisula Pasang Purnama',
-      relicTitle: 'Pusaka Laksamana Lunaris',
-      elementBuffName: 'Kecepatan Armada & Serangan Air',
-      baseBonusPercent: 15,
-      bonusPerLevel: 4,
-      lore: 'Trisula perak biru yang mampu membelah ombak badai dan memanggil arus pelindung.',
-    },
-    'clan-sylvan-wardens': {
-      relicName: 'Busur Angin Yggdra-Sylph',
-      relicTitle: 'Pusaka Penjaga Rimba',
-      elementBuffName: 'Serangan Kritikal & Kecepatan Angin',
-      baseBonusPercent: 16,
-      bonusPerLevel: 4,
-      lore: 'Busur dari dahan pohon suci Velmora yang anak panahnya selalu dituntun oleh roh angin.',
-    },
-    'clan-golden-sovereign': {
-      relicName: 'Pedang Agung Sovereign Rex',
-      relicTitle: 'Regalia Mahkota Eldoria',
-      elementBuffName: 'Otoritas Komando & Serangan Cahaya Emas',
-      baseBonusPercent: 18,
-      bonusPerLevel: 5,
-      lore: 'Pedang pusaka Kaisar Pertama Eldoria yang membangkitkan semangat tempur seluruh legiun.',
-    },
-    'clan-crimson-fang': {
-      relicName: 'Pedang Taring Ignis',
-      relicTitle: 'Pusaka Kawah Obsidian',
-      elementBuffName: 'Daya Hancur Magma & Penembus Zirah',
-      baseBonusPercent: 18,
-      bonusPerLevel: 5,
-      lore: 'Bilah obsidian merah menyala yang ditempa langsung di jantung gunung berapi Drakonia.',
-    },
-    'clan-sun-mirage': {
-      relicName: 'Ankh Cakrawala Surya',
-      relicTitle: 'Relik Agung Ziggurat Nivara',
-      elementBuffName: 'Refraksi Surya & Kekebalan Gurun',
-      baseBonusPercent: 15,
-      bonusPerLevel: 4,
-      lore: 'Tongkat emas kuarsa yang memfokuskan terik matahari menjadi perisai fatamorgana.',
-    },
-    'clan-void-stargazers': {
-      relicName: 'Orb Konstelasi Astral',
-      relicTitle: 'Inti Nexus Bintang Jatuh',
-      elementBuffName: 'Resonansi Kosmik & Manipulasi Gravitasi',
-      baseBonusPercent: 17,
-      bonusPerLevel: 5,
-      lore: 'Bola kristal meteorit ungu yang memetakan pergerakan dimensi dan melipatgandakan daya sihir.',
-    },
-  };
-
-  const found = catalog[clanId];
-  if (found) {
-    return { clanId, ...found };
-  }
-
   return {
     clanId,
-    relicName: `Relik Pusaka ${cityName}`,
-    relicTitle: 'Artefak Kuno Markas Klan',
-    elementBuffName: `Penguatan ${specialization}`,
-    baseBonusPercent: 14,
+    relicName: `Pusaka Suci ${cityName}`,
+    relicTitle: `Artefak Pusaka ${specialization || 'Komunitas'}`,
+    elementBuffName: `Aura Kejayaan ${cityName}`,
+    baseBonusPercent: 15,
     bonusPerLevel: 4,
-    lore: `Artefak pusaka yang diwariskan oleh pendiri klan di ${cityName} untuk melipatgandakan kekuatan elemen anggota.`,
+    lore: `Artefak pusaka legendaris yang ditempa oleh pendiri klan di ${cityName} untuk memperkuat seluruh anggota klan.`,
   };
 }
 
