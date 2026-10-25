@@ -91,7 +91,9 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
   const [newClanDistrict, setNewClanDistrict] = useState('Distrik Benteng Utama');
   const [newClanSpec, setNewClanSpec] = useState(`Pertahanan & Komunitas ${city.element}`);
   const [newClanEmblem, setNewClanEmblem] = useState<ClanEmblemVariant>('solar-crown');
-  const [newClanLogoUrl, setNewClanLogoUrl] = useState('');
+  const [newClanLogoUrl, setNewClanLogoUrl] = useState(
+    'https://i.ibb.co.com/5h3d91xW/Black-and-White-Urban-Graffiti-Spray-Junior-Hype-Logo-2.png'
+  );
   const [createClanError, setCreateClanError] = useState<string | null>(null);
   const [isSubmittingClan, setIsSubmittingClan] = useState(false);
 

@@ -174,13 +174,40 @@ function buildDefaultLevelHistory(): Record<CityId, CityLevelHistoryRecord[]> {
   };
 }
 
+export const USER_SIMULATION_CLAN_LOGO =
+  'https://i.ibb.co.com/5h3d91xW/Black-and-White-Urban-Graffiti-Spray-Junior-Hype-Logo-2.png';
+
+function applySimulationClanLogo(cities: WorldCity[], joinedClanId?: string): WorldCity[] {
+  return cities.map((city) => ({
+    ...city,
+    clans: city.clans.map((clan) => {
+      if (
+        (joinedClanId && clan.id === joinedClanId) ||
+        clan.name.toLowerCase().includes('aprizalaa') ||
+        clan.tag.toUpperCase() === 'APR' ||
+        clan.id === 'clan-golden-sovereign' ||
+        clan.id === 'clan-seraph-vanguard'
+      ) {
+        return {
+          ...clan,
+          logoUrl: clan.logoUrl || USER_SIMULATION_CLAN_LOGO,
+        };
+      }
+      return clan;
+    }),
+  }));
+}
+
 function loadInitialRepositoryState(): PersistedRepositoryState {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<PersistedRepositoryState>;
       if (parsed.cities && Array.isArray(parsed.cities) && parsed.cities.length === 7) {
-        const reconciledCities = verifyAndReconcileWorldCities(parsed.cities);
+        const reconciledCities = applySimulationClanLogo(
+          verifyAndReconcileWorldCities(parsed.cities),
+          parsed.joinedClanId
+        );
         return {
           cities: reconciledCities,
           cityBosses:
@@ -205,7 +232,8 @@ function loadInitialRepositoryState(): PersistedRepositoryState {
     // Fallback to clean seed
   }
 
-  const reconciledSeed = verifyAndReconcileWorldCities(SEED_WORLD_CITIES);
+  const baseSeed = verifyAndReconcileWorldCities(SEED_WORLD_CITIES);
+  const reconciledSeed = applySimulationClanLogo(baseSeed, 'clan-seraph-vanguard');
   return {
     cities: reconciledSeed,
     cityBosses: INITIAL_CITY_BOSSES,
