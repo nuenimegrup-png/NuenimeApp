@@ -13,6 +13,7 @@ import {
 import { WorldCity, Clan, BottomNavTab } from '../types/nuenime';
 import { CityEmblemBadge, ClanEmblemIcon, CompassRoseIcon, NuenimeCrestIcon } from './icons/NuenimeAssets';
 import { useNuenimeRpg } from '../context/NuenimeRpgContext';
+import { ClanSettingsScreen } from './ClanSettingsScreen';
 
 interface CompanionTabProps {
   activeTab: Exclude<BottomNavTab, 'dunia' | 'klan'>;
@@ -334,96 +335,14 @@ export const CompanionTabScreens: React.FC<CompanionTabProps> = ({
     );
   }
 
-  // Tab "lainnya": Arsitektur & Katalog Aset Visual Dunia Nuenime
+  // Tab "lainnya" (Pengaturan): Pengaturan Klan, Ganti Nama, Logo, Profil & Jabatan Anggota
   return (
-    <div className="nuenime-scroll flex h-full w-full flex-col overflow-y-auto bg-[#070d19] px-3.5 py-3.5 text-slate-100">
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <Layers className="h-5 w-5 text-sky-300" />
-            <div>
-              <h1 className="font-display text-sm font-bold text-white">
-                Arsitektur Sistem Dunia Nuenime
-              </h1>
-              <p className="text-[11px] text-slate-400">
-                7 Kota · 7 Pemimpin Demo · 7 Bos Unik · Aliran EXP
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => onSwitchTab('dunia')}
-            className="rounded-lg border border-sky-400/50 bg-sky-500/20 px-2.5 py-1 text-xs font-semibold text-sky-200"
-          >
-            Ke Peta
-          </button>
-        </div>
-
-        <div className="mt-3 space-y-1.5 rounded-xl border border-slate-800 bg-slate-950/80 p-2.5 text-xs text-slate-300">
-          <div className="font-semibold text-white">Rantai Aliran EXP Terintegrasi:</div>
-          <div className="font-mono text-[11px] text-sky-300">
-            Aktivitas Simulasi Anggota → EXP Anggota → EXP Klan → Total EXP Kota → Level & Tier Kota
-          </div>
-          <div className="flex items-center gap-1.5 pt-1 text-[11px] text-emerald-300">
-            <Heart className="h-3.5 w-3.5 shrink-0" />
-            <span>HP Kota (10.000/10.000) terpisah sepenuhnya dari HP Bos Kota.</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Daftar Aset Visual Terorganisasi */}
-      <div className="mt-3.5 rounded-2xl border border-slate-800 bg-slate-900/75 p-3.5">
-        <div className="mb-2.5 flex items-center gap-2">
-          <FolderOpen className="h-4 w-4 text-amber-300" />
-          <h2 className="font-display text-sm font-bold text-white">
-            Resource Aset Visual Terpisah (/assets/nuenime/)
-          </h2>
-        </div>
-
-        <div className="divide-y divide-slate-800/80">
-          {PREPARED_ANDROID_ASSETS.map((asset) => (
-            <div
-              key={asset.name}
-              className="flex items-center justify-between gap-2 py-2 first:pt-0 last:pb-0 text-xs"
-            >
-              <div className="min-w-0">
-                <div className="font-mono text-[11.5px] font-semibold text-sky-200 truncate">
-                  {asset.name}
-                </div>
-                <div className="text-[10.5px] text-slate-400 truncate">{asset.role}</div>
-              </div>
-              <a
-                href={asset.path}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1 text-[10.5px] font-medium text-slate-200 hover:border-sky-400/50 hover:text-white shrink-0"
-              >
-                Lihat File
-              </a>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Pintasan Cepat */}
-      <div className="mt-3.5 grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => onSwitchTab('dunia')}
-          className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 p-3 text-xs font-semibold text-white hover:border-sky-400/50"
-        >
-          <MapPin className="h-4 w-4 text-sky-300" />
-          <span>Peta Dunia</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onSwitchTab('klan')}
-          className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 p-3 text-xs font-semibold text-white hover:border-sky-400/50"
-        >
-          <Shield className="h-4 w-4 text-amber-300" />
-          <span>Leaderboard Klan</span>
-        </button>
-      </div>
-    </div>
+    <ClanSettingsScreen
+      clans={clans}
+      cities={cities}
+      onSwitchTab={onSwitchTab}
+      onOpenClanDetail={onOpenClanDetail}
+    />
   );
 };
+

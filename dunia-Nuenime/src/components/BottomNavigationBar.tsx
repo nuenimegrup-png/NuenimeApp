@@ -1,11 +1,11 @@
 import React from 'react';
+import { Settings } from 'lucide-react';
 import { BottomNavTab } from '../types/nuenime';
 import {
   NavHomeFantasyIcon,
   NavCharacterFantasyIcon,
   NavWorldCompassIcon,
   NavClanCrestIcon,
-  NavMoreGridIcon,
 } from './icons/NuenimeAssets';
 
 interface BottomNavigationBarProps {
@@ -18,7 +18,7 @@ const NAV_ITEMS: Array<{ id: BottomNavTab; label: string }> = [
   { id: 'karakter', label: 'Karakter' },
   { id: 'dunia', label: 'Dunia' },
   { id: 'klan', label: 'Klan' },
-  { id: 'lainnya', label: 'Lainnya' },
+  { id: 'lainnya', label: 'Pengaturan' },
 ];
 
 /**
@@ -76,7 +76,9 @@ export const BottomNavigationBar: React.FC<BottomNavigationBarProps> = ({
                 {item.id === 'karakter' && <NavCharacterFantasyIcon active={isActive} />}
                 {item.id === 'dunia' && <NavWorldCompassIcon active={isActive} />}
                 {item.id === 'klan' && <NavClanCrestIcon active={isActive} />}
-                {item.id === 'lainnya' && <NavMoreGridIcon active={isActive} />}
+                {item.id === 'lainnya' && (
+                  <Settings className={`h-5 w-5 transition-colors ${isActive ? 'text-sky-300' : 'text-slate-400'}`} />
+                )}
               </div>
 
               <span

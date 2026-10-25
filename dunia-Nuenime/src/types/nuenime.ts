@@ -124,13 +124,23 @@ export interface CityBossRecord {
 /**
  * 4. SISTEM ANGGOTA KLAN (MAKSIMAL 100 ANGGOTA PER KLAN)
  */
+export type ClanRoleTitle =
+  | 'Pemimpin Klan'
+  | 'Wakil Pemimpin'
+  | 'Tetua Klan'
+  | 'Panglima Ksatria'
+  | 'Arkanis Agung'
+  | 'Ksatria Inti'
+  | 'Anggota'
+  | 'Rekrut Baru';
+
 export interface ClanMember {
   id: string;
   userId: string;
   clanId: string;
   cityId: CityId;
   name: string;
-  role: 'Pemimpin Klan' | 'Wakil Pemimpin' | 'Tetua' | 'Ksatria Inti' | 'Anggota';
+  role: ClanRoleTitle | string;
   title: string;
   elementAffinity: string;
   joinedAt: string;

@@ -276,6 +276,21 @@ interface NuenimeRpgContextValue {
     idempotencyKey?: string
   ) => { ok: boolean; message: string; createdClan?: Clan };
   updateClanLogo: (clanId: string, logoUrl: string) => { ok: boolean; message: string };
+  updateClanProfile: (
+    clanId: string,
+    updates: {
+      name?: string;
+      tag?: string;
+      motto?: string;
+      description?: string;
+      logoUrl?: string;
+    }
+  ) => { ok: boolean; message: string };
+  updateMemberRole: (
+    clanId: string,
+    memberId: string,
+    newRole: string
+  ) => { ok: boolean; message: string };
   joinedClanId: string;
   joinClan: (clanId: string) => { ok: boolean; message: string };
 
@@ -830,6 +845,82 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [showToast]
   );
 
+  const updateClanProfile = useCallback(
+    (
+      clanId: string,
+      updates: {
+        name?: string;
+        tag?: string;
+        motto?: string;
+        description?: string;
+        logoUrl?: string;
+      }
+    ): { ok: boolean; message: string } => {
+      setRepo((prev) => {
+        let found = false;
+        const nextCities = prev.cities.map((city) => {
+          const nextClans = city.clans.map((clan) => {
+            if (clan.id === clanId) {
+              found = true;
+              return {
+                ...clan,
+                name: updates.name?.trim() ? updates.name.trim() : clan.name,
+                tag: updates.tag?.trim() ? updates.tag.trim().toUpperCase() : clan.tag,
+                motto: updates.motto !== undefined ? updates.motto.trim() : clan.motto,
+                description:
+                  updates.description !== undefined ? updates.description.trim() : clan.description,
+                logoUrl:
+                  updates.logoUrl !== undefined
+                    ? updates.logoUrl.trim() || undefined
+                    : clan.logoUrl,
+              };
+            }
+            return clan;
+          });
+          return { ...city, clans: nextClans };
+        });
+        if (!found) return prev;
+        const nextState = { ...prev, cities: nextCities };
+        saveStoredRepository(nextState);
+        return nextState;
+      });
+      showToast('Pengaturan profil klan berhasil disimpan!');
+      return { ok: true, message: 'Profil klan berhasil diperbarui!' };
+    },
+    [showToast]
+  );
+
+  const updateMemberRole = useCallback(
+    (clanId: string, memberId: string, newRole: string): { ok: boolean; message: string } => {
+      setRepo((prev) => {
+        let found = false;
+        const nextCities = prev.cities.map((city) => {
+          const nextClans = city.clans.map((clan) => {
+            if (clan.id === clanId) {
+              const nextMembers = clan.members.map((m) => {
+                if (m.id === memberId || m.userId === memberId) {
+                  found = true;
+                  return { ...m, role: newRole };
+                }
+                return m;
+              });
+              return { ...clan, members: nextMembers };
+            }
+            return clan;
+          });
+          return { ...city, clans: nextClans };
+        });
+        if (!found) return prev;
+        const nextState = { ...prev, cities: nextCities };
+        saveStoredRepository(nextState);
+        return nextState;
+      });
+      showToast(`Jabatan anggota berhasil diubah menjadi "${newRole}"!`);
+      return { ok: true, message: `Jabatan berhasil diubah ke ${newRole}` };
+    },
+    [showToast]
+  );
+
   /**
    * 8 & 9. ALUR EXP ATOMIK DARI ANGGOTA -> KLAN -> KOTA -> LEVEL & TIER KOTA
    * Aktivitas anggota -> EXP kontribusi anggota -> EXP klan -> total EXP kota -> progres level kota.
@@ -1353,6 +1444,8 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         canCreateClanInCity,
         createClanInCity,
         updateClanLogo,
+        updateClanProfile,
+        updateMemberRole,
         userCrystals,
         deductCrystals,
         addCrystals,
