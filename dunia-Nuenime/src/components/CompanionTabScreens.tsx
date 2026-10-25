@@ -42,6 +42,23 @@ const PREPARED_ANDROID_ASSETS = [
   { name: 'emblem_astralis.svg', role: 'Emblem Kota Astralis', path: '/assets/nuenime/emblem_astralis.svg' },
 ];
 
+function resolveBorderAssetUrl(border: string | null | undefined): string | null {
+  if (!border) return null;
+  const trimmed = border.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
+    return trimmed;
+  }
+  const lower = trimmed.toLowerCase();
+  if (lower.includes('white_mage') || lower.includes('white-mage')) {
+    return '/assets/borders/border-white-mage.png';
+  }
+  if (lower.includes('magic_book') || lower.includes('magic-book')) {
+    return '/assets/borders/border-magic-book.png';
+  }
+  return null;
+}
+
 export const CompanionTabScreens: React.FC<CompanionTabProps> = ({
   activeTab,
   cities,
@@ -85,38 +102,8 @@ export const CompanionTabScreens: React.FC<CompanionTabProps> = ({
           </button>
         </div>
 
-        {/* Hero Feature Card: Dunia Nuenime */}
-        <div className="relative mt-3.5 overflow-hidden rounded-2xl border border-slate-700/70 bg-slate-900 p-4">
-          <img
-            src="/assets/nuenime/city_eldoria.svg"
-            alt="Dunia Nuenime"
-            referrerPolicy="no-referrer"
-            className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-40"
-          />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-transparent" />
-
-          <div className="relative z-10">
-            <div className="text-[11px] font-semibold text-sky-300">Sistem Komunitas RPG Nuenime</div>
-            <h2 className="font-display mt-0.5 text-xl font-bold text-white">
-              7 Kota, 7 Bos Unik & Sistem Klan
-            </h2>
-            <p className="mt-1 text-xs leading-relaxed text-slate-300">
-              Setiap kota memiliki Level, Tier, HP Kota (10.000/10.000), Pemimpin Kota, Bos Penjaga, dan hingga 15 Klan (maks 100 anggota/klan).
-            </p>
-            <button
-              type="button"
-              onClick={() => onOpenWorldMap()}
-              className="mt-3 flex min-h-[42px] items-center gap-2 rounded-xl border border-sky-300/60 bg-gradient-to-r from-sky-800/90 to-slate-800 px-4 py-2 text-xs font-semibold text-white shadow-lg hover:border-sky-200 active:scale-95"
-            >
-              <CompassRoseIcon size={20} />
-              <span>Mulai Jelajahi Peta Dunia</span>
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
         {/* Quick Jump to 7 Cities */}
-        <div className="mt-4">
+        <div className="mt-3.5">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="font-display text-sm font-bold text-white">Status 7 Kota Nuenime</h3>
             <span className="text-[11px] text-slate-400">Ketuk untuk fokus di peta</span>
@@ -175,34 +162,48 @@ export const CompanionTabScreens: React.FC<CompanionTabProps> = ({
         <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-4">
           <div className="flex items-center gap-3">
             {/* Avatar with Equipped Border from Nuenime APK */}
-            <div className="relative flex h-16 w-16 shrink-0 items-center justify-center">
-              {/* Circular Avatar / Fallback */}
-              <div className="relative h-14 w-14 overflow-hidden rounded-full bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-700 flex items-center justify-center ring-2 ring-sky-400/50">
-                {activeAccount.avatarUrl ? (
-                  <img
-                    src={activeAccount.avatarUrl}
-                    alt={activeAccount.displayName}
-                    className="h-full w-full object-cover"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <span className="font-display text-xl font-bold text-white uppercase">
-                    {activeAccount.displayName.charAt(0) || 'P'}
-                  </span>
-                )}
-              </div>
+            {(() => {
+              const borderAsset = resolveBorderAssetUrl(activeAccount.borderUrl);
+              return (
+                <div className="relative flex h-16 w-16 shrink-0 items-center justify-center">
+                  {/* Circular Avatar / Fallback */}
+                  <div
+                    className={`relative h-14 w-14 overflow-hidden rounded-full bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-700 flex items-center justify-center ${
+                      activeAccount.isVip
+                        ? 'ring-2 ring-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.4)]'
+                        : 'ring-2 ring-sky-400/80 shadow-[0_0_12px_rgba(56,189,248,0.4)]'
+                    }`}
+                  >
+                    {activeAccount.avatarUrl ? (
+                      <img
+                        src={activeAccount.avatarUrl}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <span className="font-display text-xl font-bold text-white uppercase">
+                        {activeAccount.displayName.charAt(0) || 'P'}
+                      </span>
+                    )}
+                  </div>
 
-              {/* Equipped Border Overlay (from Supabase/Nuenime APK) */}
-              {activeAccount.borderUrl && (
-                <img
-                  src={activeAccount.borderUrl}
-                  alt="Border Avatar"
-                  className="pointer-events-none absolute inset-0 h-full w-full object-contain scale-110"
-                />
-              )}
-            </div>
+                  {/* Equipped Border Overlay: only renders when a valid border asset is resolved */}
+                  {borderAsset && (
+                    <img
+                      src={borderAsset}
+                      alt=""
+                      className="pointer-events-none absolute inset-[-6px] h-[76px] w-[76px] object-contain drop-shadow-[0_0_8px_rgba(56,189,248,0.6)] z-10"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })()}
 
             {/* User Identity Column (Clean, single-line typography) */}
             <div className="min-w-0 flex-1">
