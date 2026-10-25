@@ -10,7 +10,6 @@ import {
   Globe,
   Crown,
   Zap,
-  MapPin,
   X,
 } from 'lucide-react';
 import { WorldCity, Clan, CityId } from '../types/nuenime';
@@ -138,8 +137,8 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
         <>
           {/* Controls, Stats & Filter Section */}
           <div className="space-y-2 border-b border-slate-800/80 bg-[#0B0E14]/90 px-3 py-2.5 shrink-0">
-            {/* World Statistics 3-Column Strip */}
-            <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-slate-800/90 bg-gradient-to-r from-slate-900/90 via-slate-900/70 to-slate-900/90 p-2 text-center shadow-sm">
+            {/* World Statistics 3-Column Strip (Tanpa Bayangan) */}
+            <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-slate-800/90 bg-slate-900/90 p-2 text-center">
               <div className="flex flex-col items-center justify-center min-w-0">
                 <div className="flex items-center gap-1 text-[9.5px] text-slate-400">
                   <Globe className="h-3 w-3 text-sky-400 shrink-0" />
@@ -173,16 +172,16 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
               </div>
             </div>
 
-            {/* Active User Clan Banner */}
+            {/* Active User Clan Banner (Tanpa Bayangan) */}
             {joinedClan && (
-              <div className="relative overflow-hidden rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/40 via-emerald-950/20 to-slate-900/60 p-2.5 shadow-sm">
+              <div className="relative overflow-hidden rounded-2xl border border-emerald-500/40 bg-emerald-950/30 p-2.5">
                 <div className="flex items-center justify-between gap-2.5">
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <ClanEmblemIcon
                       variant={joinedClan.emblemVariant}
                       accentColor={joinedClan.accentColor}
                       size={36}
-                      className="shrink-0 drop-shadow"
+                      className="shrink-0"
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
@@ -209,7 +208,7 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
                   <button
                     type="button"
                     onClick={() => onSelectClan(joinedClan)}
-                    className="flex h-[32px] items-center gap-1 rounded-xl border border-emerald-400/50 bg-gradient-to-r from-emerald-600 to-teal-600 px-3 text-[11px] font-bold text-white shadow-sm hover:from-emerald-500 hover:to-teal-500 active:scale-95 whitespace-nowrap shrink-0"
+                    className="flex h-[32px] items-center gap-1 rounded-xl border border-emerald-400/50 bg-emerald-600 px-3 text-[11px] font-bold text-white hover:bg-emerald-500 active:scale-95 whitespace-nowrap shrink-0"
                   >
                     <span>Markas Klan</span>
                     <ChevronRight className="h-3.5 w-3.5" />
@@ -218,14 +217,14 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
               </div>
             )}
 
-            {/* View Mode Switcher: Leaderboard vs Direktori A-Z */}
+            {/* View Mode Switcher: Leaderboard vs Direktori A-Z (Tanpa Bayangan) */}
             <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-800 bg-slate-900/90 p-1">
               <button
                 type="button"
                 onClick={() => setViewMode('leaderboard')}
                 className={`flex h-[32px] items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-semibold transition-all whitespace-nowrap shrink-0 ${
                   viewMode === 'leaderboard'
-                    ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow border border-sky-400/50'
+                    ? 'bg-sky-600 text-white border border-sky-400/50'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -242,7 +241,7 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
                 onClick={() => setViewMode('directory')}
                 className={`flex h-[32px] items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-semibold transition-all whitespace-nowrap shrink-0 ${
                   viewMode === 'directory'
-                    ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow border border-sky-400/50'
+                    ? 'bg-sky-600 text-white border border-sky-400/50'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -272,7 +271,7 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
               )}
             </div>
 
-            {/* City Filter Pills (Smooth horizontal scroll without ugly native scrollbars) */}
+            {/* City Filter Pills (Tanpa Bayangan & Tanpa Scrollbar) */}
             <div
               className="no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-0.5"
               style={{ WebkitOverflowScrolling: 'touch' }}
@@ -282,7 +281,7 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
                 onClick={() => setSelectedCityId('all')}
                 className={`flex h-[30px] items-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all whitespace-nowrap shrink-0 ${
                   selectedCityId === 'all'
-                    ? 'bg-sky-500/25 text-sky-200 border border-sky-400/50 shadow-sm'
+                    ? 'bg-sky-500/25 text-sky-200 border border-sky-400/50'
                     : 'bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-slate-200'
                 }`}
               >
@@ -297,7 +296,7 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
                   onClick={() => setSelectedCityId(c.id)}
                   className={`flex h-[30px] items-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all whitespace-nowrap shrink-0 ${
                     selectedCityId === c.id
-                      ? 'bg-sky-500/25 text-white border border-sky-400/50 shadow-sm'
+                      ? 'bg-sky-500/25 text-white border border-sky-400/50'
                       : 'bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-slate-200'
                   }`}
                 >
@@ -333,23 +332,23 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
                     key={clan.id}
                     className={`relative overflow-hidden rounded-2xl border transition-all ${
                       isJoined
-                        ? 'border-emerald-500/50 bg-gradient-to-b from-[#0e241c] to-[#0B0E14] shadow-[0_0_20px_rgba(16,185,129,0.12)]'
-                        : 'border-slate-800/90 bg-gradient-to-b from-[#111726]/90 to-[#0B0E14] hover:border-sky-500/40 shadow-sm'
+                        ? 'border-emerald-500/50 bg-[#0e241c]'
+                        : 'border-slate-800/90 bg-[#111726]/90 hover:border-sky-500/40'
                     }`}
                   >
                     {/* Card Top: Rank + Emblem + Name & Tag + EXP */}
                     <div className="p-3 pb-2.5">
                       <div className="flex items-start gap-2.5">
-                        {/* Rank Badge */}
+                        {/* Rank Badge (Tanpa Bayangan) */}
                         {viewMode === 'leaderboard' && (
                           <div
-                            className={`flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-xl font-mono font-black tabular-nums shadow-sm ${
+                            className={`flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-xl font-mono font-black tabular-nums ${
                               rank === 1
-                                ? 'bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 ring-1 ring-amber-300'
+                                ? 'bg-amber-500 text-slate-950 ring-1 ring-amber-300'
                                 : rank === 2
-                                ? 'bg-gradient-to-br from-slate-200 to-slate-400 text-slate-950 ring-1 ring-white/60'
+                                ? 'bg-slate-300 text-slate-950 ring-1 ring-white/60'
                                 : rank === 3
-                                ? 'bg-gradient-to-br from-amber-600 to-orange-700 text-amber-100 ring-1 ring-orange-400/60'
+                                ? 'bg-amber-700 text-amber-100 ring-1 ring-orange-400/60'
                                 : 'bg-slate-900/90 text-slate-400 border border-slate-800 text-xs'
                             }`}
                           >
@@ -368,7 +367,7 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
                             variant={clan.emblemVariant}
                             accentColor={clan.accentColor}
                             size={38}
-                            className="shrink-0 drop-shadow-md"
+                            className="shrink-0"
                           />
                         </div>
 
@@ -427,7 +426,7 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
                       </div>
                     </div>
 
-                    {/* Card Bottom: Clean Actions */}
+                    {/* Card Bottom: Clean Actions (Tanpa Bayangan) */}
                     <div className="flex items-center justify-between gap-2 border-t border-slate-800/80 bg-slate-950/40 px-3 py-2">
                       <div className="flex items-center gap-1.5 min-w-0 flex-1">
                         <span className="text-[10px] text-slate-400 italic truncate">
@@ -455,7 +454,7 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
                         <button
                           type="button"
                           onClick={() => onSelectClan(clan)}
-                          className="flex h-[30px] items-center gap-1 rounded-xl border border-sky-400/50 bg-gradient-to-r from-sky-600 to-blue-600 px-3 text-[11px] font-bold text-white shadow-sm hover:from-sky-500 hover:to-blue-500 active:scale-95 transition-all"
+                          className="flex h-[30px] items-center gap-1 rounded-xl border border-sky-400/50 bg-sky-600 px-3 text-[11px] font-bold text-white hover:bg-sky-500 active:scale-95 transition-all"
                         >
                           <span>Detail</span>
                           <ChevronRight className="h-3.5 w-3.5" />

@@ -114,12 +114,7 @@ export const ClanDetailScreen: React.FC<ClanDetailScreenProps> = ({
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#070d19] via-[#070d19]/65 to-slate-950/40" />
 
           <div className="relative z-10 flex flex-col items-center">
-            <div
-              className="rounded-full p-2"
-              style={{
-                filter: `drop-shadow(0 0 18px ${clan.accentColor}66)`,
-              }}
-            >
+            <div className="rounded-full p-2">
               <ClanEmblemIcon
                 variant={clan.emblemVariant}
                 accentColor={clan.accentColor}
@@ -148,7 +143,7 @@ export const ClanDetailScreen: React.FC<ClanDetailScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => joinClan(clan.id)}
-                  className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-sky-300/65 bg-gradient-to-r from-sky-600 to-indigo-700 px-5 py-2 text-xs font-bold text-white shadow-lg transition-transform active:scale-95"
+                  className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-sky-300/65 bg-gradient-to-r from-sky-600 to-indigo-700 px-5 py-2 text-xs font-bold text-white transition-transform active:scale-95"
                 >
                   <Shield className="h-4 w-4" />
                   <span>Gabung ke {clan.name}</span>
