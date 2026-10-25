@@ -150,6 +150,7 @@ export interface Clan {
   name: string;
   tag: string;
   emblemVariant: ClanEmblemVariant;
+  logoUrl?: string;
   accentColor: string;
   motto: string;
   description: string;
@@ -387,6 +388,7 @@ export interface CreateClanInput {
   strongholdDistrict: string;
   specialization: string;
   emblemVariant: ClanEmblemVariant;
+  logoUrl?: string;
   accentColor?: string;
   requestKey?: string;
 }

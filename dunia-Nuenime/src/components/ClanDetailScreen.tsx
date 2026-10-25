@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   Swords,
   ArrowUpCircle,
+  Camera,
+  X,
 } from 'lucide-react';
 import { Clan, WorldCity } from '../types/nuenime';
 import { ClanEmblemIcon, CityEmblemBadge } from './icons/NuenimeAssets';
@@ -57,7 +59,11 @@ export const ClanDetailScreen: React.FC<ClanDetailScreenProps> = ({
     getClanTotalScore,
     completedMissionCounts,
     completeClanMission,
+    updateClanLogo,
   } = useNuenimeRpg();
+
+  const [isEditLogoModalOpen, setIsEditLogoModalOpen] = useState(false);
+  const [editLogoUrl, setEditLogoUrl] = useState(clan.logoUrl ?? '');
 
   const isJoined = joinedClanId === clan.id;
   const relicInfo = getClanRelicInfo(clan.id, clan.cityName, clan.specialization);
@@ -114,12 +120,30 @@ export const ClanDetailScreen: React.FC<ClanDetailScreenProps> = ({
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#070d19] via-[#070d19]/65 to-slate-950/40" />
 
           <div className="relative z-10 flex flex-col items-center">
-            <div className="rounded-full p-2">
-              <ClanEmblemIcon
-                variant={clan.emblemVariant}
-                accentColor={clan.accentColor}
-                size={76}
-              />
+            <div className="relative">
+              <div className="rounded-full p-2">
+                <ClanEmblemIcon
+                  variant={clan.emblemVariant}
+                  accentColor={clan.accentColor}
+                  logoUrl={clan.logoUrl}
+                  size={76}
+                />
+              </div>
+
+              {/* Tombol atur/ubah logo foto untuk anggota/pemimpin klan */}
+              {isJoined && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditLogoUrl(clan.logoUrl ?? '');
+                    setIsEditLogoModalOpen(true);
+                  }}
+                  className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full border border-slate-700 bg-slate-900/90 text-sky-300 hover:border-sky-400 hover:text-white active:scale-95 transition-all"
+                  title="Atur / Ubah Logo Foto Klan"
+                >
+                  <Camera className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
 
             <div className="mt-2 text-[11px] font-medium text-sky-300">
@@ -406,6 +430,91 @@ export const ClanDetailScreen: React.FC<ClanDetailScreenProps> = ({
           </div>
         </div>
       </div>
+      )}
+
+      {/* Modal Ubah / Atur Logo Foto Klan (Bulat) */}
+      {isEditLogoModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-700/90 bg-[#0B0E14] p-4 text-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <h3 className="font-display text-sm font-bold text-white">
+                Atur Logo Foto Klan {clan.name}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsEditLogoModalOpen(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-400 hover:text-white"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            <div className="mt-4 flex flex-col items-center text-center">
+              {/* Preview Bulat */}
+              <div className="relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-amber-400/80 bg-slate-900">
+                {editLogoUrl.trim() ? (
+                  <img
+                    src={editLogoUrl.trim()}
+                    alt="Preview"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                    className="h-full w-full object-cover rounded-full"
+                  />
+                ) : (
+                  <ClanEmblemIcon
+                    variant={clan.emblemVariant}
+                    accentColor={clan.accentColor}
+                    size={48}
+                  />
+                )}
+              </div>
+              <p className="mt-2 text-[11px] text-slate-400">
+                Preview Logo Bulat Klan
+              </p>
+            </div>
+
+            <div className="mt-3.5 space-y-2">
+              <label className="block text-[11px] font-semibold text-slate-300 text-left">
+                Link / URL Foto (Bulat)
+              </label>
+              <input
+                type="url"
+                value={editLogoUrl}
+                onChange={(e) => setEditLogoUrl(e.target.value)}
+                placeholder="https://contoh.com/logo-klan.png"
+                className="h-10 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs text-white placeholder-slate-500 focus:border-sky-400 focus:outline-none"
+              />
+            </div>
+
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  updateClanLogo(clan.id, editLogoUrl);
+                  setIsEditLogoModalOpen(false);
+                }}
+                className="flex h-10 flex-1 items-center justify-center rounded-xl border border-emerald-400/50 bg-emerald-600 text-xs font-bold text-white hover:bg-emerald-500 active:scale-95"
+              >
+                Simpan Logo Bulat
+              </button>
+              {clan.logoUrl && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateClanLogo(clan.id, '');
+                    setEditLogoUrl('');
+                    setIsEditLogoModalOpen(false);
+                  }}
+                  className="flex h-10 items-center justify-center rounded-xl border border-rose-500/40 bg-rose-950/40 px-3 text-xs font-semibold text-rose-300 hover:bg-rose-900/40"
+                >
+                  Hapus
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

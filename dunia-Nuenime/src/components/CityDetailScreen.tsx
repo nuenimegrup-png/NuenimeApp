@@ -91,6 +91,7 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
   const [newClanDistrict, setNewClanDistrict] = useState('Distrik Benteng Utama');
   const [newClanSpec, setNewClanSpec] = useState(`Pertahanan & Komunitas ${city.element}`);
   const [newClanEmblem, setNewClanEmblem] = useState<ClanEmblemVariant>('solar-crown');
+  const [newClanLogoUrl, setNewClanLogoUrl] = useState('');
   const [createClanError, setCreateClanError] = useState<string | null>(null);
   const [isSubmittingClan, setIsSubmittingClan] = useState(false);
 
@@ -467,6 +468,7 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
         strongholdDistrict: newClanDistrict,
         specialization: newClanSpec,
         emblemVariant: newClanEmblem,
+        logoUrl: newClanLogoUrl.trim() || undefined,
         accentColor: city.accentHex,
       },
       requestKey
@@ -482,6 +484,7 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
     setNewClanName('');
     setNewClanTag('');
     setNewClanDesc('');
+    setNewClanLogoUrl('');
     setIsCreateClanOpen(false);
     if (result.createdClan) {
       setSelectedClanOnMap(result.createdClan);
@@ -655,6 +658,7 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
                   <ClanEmblemIcon
                     variant={clan.emblemVariant}
                     accentColor={clan.accentColor}
+                    logoUrl={clan.logoUrl}
                     size={16}
                   />
                   <span>{clan.name}</span>
@@ -701,6 +705,7 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
                     <ClanEmblemIcon
                       variant={selectedClanOnMap.emblemVariant}
                       accentColor={selectedClanOnMap.accentColor}
+                      logoUrl={selectedClanOnMap.logoUrl}
                       size={44}
                     />
                     <span className="absolute -bottom-1.5 rounded-md border border-slate-600 bg-slate-950 px-1.5 py-0.5 font-mono text-[9px] font-bold text-sky-200">
@@ -1078,6 +1083,7 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
                     <ClanEmblemIcon
                       variant={clan.emblemVariant}
                       accentColor={clan.accentColor}
+                      logoUrl={clan.logoUrl}
                       size={44}
                       className="shrink-0"
                     />
@@ -1388,6 +1394,46 @@ export const CityDetailScreen: React.FC<CityDetailScreenProps> = ({
                       </option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              {/* Input Link Foto / Logo Bulat Klan */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-semibold text-slate-300">
+                    Link Foto / Logo Bulat Klan
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    (Opsional · Link Foto Bulat)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-amber-400/80 bg-slate-900">
+                    {newClanLogoUrl.trim() ? (
+                      <img
+                        src={newClanLogoUrl.trim()}
+                        alt="Preview"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                        className="h-full w-full object-cover rounded-full"
+                      />
+                    ) : (
+                      <ClanEmblemIcon
+                        variant={newClanEmblem}
+                        accentColor={city.accentHex}
+                        size={24}
+                      />
+                    )}
+                  </div>
+                  <input
+                    type="url"
+                    value={newClanLogoUrl}
+                    onChange={(e) => setNewClanLogoUrl(e.target.value)}
+                    placeholder="https://contoh.com/logo-klan.png"
+                    className="h-10 flex-1 rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs text-white placeholder-slate-500 focus:border-sky-400 focus:outline-none"
+                  />
                 </div>
               </div>
 

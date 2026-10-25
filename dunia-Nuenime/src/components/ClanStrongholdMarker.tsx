@@ -69,6 +69,7 @@ export const ClanStrongholdMarker: React.FC<ClanStrongholdMarkerProps> = ({
           <ClanEmblemIcon
             variant={clan.emblemVariant}
             accentColor={clan.accentColor}
+            logoUrl={clan.logoUrl}
             size={40}
           />
         </div>

@@ -314,6 +314,7 @@ export const CompanionTabScreens: React.FC<CompanionTabProps> = ({
               <ClanEmblemIcon
                 variant={joinedClan.emblemVariant}
                 accentColor={joinedClan.accentColor}
+                logoUrl={joinedClan.logoUrl}
                 size={40}
               />
               <div className="min-w-0 flex-1">

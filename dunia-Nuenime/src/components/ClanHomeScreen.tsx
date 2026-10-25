@@ -120,6 +120,7 @@ export const ClanHomeScreen: React.FC<ClanHomeScreenProps> = ({
                 <ClanEmblemIcon
                   variant={joinedClan.emblemVariant}
                   accentColor={joinedClan.accentColor}
+                  logoUrl={joinedClan.logoUrl}
                   size={36}
                   className="shrink-0"
                 />
@@ -179,6 +180,7 @@ export const ClanHomeScreen: React.FC<ClanHomeScreenProps> = ({
                 <ClanEmblemIcon
                   variant={topClan.emblemVariant}
                   accentColor={topClan.accentColor}
+                  logoUrl={topClan.logoUrl}
                   size={58}
                   className="shrink-0"
                 />

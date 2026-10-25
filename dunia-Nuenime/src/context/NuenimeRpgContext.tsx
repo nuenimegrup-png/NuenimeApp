@@ -247,6 +247,7 @@ interface NuenimeRpgContextValue {
     input: CreateClanInput,
     idempotencyKey?: string
   ) => { ok: boolean; message: string; createdClan?: Clan };
+  updateClanLogo: (clanId: string, logoUrl: string) => { ok: boolean; message: string };
   joinedClanId: string;
   joinClan: (clanId: string) => { ok: boolean; message: string };
 
@@ -623,6 +624,7 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         name: cleanName,
         tag: cleanTag,
         emblemVariant: input.emblemVariant,
+        logoUrl: (input.logoUrl || '').trim() || undefined,
         accentColor: input.accentColor || targetCity.accentHex,
         motto: cleanMotto,
         description: cleanDesc,
@@ -772,6 +774,32 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return { ok: true, message: `Bergabung ke ${targetClan.name}` };
     },
     [activeAccount.displayName, activeAccount.id, activeAccount.title, allClans, repo.joinedClanId, showToast]
+  );
+
+  const updateClanLogo = useCallback(
+    (clanId: string, logoUrl: string): { ok: boolean; message: string } => {
+      const cleanUrl = logoUrl.trim();
+      setRepo((prev) => {
+        let found = false;
+        const nextCities = prev.cities.map((city) => {
+          const nextClans = city.clans.map((clan) => {
+            if (clan.id === clanId) {
+              found = true;
+              return { ...clan, logoUrl: cleanUrl || undefined };
+            }
+            return clan;
+          });
+          return { ...city, clans: nextClans };
+        });
+        if (!found) return prev;
+        const nextState = { ...prev, cities: nextCities };
+        saveStoredRepository(nextState);
+        return nextState;
+      });
+      showToast('Logo klan berhasil diperbarui!');
+      return { ok: true, message: 'Logo klan berhasil diperbarui!' };
+    },
+    [showToast]
   );
 
   /**
@@ -1296,6 +1324,7 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         switchDemoAccount,
         canCreateClanInCity,
         createClanInCity,
+        updateClanLogo,
         userCrystals,
         deductCrystals,
         addCrystals,

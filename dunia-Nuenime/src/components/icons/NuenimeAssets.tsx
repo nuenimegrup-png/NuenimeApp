@@ -332,19 +332,40 @@ export const CityEmblemBadge: React.FC<{
 };
 
 export const ClanEmblemIcon: React.FC<{
-  variant: Clan['emblemVariant'];
-  accentColor: string;
+  variant?: Clan['emblemVariant'];
+  accentColor?: string;
+  logoUrl?: string;
   size?: number;
   className?: string;
-}> = ({ variant, accentColor, size = 44, className = '' }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 64 64"
-    fill="none"
-    className={className}
-    aria-hidden="true"
-  >
+}> = ({ variant = 'imperial-crown', accentColor = '#38BDF8', logoUrl, size = 44, className = '' }) => {
+  const [imgError, setImgError] = React.useState(false);
+
+  if (logoUrl && !imgError) {
+    return (
+      <div
+        className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-amber-400/80 bg-slate-900 ${className}`}
+        style={{ width: size, height: size }}
+      >
+        <img
+          src={logoUrl}
+          alt="Logo Klan"
+          referrerPolicy="no-referrer"
+          onError={() => setImgError(true)}
+          className="h-full w-full object-cover rounded-full"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 64 64"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
     {/* Shield base */}
     <path
       d="M32 5L54 13V30.5C54 44.8 44.5 54.6 32 59.5C19.5 54.6 10 44.8 10 30.5V13L32 5Z"
@@ -415,7 +436,8 @@ export const ClanEmblemIcon: React.FC<{
       />
     )}
   </svg>
-);
+  );
+};
 
 export const NavHomeFantasyIcon: React.FC<{ active?: boolean; size?: number }> = ({
   active = false,

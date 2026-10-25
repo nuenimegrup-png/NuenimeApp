@@ -301,6 +301,7 @@ export const ClanLeaderboardScreen: React.FC<ClanLeaderboardScreenProps> = ({
                           <ClanEmblemIcon
                             variant={clan.emblemVariant}
                             accentColor={clan.accentColor}
+                            logoUrl={clan.logoUrl}
                             size={38}
                             className="shrink-0"
                           />
