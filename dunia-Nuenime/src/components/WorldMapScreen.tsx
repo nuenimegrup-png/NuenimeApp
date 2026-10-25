@@ -278,19 +278,19 @@ export const WorldMapScreen: React.FC<WorldMapScreenProps> = ({
           role="region"
           aria-label={`Informasi Bos Kota ${selectedBoss.name}`}
         >
-          <div className="relative rounded-2xl border border-rose-400/50 bg-[#070e1b]/98 p-3.5 shadow-[0_12px_34px_rgba(0,0,0,0.92)] backdrop-blur-xl">
+          <div className="relative rounded-2xl border border-rose-500/50 bg-[#0B0E14]/98 p-3 sm:p-3.5 backdrop-blur-xl">
             <button
               type="button"
               onClick={() => setSelectedBossId(null)}
               aria-label="Tutup panel Bos Kota"
-              className="absolute top-2.5 right-2.5 flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-800 hover:text-white"
+              className="absolute top-2.5 right-2.5 flex h-7 w-7 items-center justify-center rounded-xl border border-slate-700/80 bg-slate-900/90 text-slate-400 hover:border-slate-500 hover:text-white active:scale-95"
             >
               <X className="h-4 w-4" />
             </button>
 
             <div className="flex items-start gap-3 pr-6">
               <div
-                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 bg-slate-950/90 shadow-lg"
+                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 bg-slate-950/90"
                 style={{ borderColor: selectedBoss.accentColor }}
               >
                 <CityBossIllustration cityId={selectedBoss.cityId} size={48} />
@@ -361,13 +361,13 @@ export const WorldMapScreen: React.FC<WorldMapScreenProps> = ({
               )}
             </div>
 
-            {/* Raid Action Footer */}
+            {/* Raid Action Footer - Uniform h-[36px], rounded-xl, no shadow */}
             <div className="mt-3 flex items-center justify-between gap-2">
               {selectedBossCity ? (
                 <button
                   type="button"
                   onClick={() => handleSelectCityMarker(selectedBossCity)}
-                  className="flex min-h-[36px] items-center gap-1.5 rounded-full border border-slate-600 bg-slate-900 px-3 py-1 text-[11px] font-semibold text-sky-200 hover:border-sky-400/50"
+                  className="flex h-[36px] items-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-900/90 px-3 text-[11px] font-semibold text-sky-200 hover:border-sky-400/50 active:scale-95"
                 >
                   <CityEmblemBadge
                     cityId={selectedBossCity.id}
@@ -392,10 +392,10 @@ export const WorldMapScreen: React.FC<WorldMapScreenProps> = ({
                     const res = attackWorldBoss(selectedBoss.id);
                     setLastDamageDealt(res.damage);
                   }}
-                  className="flex min-h-[36px] items-center gap-1.5 rounded-full border border-rose-300/60 bg-gradient-to-r from-rose-700 to-amber-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-lg transition-transform active:scale-95 whitespace-nowrap shrink-0"
+                  className="flex h-[36px] items-center gap-1.5 rounded-xl border border-rose-500/50 bg-rose-600 px-3.5 text-xs font-bold text-white transition-all hover:bg-rose-500 active:scale-95 whitespace-nowrap shrink-0"
                 >
                   <Swords className="h-3.5 w-3.5" />
-                  <span>Uji Serang Bos (-HP Bos)</span>
+                  <span>Uji Serang Bos</span>
                 </button>
               ) : (
                 <button
@@ -404,7 +404,7 @@ export const WorldMapScreen: React.FC<WorldMapScreenProps> = ({
                     resetWorldBoss(selectedBoss.id);
                     setLastDamageDealt(null);
                   }}
-                  className="flex min-h-[36px] items-center gap-1.5 rounded-full border border-sky-400/50 bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-sky-200 hover:bg-slate-700 active:scale-95 whitespace-nowrap shrink-0"
+                  className="flex h-[36px] items-center gap-1.5 rounded-xl border border-sky-400/50 bg-slate-800 px-3.5 text-xs font-semibold text-sky-200 hover:bg-slate-700 active:scale-95 whitespace-nowrap shrink-0"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   <span>Bangkitkan Bos</span>

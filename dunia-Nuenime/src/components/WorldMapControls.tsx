@@ -43,15 +43,15 @@ export const WorldMapControls: React.FC<WorldMapControlsProps> = ({
     }, 45);
   };
 
-  // Position controls neatly above the CityInfoPanel when open, or above the docked BottomNavigationBar when closed
-  const bottomOffsetClass = hasActiveCityPanel ? 'bottom-[148px]' : 'bottom-3.5';
+  // When city panel or boss panel is active, hide analog D-pad and zoom controls completely
+  if (hasActiveCityPanel) {
+    return null;
+  }
 
   return (
     <>
       {/* Left Virtual D-Pad */}
-      <div
-        className={`pointer-events-auto absolute left-2.5 z-20 transition-all duration-200 ${bottomOffsetClass}`}
-      >
+      <div className="pointer-events-auto absolute left-2.5 bottom-3.5 z-20 transition-all duration-200">
         <div
           className="relative flex h-[84px] w-[84px] items-center justify-center rounded-full border border-slate-400/35 bg-[#070e1b]/90 shadow-[0_6px_20px_rgba(0,0,0,0.8)] backdrop-blur-xl"
           aria-label="Kontrol Arah Peta"
@@ -135,9 +135,7 @@ export const WorldMapControls: React.FC<WorldMapControlsProps> = ({
       </div>
 
       {/* Right Zoom In (+), Zoom Out (-), and Recenter Target Controls */}
-      <div
-        className={`pointer-events-auto absolute right-2.5 z-20 flex flex-col gap-2 transition-all duration-200 ${bottomOffsetClass}`}
-      >
+      <div className="pointer-events-auto absolute right-2.5 bottom-3.5 z-20 flex flex-col gap-2 transition-all duration-200">
         <button
           type="button"
           onClick={(e) => {
