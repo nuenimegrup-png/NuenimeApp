@@ -36,6 +36,8 @@ import { EXP_RULES } from "@/lib/user-level";
 import { HomeTopLeaderboard } from "@/components/home-top-leaderboard";
 import { HomePublicDiscussionBar } from "@/components/home-public-discussion-bar";
 
+const DUNIA_EMBLEM_IMG = require("@/assets/images/dunia-nuenime-emblem.png");
+
 export const SERIES_GENRES = [
   { id: "Action", label: "Action" },
   { id: "Game", label: "Game" },
@@ -475,7 +477,11 @@ export default function HomeScreen() {
         >
           <View style={styles.duniaBannerLeft}>
             <View style={styles.duniaIconBadge}>
-              <AppIcon name="earth" size={20} color="#38BDF8" />
+              <Image
+                source={DUNIA_EMBLEM_IMG}
+                style={{ width: 24, height: 24 }}
+                contentFit="contain"
+              />
             </View>
             <View style={styles.duniaTextWrap}>
               <View style={styles.duniaTitleRow}>

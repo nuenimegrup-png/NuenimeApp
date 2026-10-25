@@ -68,9 +68,10 @@ export const WorldHeader: React.FC<WorldHeaderProps> = ({
         {/* Central Dark Obsidian Title Plaque (Opaque so map labels never bleed through) */}
         <div className="flex min-w-0 flex-1 items-center justify-between gap-1.5 rounded-2xl border border-slate-500/45 bg-[#070e1b]/95 px-2.5 py-1.5 shadow-[0_6px_20px_rgba(0,0,0,0.85)] backdrop-blur-xl">
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <CompassRoseIcon
-              size={26}
-              className="shrink-0 drop-shadow-[0_0_6px_rgba(56,189,248,0.45)]"
+            <img
+              src="/assets/nuenime/dunia-nuenime-emblem.png"
+              alt="Dunia Nuenime Emblem"
+              className="h-7 w-7 shrink-0 object-contain drop-shadow-[0_0_8px_rgba(56,189,248,0.6)]"
             />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">

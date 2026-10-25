@@ -12,12 +12,15 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { Image } from "expo-image";
 import { AppIcon } from "@/components/app-icon";
 import { hapticLight, hapticSuccess, hapticWarning } from "@/lib/haptics";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { getTierForLevel } from "@/components/level-progress-modal";
 import { DuniaView } from "@/components/dunia/dunia-view";
 import { getCrystalBalance, deductCrystalBalance } from "@/lib/topup-service";
+
+const DUNIA_EMBLEM_IMG = require("@/assets/images/dunia-nuenime-emblem.png");
 
 // Default URL deploy Vercel atau local dev server
 const DEFAULT_DUNIA_URL =
@@ -207,7 +210,11 @@ export default function DuniaNuenimeScreen() {
               },
             ]}
           >
-            <AppIcon name="earth" size={44} color="#38BDF8" />
+            <Image
+              source={DUNIA_EMBLEM_IMG}
+              style={{ width: 62, height: 62 }}
+              contentFit="contain"
+            />
           </Animated.View>
 
           <Text style={styles.loadingTitle}>Dunia Nuenime</Text>

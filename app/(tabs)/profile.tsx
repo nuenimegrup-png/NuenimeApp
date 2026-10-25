@@ -56,6 +56,7 @@ const BORDER_IMAGES: Record<string, any> = {
 const INVENTORY_STAR_IMG = require("@/assets/images/inventory/crystal-star.png");
 const BORDER_WHITE_MAGE_IMG = require("@/assets/images/inventory/border-white-mage.png");
 const GACHA_BOOK_IMG = require("@/assets/images/inventory/border-magic-book.png");
+const DUNIA_EMBLEM_IMG = require("@/assets/images/dunia-nuenime-emblem.png");
 
 function formatJoinDuration(createdAt?: string | null): string {
   if (!createdAt) return "1 bulan";
@@ -721,7 +722,11 @@ export default function ProfileScreen() {
           hitSlop={8}
         >
           <View pointerEvents="none" style={{ pointerEvents: "none", alignItems: "center", justifyContent: "center" } as any}>
-            <AppIcon name="earth" size={26} color="#38BDF8" />
+            <Image
+              source={DUNIA_EMBLEM_IMG}
+              style={{ width: 36, height: 36 }}
+              contentFit="contain"
+            />
           </View>
           <View style={styles.duniaFabBadge}>
             <Text style={styles.duniaFabBadgeText}>RPG</Text>
