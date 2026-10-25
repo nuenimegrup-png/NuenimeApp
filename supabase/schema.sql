@@ -866,6 +866,130 @@ GRANT EXECUTE ON FUNCTION public.update_profile_display_name(TEXT) TO authentica
 GRANT EXECUTE ON FUNCTION public.update_profile_avatar(TEXT) TO authenticated;
 
 -- ==============================================================================
+-- 25. DUNIA NUENIME RPG DATABASE (KOTA, KLAN, MEMBER, BOS, TRANSAKSI EXP)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.rpg_cities (
+  id VARCHAR(64) PRIMARY KEY,
+  name TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  element VARCHAR(64) DEFAULT 'Aether',
+  region VARCHAR(64) DEFAULT 'Nuenime Realm',
+  level INTEGER DEFAULT 1 NOT NULL,
+  tier INTEGER DEFAULT 1 NOT NULL,
+  tier_name VARCHAR(64) DEFAULT 'Perunggu I',
+  total_exp BIGINT DEFAULT 0 NOT NULL,
+  current_hp INTEGER DEFAULT 10000 NOT NULL,
+  max_hp INTEGER DEFAULT 10000 NOT NULL,
+  status VARCHAR(64) DEFAULT 'Damai',
+  weather VARCHAR(64) DEFAULT 'Cerah Cerah Berangin',
+  cover_url TEXT,
+  emblem_url TEXT,
+  bg_gradient TEXT,
+  accent_color VARCHAR(32) DEFAULT '#38bdf8',
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.rpg_city_bosses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  city_id VARCHAR(64) NOT NULL REFERENCES public.rpg_cities(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  title TEXT NOT NULL,
+  avatar_url TEXT,
+  level INTEGER DEFAULT 10 NOT NULL,
+  current_hp BIGINT DEFAULT 50000 NOT NULL,
+  max_hp BIGINT DEFAULT 50000 NOT NULL,
+  status VARCHAR(64) DEFAULT 'Waspada' NOT NULL,
+  weakness TEXT DEFAULT 'Sihir Elemental',
+  defense_break NUMERIC DEFAULT 0 NOT NULL,
+  last_attacked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  CONSTRAINT uq_rpg_city_boss UNIQUE (city_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.rpg_clans (
+  id VARCHAR(64) PRIMARY KEY,
+  city_id VARCHAR(64) NOT NULL REFERENCES public.rpg_cities(id) ON DELETE RESTRICT,
+  name VARCHAR(100) NOT NULL UNIQUE,
+  tag VARCHAR(16) NOT NULL UNIQUE,
+  slogan TEXT DEFAULT 'Bersatu dalam kejayaan Nuenime',
+  description TEXT DEFAULT 'Klan petualang aktif di Dunia Nuenime.',
+  logo_url TEXT,
+  leader_id TEXT NOT NULL,
+  leader_name TEXT NOT NULL,
+  level INTEGER DEFAULT 1 NOT NULL,
+  total_exp BIGINT DEFAULT 0 NOT NULL,
+  member_count INTEGER DEFAULT 1 NOT NULL,
+  max_members INTEGER DEFAULT 100 NOT NULL,
+  verified BOOLEAN DEFAULT TRUE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.rpg_clan_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  clan_id VARCHAR(64) NOT NULL REFERENCES public.rpg_clans(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  avatar_url TEXT,
+  border_url TEXT,
+  role VARCHAR(64) DEFAULT 'Anggota' NOT NULL,
+  level INTEGER DEFAULT 1 NOT NULL,
+  contribution_score BIGINT DEFAULT 0 NOT NULL,
+  joined_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  last_active_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  CONSTRAINT uq_clan_member UNIQUE (clan_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.rpg_user_profiles (
+  user_id TEXT PRIMARY KEY,
+  current_city_id VARCHAR(64) REFERENCES public.rpg_cities(id) DEFAULT 'aetheria',
+  clan_id VARCHAR(64) REFERENCES public.rpg_clans(id) ON DELETE SET NULL,
+  character_title TEXT DEFAULT 'Petualang Nuenime',
+  total_exp BIGINT DEFAULT 0 NOT NULL,
+  energy INTEGER DEFAULT 100 NOT NULL,
+  max_energy INTEGER DEFAULT 100 NOT NULL,
+  reputation BIGINT DEFAULT 0 NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.rpg_exp_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL,
+  clan_id VARCHAR(64) REFERENCES public.rpg_clans(id) ON DELETE CASCADE,
+  city_id VARCHAR(64) REFERENCES public.rpg_cities(id) ON DELETE CASCADE,
+  amount BIGINT NOT NULL,
+  source_type VARCHAR(64) NOT NULL,
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+-- RLS
+ALTER TABLE public.rpg_cities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rpg_city_bosses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rpg_clans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rpg_clan_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rpg_user_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rpg_exp_transactions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Public can view rpg_cities" ON public.rpg_cities FOR SELECT USING (true);
+CREATE POLICY "Public can view rpg_city_bosses" ON public.rpg_city_bosses FOR SELECT USING (true);
+CREATE POLICY "Public can view rpg_clans" ON public.rpg_clans FOR SELECT USING (true);
+CREATE POLICY "Public can view rpg_clan_members" ON public.rpg_clan_members FOR SELECT USING (true);
+CREATE POLICY "Public can view rpg_user_profiles" ON public.rpg_user_profiles FOR SELECT USING (true);
+CREATE POLICY "Public can view rpg_exp_transactions" ON public.rpg_exp_transactions FOR SELECT USING (true);
+
+CREATE POLICY "Users can insert rpg_clans" ON public.rpg_clans FOR INSERT WITH CHECK (true);
+CREATE POLICY "Leaders can update rpg_clans" ON public.rpg_clans FOR UPDATE USING (true);
+CREATE POLICY "Users can manage rpg_clan_members" ON public.rpg_clan_members FOR ALL USING (true);
+CREATE POLICY "Users can manage rpg_user_profiles" ON public.rpg_user_profiles FOR ALL USING (true);
+CREATE POLICY "Users can insert rpg_exp_transactions" ON public.rpg_exp_transactions FOR INSERT WITH CHECK (true);
+
+-- ==============================================================================
 -- SELESAI: Skrip Database Supabase Nuenime Siap Digunakan!
 -- ==============================================================================
+
 
