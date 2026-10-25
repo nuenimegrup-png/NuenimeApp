@@ -414,17 +414,28 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const uid = params.get('uid');
         const rank = params.get('rank');
         const level = params.get('level');
+        const avatar = params.get('avatar');
+        const border = params.get('border');
+        const vip = params.get('vip') === '1';
+
         if (name) {
+          const parsedLevel = level ? parseInt(level, 10) : 1;
+          const parsedRank = rank || 'STONE';
           return {
             id: uid || 'nuenime-adventurer',
             displayName: name,
             handle: `@${name.toLowerCase().replace(/\s+/g, '_')}`,
-            title: `Petualang Nuenime (${rank || 'ETERNAL'} Lv.${level || '1'})`,
+            title: `Petualang Nuenime (${parsedRank} Lv.${parsedLevel})`,
             role: 'CLAN_MEMBER',
             ledCityId: null,
             joinedClanId: repo.joinedClanId,
-            isDemoAccount: true,
+            isDemoAccount: false,
             isAppAdmin: false,
+            avatarUrl: avatar || null,
+            borderUrl: border || null,
+            level: parsedLevel,
+            rank: parsedRank,
+            isVip: vip,
           };
         }
       }
@@ -435,7 +446,14 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       DEMO_SWITCHABLE_ACCOUNTS[0];
     return {
       ...base,
+      displayName: 'Petualang Nuenime',
+      title: 'Petualang Nuenime (STONE Lv.1)',
+      role: 'CLAN_MEMBER',
+      isDemoAccount: false,
       joinedClanId: repo.joinedClanId,
+      level: 1,
+      rank: 'STONE',
+      isVip: false,
     };
   }, [repo.activeAccountId, repo.joinedClanId]);
 

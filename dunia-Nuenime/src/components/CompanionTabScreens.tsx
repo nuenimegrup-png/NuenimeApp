@@ -170,148 +170,162 @@ export const CompanionTabScreens: React.FC<CompanionTabProps> = ({
       cities.find((c) => c.id === (activeAccount.ledCityId ?? joinedClan?.cityId)) ?? cities[0];
 
     return (
-      <div className="nuenime-scroll flex h-full w-full flex-col overflow-y-auto bg-[#070d19] px-3.5 py-3.5 text-slate-100">
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/85 p-4">
+      <div className="nuenime-scroll flex h-full w-full flex-col overflow-y-auto bg-[#070d19] px-3.5 py-3.5 text-slate-100 space-y-3.5">
+        {/* Profile Card: Real User Profile + Avatar Border + Level/Rank */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 border-sky-300/70 bg-slate-950">
-              <CompassRoseIcon size={36} />
+            {/* Avatar with Equipped Border from Nuenime APK */}
+            <div className="relative flex h-16 w-16 shrink-0 items-center justify-center">
+              {/* Circular Avatar / Fallback */}
+              <div className="relative h-14 w-14 overflow-hidden rounded-full bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-700 flex items-center justify-center ring-2 ring-sky-400/50">
+                {activeAccount.avatarUrl ? (
+                  <img
+                    src={activeAccount.avatarUrl}
+                    alt={activeAccount.displayName}
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <span className="font-display text-xl font-bold text-white uppercase">
+                    {activeAccount.displayName.charAt(0) || 'P'}
+                  </span>
+                )}
+              </div>
+
+              {/* Equipped Border Overlay (from Supabase/Nuenime APK) */}
+              {activeAccount.borderUrl && (
+                <img
+                  src={activeAccount.borderUrl}
+                  alt="Border Avatar"
+                  className="pointer-events-none absolute inset-0 h-full w-full object-contain scale-110"
+                />
+              )}
             </div>
+
+            {/* User Identity Column (Clean, single-line typography) */}
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-medium text-sky-300">{activeAccount.title}</span>
-                <span className="rounded bg-amber-950 px-1.5 py-0.5 font-mono text-[9px] text-amber-300 border border-amber-400/40">
-                  AKUN DEMO
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="shrink-0 rounded border border-sky-400/50 bg-sky-950/90 px-1.5 py-0.2 font-mono text-[9px] font-bold text-sky-200 tabular-nums">
+                  LV.{activeAccount.level || 1} · {activeAccount.rank || 'STONE'}
+                </span>
+                {activeAccount.isVip && (
+                  <span className="shrink-0 rounded border border-amber-400/50 bg-amber-950/90 px-1.5 py-0.2 font-mono text-[9px] font-bold text-amber-300">
+                    VIP
+                  </span>
+                )}
+                <span className="truncate text-[10px] font-medium text-slate-400">
+                  Petualang Nuenime
                 </span>
               </div>
-              <h1 className="font-display text-lg font-bold text-white">
+
+              <h1 className="font-display truncate text-base font-bold text-white tracking-wide mt-0.5">
                 {activeAccount.displayName}
               </h1>
-              <p className="text-xs text-slate-400">
-                Kota: {featuredCity.name} · Klan: {joinedClan.name}
+
+              <p className="truncate text-[11px] text-slate-400 mt-0.5">
+                Kota {featuredCity.name} · Klan {joinedClan.name}
               </p>
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-800 pt-3 text-center">
-            <div>
-              <div className="text-[10.5px] text-slate-400">Saldo Crystal</div>
-              <div className="mt-0.5 text-xs font-bold text-amber-300">
+          {/* 3-Column Stats Row: Single-line values, crisp and clean */}
+          <div className="mt-3.5 grid grid-cols-3 gap-2 border-t border-slate-800/90 pt-3 text-center">
+            <div className="min-w-0">
+              <div className="truncate text-[10px] font-medium text-slate-400">Saldo Crystal</div>
+              <div className="mt-0.5 truncate text-xs font-bold text-amber-300 font-mono">
                 💎 {userCrystals.toLocaleString('id-ID')}
               </div>
             </div>
-            <div>
-              <div className="text-[10.5px] text-slate-400">Kota Aktif</div>
-              <div className="mt-0.5 text-xs font-semibold text-sky-300">
+            <div className="min-w-0">
+              <div className="truncate text-[10px] font-medium text-slate-400">Kota Domisili</div>
+              <div className="mt-0.5 truncate text-xs font-semibold text-sky-300">
                 {featuredCity.name} (Lv.{featuredCity.level})
               </div>
             </div>
-            <div>
-              <div className="text-[10.5px] text-slate-400">Kontribusi EXP</div>
-              <div className="font-mono mt-0.5 text-sm font-bold text-emerald-300 tabular-nums">
-                {playerContribution.toLocaleString('id-ID')}
+            <div className="min-w-0">
+              <div className="truncate text-[10px] font-medium text-slate-400">Kontribusi EXP</div>
+              <div className="mt-0.5 truncate text-xs font-bold text-emerald-300 font-mono tabular-nums">
+                {playerContribution.toLocaleString('id-ID')} EXP
               </div>
             </div>
           </div>
         </div>
 
-        {/* Pemilih Akun Demo (7 Pemimpin Kota & Anggota) */}
-        <div className="mt-3.5 rounded-2xl border border-slate-800 bg-slate-900/75 p-3.5 space-y-2.5">
+        {/* Ringkasan Eksplorasi & Izin Petualang */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3.5 space-y-2.5">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <UserCheck className="h-4 w-4 text-amber-300" />
-              <h2 className="font-display text-sm font-bold text-white">
-                Ganti Akun Demo (7 Pemimpin Kota)
-              </h2>
-            </div>
-            <span className="text-[10.5px] text-slate-400">Uji Izin Buat Klan</span>
+            <h2 className="font-display text-sm font-bold text-white">Status Petualang Nuenime</h2>
+            <span className="rounded bg-emerald-950/80 border border-emerald-500/40 px-2 py-0.5 text-[9.5px] font-bold text-emerald-300">
+              Terverifikasi APK
+            </span>
           </div>
 
-          <div className="space-y-1.5">
-            {availableDemoAccounts.map((acc) => {
-              const isSelected = acc.id === activeAccount.id;
-              const accCity = acc.ledCityId
-                ? cities.find((c) => c.id === acc.ledCityId)
-                : undefined;
-
-              return (
-                <button
-                  key={acc.id}
-                  type="button"
-                  onClick={() => switchDemoAccount(acc.id)}
-                  className={`flex w-full items-center justify-between gap-2 rounded-xl border p-2 text-left text-xs transition-all ${
-                    isSelected
-                      ? 'border-amber-400/60 bg-amber-950/35 text-white'
-                      : 'border-slate-800 bg-slate-950/70 text-slate-300 hover:border-sky-400/40'
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <div className="font-semibold text-white truncate">
-                      {acc.displayName}{' '}
-                      <span className="text-[10px] text-amber-300">
-                        ({acc.role === 'CITY_LEADER' ? `Pemimpin ${accCity?.name}` : 'Anggota'})
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-slate-400 truncate">{acc.title}</div>
-                  </div>
-                  {isSelected && (
-                    <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300 shrink-0">
-                      Digunakan
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-2.5">
+              <div className="text-[10px] text-slate-400">Hak Pembuatan Klan</div>
+              <div className="mt-0.5 font-semibold text-white">Bebas di 7 Kota</div>
+              <div className="mt-0.5 text-[10px] text-amber-300 font-mono">Biaya: 2.000 Crystal</div>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-2.5">
+              <div className="text-[10px] text-slate-400">Wilayah Komunitas</div>
+              <div className="mt-0.5 font-semibold text-sky-300">Terbuka untuk Semua</div>
+              <div className="mt-0.5 text-[10px] text-slate-400">Tanpa Batas Pemimpin</div>
+            </div>
           </div>
         </div>
 
-        {/* Afiliasi Kota & Klan */}
-        <div className="mt-3.5 space-y-2.5">
-          <h2 className="font-display text-sm font-bold text-white">Afiliasi Kota & Klan</h2>
+        {/* Afiliasi Kota & Klan Terbuka */}
+        <div className="space-y-2">
+          <h2 className="font-display text-sm font-bold text-white">Afiliasi Wilayah & Klan</h2>
 
+          {/* Kota Aktif */}
           <button
             type="button"
             onClick={() => onOpenCityDetail(featuredCity)}
-            className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/75 p-3 text-left hover:border-sky-400/50"
+            className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-3 text-left transition-colors hover:border-sky-400/50 active:scale-[0.99]"
           >
             <div className="flex items-center gap-3 min-w-0">
-              <CityEmblemBadge cityId={featuredCity.id} material={featuredCity.material} size={42} />
-              <div className="min-w-0">
-                <div className="text-[10.5px] text-sky-300">
+              <CityEmblemBadge cityId={featuredCity.id} material={featuredCity.material} size={40} />
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-semibold text-sky-300 truncate">
                   Kota {featuredCity.name} · Lv.{featuredCity.level} ({featuredCity.tier})
                 </div>
-                <div className="font-display text-sm font-bold text-white">
-                  {featuredCity.totalExp.toLocaleString('id-ID')} EXP · {featuredCity.clans.length}/
-                  {featuredCity.maxClans} Klan
+                <div className="font-display text-xs font-bold text-white truncate mt-0.5">
+                  {featuredCity.totalExp.toLocaleString('id-ID')} EXP · {featuredCity.clans.length}/{featuredCity.maxClans} Klan
                 </div>
-                <div className="truncate text-xs text-slate-400">
-                  Pemimpin: {featuredCity.leaderProfile.displayName}
+                <div className="truncate text-[10px] text-slate-400 mt-0.5">
+                  Wilayah Terbuka Komunitas Nuenime
                 </div>
               </div>
             </div>
-            <ChevronRight className="h-5 w-5 text-slate-400 shrink-0" />
+            <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />
           </button>
 
+          {/* Klan Aktif */}
           <button
             type="button"
             onClick={() => onOpenClanDetail(joinedClan)}
-            className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/75 p-3 text-left hover:border-sky-400/50"
+            className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-3 text-left transition-colors hover:border-sky-400/50 active:scale-[0.99]"
           >
             <div className="flex items-center gap-3 min-w-0">
               <ClanEmblemIcon
                 variant={joinedClan.emblemVariant}
                 accentColor={joinedClan.accentColor}
-                size={42}
+                size={40}
               />
-              <div className="min-w-0">
-                <div className="text-[10.5px] text-amber-300">Klan Aktif</div>
-                <div className="font-display text-sm font-bold text-white">{joinedClan.name}</div>
-                <div className="truncate text-xs text-slate-400">
-                  {joinedClan.totalExp.toLocaleString('id-ID')} EXP · {joinedClan.memberCount}/
-                  {joinedClan.maxMembers} Anggota
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-semibold text-amber-300 truncate">Klan Aktif</div>
+                <div className="font-display text-xs font-bold text-white truncate mt-0.5">
+                  {joinedClan.name}
+                </div>
+                <div className="truncate text-[10px] text-slate-400 mt-0.5">
+                  {joinedClan.totalExp.toLocaleString('id-ID')} EXP · {joinedClan.memberCount}/{joinedClan.maxMembers} Anggota
                 </div>
               </div>
             </div>
-            <ChevronRight className="h-5 w-5 text-slate-400 shrink-0" />
+            <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />
           </button>
         </div>
       </div>

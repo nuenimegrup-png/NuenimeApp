@@ -76,7 +76,7 @@ export const WorldMapScreen: React.FC<WorldMapScreenProps> = ({
   clampTransform,
 }) => {
   const [activeModal, setActiveModal] = useState<
-    'world-info' | 'guide' | 'route' | 'account-switcher' | null
+    'world-info' | 'guide' | 'route' | null
   >(null);
   const [selectedBossId, setSelectedBossId] = useState<string | null>(null);
   const [bossIndex, setBossIndex] = useState<number>(0);
@@ -233,7 +233,6 @@ export const WorldMapScreen: React.FC<WorldMapScreenProps> = ({
         onOpenLegendModal={() => setActiveModal('guide')}
         onOpenRoutePlanner={() => setActiveModal('route')}
         onCycleWorldBoss={handleCycleWorldBoss}
-        onOpenAccountSwitcher={() => setActiveModal('account-switcher')}
       />
 
       {/* Interactive 2D Top-Down Fantasy Map Viewport */}
@@ -434,8 +433,6 @@ export const WorldMapScreen: React.FC<WorldMapScreenProps> = ({
                       ? WORLD_OVERVIEW_INFO.title
                       : activeModal === 'route'
                       ? 'Simulasi Rute & Kapal Udara'
-                      : activeModal === 'account-switcher'
-                      ? 'Pemilih Akun Demo Nuenime'
                       : 'Panduan Navigasi Peta'}
                   </h3>
                   <p className="text-[11px] text-slate-400">
@@ -443,8 +440,6 @@ export const WorldMapScreen: React.FC<WorldMapScreenProps> = ({
                       ? 'Statistik Global & Progres 7 Kota Independen'
                       : activeModal === 'route'
                       ? 'Pilih Kota Asal & Tujuan Ekspedisi'
-                      : activeModal === 'account-switcher'
-                      ? 'Uji Hak Akses 7 Pemimpin Kota & Anggota Klan'
                       : 'Kontrol Eksplorasi Dunia Nuenime'}
                   </p>
                 </div>
@@ -459,93 +454,7 @@ export const WorldMapScreen: React.FC<WorldMapScreenProps> = ({
               </button>
             </div>
 
-            {activeModal === 'account-switcher' ? (
-              <div className="mt-3.5 space-y-3 text-xs">
-                <div className="rounded-xl border border-amber-400/40 bg-amber-950/25 p-2.5 text-[11px] leading-relaxed text-amber-100">
-                  <div className="font-bold text-amber-300">Mode Pengujian Peran (Akun Demo)</div>
-                  <p className="mt-0.5 text-slate-300">
-                    Setiap kota dipimpin oleh 1 Pemimpin Kota sementara (<code className="text-amber-200">isDemoAccount: true</code>). Pemimpin Kota hanya dapat membuat klan baru di kota yang dipimpinnya (maksimal 15 klan/kota).
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  {availableDemoAccounts.map((acc) => {
-                    const isSelected = activeAccount.id === acc.id;
-                    const accCity = acc.ledCityId
-                      ? cities.find((c) => c.id === acc.ledCityId)
-                      : undefined;
-                    return (
-                      <button
-                        key={acc.id}
-                        type="button"
-                        onClick={() => {
-                          switchDemoAccount(acc.id);
-                          setActiveModal(null);
-                          if (accCity) {
-                            handleSelectCityMarker(accCity);
-                          }
-                        }}
-                        className={`flex w-full items-center justify-between gap-2.5 rounded-xl border p-2.5 text-left transition-all ${
-                          isSelected
-                            ? 'border-amber-400 bg-amber-950/40 text-white'
-                            : 'border-slate-800 bg-slate-900/75 text-slate-200 hover:border-sky-400/50'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          {accCity ? (
-                            <CityEmblemBadge
-                              cityId={accCity.id}
-                              material={accCity.material}
-                              size={32}
-                              selected={isSelected}
-                            />
-                          ) : (
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-sky-400/50 bg-sky-950">
-                              <UserCheck className="h-4 w-4 text-sky-300" />
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-display text-xs font-bold text-white truncate">
-                                {acc.displayName}
-                              </span>
-                              <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[9px] text-amber-300">
-                                {acc.role === 'CITY_LEADER' ? 'PEMIMPIN KOTA' : 'ANGGOTA'}
-                              </span>
-                            </div>
-                            <div className="truncate text-[10.5px] text-slate-400">
-                              {accCity
-                                ? `Memimpin Kota ${accCity.name} (${accCity.clans.length}/${accCity.maxClans} Klan)`
-                                : `${acc.title} · Bebas ganti & jalankan misi klan`}
-                            </div>
-                          </div>
-                        </div>
-
-                        {isSelected && (
-                          <span className="rounded-md bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300 shrink-0">
-                            Aktif
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="border-t border-slate-800 pt-2.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      resetAllSimulationData();
-                      setActiveModal(null);
-                    }}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-500/40 bg-rose-950/30 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-950/50"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    <span>Reset Data Simulasi Dunia ke Awal (Level 1)</span>
-                  </button>
-                </div>
-              </div>
-            ) : activeModal === 'route' ? (
+            {activeModal === 'route' ? (
               <div className="mt-3.5 space-y-3.5 text-xs">
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>

@@ -20,7 +20,6 @@ interface WorldHeaderProps {
   onOpenLegendModal: () => void;
   onOpenRoutePlanner: () => void;
   onCycleWorldBoss: () => void;
-  onOpenAccountSwitcher: () => void;
 }
 
 function formatCompactCrystals(amount: number): string {
@@ -42,7 +41,6 @@ export const WorldHeader: React.FC<WorldHeaderProps> = ({
   onOpenLegendModal,
   onOpenRoutePlanner,
   onCycleWorldBoss,
-  onOpenAccountSwitcher,
 }) => {
   const {
     timeOfDay,
@@ -115,17 +113,6 @@ export const WorldHeader: React.FC<WorldHeaderProps> = ({
                 <span className="hidden min-[430px]:inline">{userCrystals.toLocaleString('id-ID')}</span>
               </span>
             </div>
-
-            {/* Account Switcher Button (Compact Icon) */}
-            <button
-              type="button"
-              onClick={onOpenAccountSwitcher}
-              aria-label="Pilih Akun Demo"
-              title="Pilih Akun Demo (7 Pemimpin Kota / Anggota)"
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-amber-400/50 bg-amber-950/80 text-amber-300 transition-all hover:border-amber-300 active:scale-95 sm:h-8 sm:w-8"
-            >
-              <UserCheck className="h-3.5 w-3.5" />
-            </button>
 
             {/* Audio Toggle Button */}
             <button

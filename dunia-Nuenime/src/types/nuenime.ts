@@ -83,8 +83,13 @@ export interface ActiveDemoAccount {
   role: 'CITY_LEADER' | 'CLAN_MEMBER';
   ledCityId: CityId | null;
   joinedClanId: string;
-  isDemoAccount: true;
-  isAppAdmin: false;
+  isDemoAccount: boolean;
+  isAppAdmin: boolean;
+  avatarUrl?: string | null;
+  borderUrl?: string | null;
+  level?: number;
+  rank?: string;
+  isVip?: boolean;
 }
 
 /**
