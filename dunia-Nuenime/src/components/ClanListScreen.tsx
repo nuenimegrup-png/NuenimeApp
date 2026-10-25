@@ -8,6 +8,10 @@ import {
   Trophy,
   CheckCircle2,
   Globe,
+  Crown,
+  Zap,
+  MapPin,
+  X,
 } from 'lucide-react';
 import { WorldCity, Clan, CityId } from '../types/nuenime';
 import { ClanEmblemIcon, CityEmblemBadge } from './icons/NuenimeAssets';
@@ -40,7 +44,7 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
     fantasySoundEngine.playMarkerSelect();
     const timer = window.setTimeout(() => {
       setIsLoadingClanMenu(false);
-    }, 620);
+    }, 450);
     return () => window.clearTimeout(timer);
   }, [initialCityFilter]);
 
@@ -88,26 +92,31 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[#070d19] text-slate-100">
-      {/* Top Bar */}
-      <div className="flex items-center justify-between gap-2 border-b border-slate-800/80 bg-slate-950/90 px-3 py-2.5 backdrop-blur-md">
+      {/* Top Header Bar */}
+      <div className="flex items-center justify-between gap-2 border-b border-slate-800/80 bg-[#0B0E14]/95 px-3 py-2.5 backdrop-blur-md shrink-0">
         <button
           type="button"
           onClick={onBack}
-          className="flex min-h-[40px] items-center gap-2 rounded-xl border border-slate-700/70 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-200 transition-colors hover:border-sky-400/50 hover:text-white active:scale-95 whitespace-nowrap shrink-0"
+          className="flex h-[36px] items-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-900/90 px-3 text-xs font-semibold text-slate-200 transition-colors hover:border-sky-400/50 hover:text-white active:scale-95 whitespace-nowrap shrink-0"
         >
           <ArrowLeft className="h-4 w-4" />
           <span>Kembali</span>
         </button>
 
         <div className="min-w-0 text-right">
-          <h1 className="font-display truncate text-sm font-bold text-white">
+          <h1 className="font-display truncate text-xs sm:text-sm font-bold text-white tracking-wide uppercase">
             {activeCityObj
-              ? `Leaderboard Klan ${activeCityObj.name}`
-              : 'Leaderboard Klan Dunia Nuenime'}
+              ? `Aula Klan ${activeCityObj.name}`
+              : 'Leaderboard Klan Nuenime'}
           </h1>
-          <p className="font-mono text-[10.5px] text-slate-400 tabular-nums">
-            EXP Anda: {playerContribution.toLocaleString('id-ID')} · {relicShards} Relik
-          </p>
+          <div className="mt-0.5 flex items-center justify-end gap-1.5 font-mono text-[10px]">
+            <span className="rounded bg-sky-950/70 border border-sky-500/30 px-1.5 py-0.5 font-bold text-sky-300 tabular-nums">
+              EXP Anda: {playerContribution.toLocaleString('id-ID')}
+            </span>
+            <span className="rounded bg-amber-950/70 border border-amber-500/30 px-1.5 py-0.5 font-bold text-amber-300 tabular-nums">
+              {relicShards} Relik
+            </span>
+          </div>
         </div>
       </div>
 
@@ -127,247 +136,338 @@ export const ClanListScreen: React.FC<ClanListScreenProps> = ({
         />
       ) : (
         <>
-
-      {/* Global World Statistics Summary + Active Clan Banner */}
-      <div className="space-y-2 border-b border-slate-800/70 bg-slate-950/60 px-3.5 py-2.5">
-        {/* Global World Stats Bar */}
-        <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-slate-800 bg-slate-900/80 p-2 text-center text-[10.5px]">
-          <div>
-            <div className="text-slate-400">Total EXP Dunia</div>
-            <div className="font-mono font-bold text-sky-300 tabular-nums">
-              {globalWorldStats.totalWorldExp.toLocaleString('id-ID')}
-            </div>
-          </div>
-          <div className="border-x border-slate-800">
-            <div className="text-slate-400">Total Klan</div>
-            <div className="font-mono font-bold text-amber-300 tabular-nums">
-              {globalWorldStats.totalClansCount} Klan
-            </div>
-          </div>
-          <div>
-            <div className="text-slate-400">Total Anggota</div>
-            <div className="font-mono font-bold text-emerald-300 tabular-nums">
-              {globalWorldStats.totalClanMembersCount} Anggota
-            </div>
-          </div>
-        </div>
-
-        {joinedClan && (
-          <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-500/35 bg-emerald-950/25 px-3 py-1.5">
-            <div className="flex items-center gap-2 min-w-0">
-              <ClanEmblemIcon
-                variant={joinedClan.emblemVariant}
-                accentColor={joinedClan.accentColor}
-                size={26}
-              />
-              <div className="min-w-0">
-                <div className="text-[10px] font-medium text-emerald-300">Klan Aktif Anda</div>
-                <div className="font-display text-xs font-bold text-white truncate">
-                  {joinedClan.name} [{joinedClan.tag}] · {joinedClan.totalExp.toLocaleString('id-ID')} EXP
+          {/* Controls, Stats & Filter Section */}
+          <div className="space-y-2 border-b border-slate-800/80 bg-[#0B0E14]/90 px-3 py-2.5 shrink-0">
+            {/* World Statistics 3-Column Strip */}
+            <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-slate-800/90 bg-gradient-to-r from-slate-900/90 via-slate-900/70 to-slate-900/90 p-2 text-center shadow-sm">
+              <div className="flex flex-col items-center justify-center min-w-0">
+                <div className="flex items-center gap-1 text-[9.5px] text-slate-400">
+                  <Globe className="h-3 w-3 text-sky-400 shrink-0" />
+                  <span className="truncate">EXP Dunia</span>
                 </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => onSelectClan(joinedClan)}
-              className="rounded-lg border border-emerald-400/50 bg-emerald-500/20 px-2.5 py-1 text-[11px] font-semibold text-emerald-100 hover:bg-emerald-500/30 whitespace-nowrap shrink-0"
-            >
-              Markas Klan
-            </button>
-          </div>
-        )}
-
-        {/* Mode Switcher: Leaderboard EXP vs Direktori */}
-        <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-800 bg-slate-900/90 p-1">
-          <button
-            type="button"
-            onClick={() => setViewMode('leaderboard')}
-            className={`flex min-h-[34px] items-center justify-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-              viewMode === 'leaderboard'
-                ? 'bg-sky-500/25 text-white border border-sky-400/50'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Trophy className="h-3.5 w-3.5 text-amber-300" />
-            <span>
-              {selectedCityId === 'all' ? 'Leaderboard Dunia' : `Leaderboard ${activeCityObj?.name}`}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setViewMode('directory')}
-            className={`flex min-h-[34px] items-center justify-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-              viewMode === 'directory'
-                ? 'bg-sky-500/25 text-white border border-sky-400/50'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Shield className="h-3.5 w-3.5 text-sky-300" />
-            <span>Direktori A-Z</span>
-          </button>
-        </div>
-
-        {/* Search Input */}
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari nama klan, kota, atau pemimpin..."
-            className="h-9 w-full rounded-xl border border-slate-800 bg-slate-900/90 pl-9 pr-3 text-xs text-slate-100 placeholder-slate-500 focus:border-sky-400/60 focus:outline-none"
-          />
-        </div>
-
-        {/* Interactive Filter Buttons by Scope: Seluruh Dunia vs Per Kota */}
-        <div className="nuenime-scroll flex items-center gap-1.5 overflow-x-auto pb-0.5">
-          <button
-            type="button"
-            onClick={() => setSelectedCityId('all')}
-            className={`flex min-h-[34px] items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-              selectedCityId === 'all'
-                ? 'bg-sky-500/25 text-sky-200 border border-sky-400/50'
-                : 'bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <Globe className="h-3.5 w-3.5 text-sky-300" />
-            <span>Dunia ({allClans.length})</span>
-          </button>
-
-          {cities.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => setSelectedCityId(c.id)}
-              className={`flex min-h-[34px] items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-                selectedCityId === c.id
-                  ? 'bg-sky-500/25 text-white border border-sky-400/50'
-                  : 'bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-slate-200'
-              }`}
-            >
-              <CityEmblemBadge cityId={c.id} material={c.material} size={18} />
-              <span>
-                {c.name} ({c.clans.length})
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Scrollable Clan Leaderboard & Directory List */}
-      <div className="nuenime-scroll flex-1 space-y-2.5 overflow-y-auto px-3.5 py-3">
-        {visibleClans.map((clan, idx) => {
-          const rank = idx + 1;
-          const totalScore = getClanTotalScore(clan.id);
-          const isJoined = joinedClanId === clan.id;
-          const influence = districtInfluence[clan.id]?.influencePercent ?? 68;
-          const parentCity = cities.find((c) => c.id === clan.cityId);
-
-          return (
-            <div
-              key={clan.id}
-              className={`flex flex-col gap-2 rounded-2xl border p-3 transition-all ${
-                isJoined
-                  ? 'border-emerald-400/50 bg-slate-900/90'
-                  : 'border-slate-800/90 bg-slate-900/75 hover:border-sky-400/50'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                {/* Rank Badge in Leaderboard Mode */}
-                {viewMode === 'leaderboard' && (
-                  <div
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-mono text-xs font-bold tabular-nums ${
-                      rank === 1
-                        ? 'bg-amber-500/25 text-amber-300 border border-amber-400/50'
-                        : rank === 2
-                        ? 'bg-slate-300/20 text-slate-200 border border-slate-300/40'
-                        : rank === 3
-                        ? 'bg-orange-500/20 text-orange-300 border border-orange-400/40'
-                        : 'bg-slate-800/90 text-slate-400'
-                    }`}
-                  >
-                    #{rank}
-                  </div>
-                )}
-
-                <ClanEmblemIcon
-                  variant={clan.emblemVariant}
-                  accentColor={clan.accentColor}
-                  size={44}
-                  className="shrink-0"
-                />
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <h2 className="font-display truncate text-sm font-bold text-white">
-                      {clan.name}{' '}
-                      <span className="font-mono text-[10.5px] text-sky-300">[{clan.tag}]</span>
-                    </h2>
-                    <span className="font-mono text-xs font-bold text-amber-300 tabular-nums shrink-0">
-                      {totalScore.toLocaleString('id-ID')} EXP
-                    </span>
-                  </div>
-
-                  <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400">
-                    <span className="text-sky-300 font-medium">
-                      Kota {clan.cityName}
-                      {parentCity ? ` (Lv.${parentCity.level})` : ''}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span className="truncate">{clan.strongholdDistrict}</span>
-                    <span aria-hidden="true">·</span>
-                    <span className="font-mono text-emerald-300 tabular-nums">
-                      {influence}%
-                    </span>
-                  </div>
+                <div className="font-mono text-[12.5px] font-extrabold text-sky-300 tabular-nums truncate mt-0.5">
+                  {globalWorldStats.totalWorldExp.toLocaleString('id-ID')}
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-2 border-t border-slate-800/80 pt-2 text-[11px] text-slate-400">
-                <div className="flex items-center gap-2 truncate">
-                  <span className="inline-flex items-center gap-1 text-slate-200">
-                    <Shield className="h-3 w-3 text-amber-300" />
-                    {clan.leaderName}
-                  </span>
-                  <span aria-hidden="true">·</span>
-                  <span className="inline-flex items-center gap-1 font-mono text-sky-300 tabular-nums">
-                    <Users className="h-3 w-3" />
-                    {clan.memberCount}/{clan.maxMembers} Anggota
-                  </span>
+              <div className="flex flex-col items-center justify-center min-w-0 border-x border-slate-800/90 px-1">
+                <div className="flex items-center gap-1 text-[9.5px] text-slate-400">
+                  <Shield className="h-3 w-3 text-amber-400 shrink-0" />
+                  <span className="truncate">Total Klan</span>
                 </div>
+                <div className="font-mono text-[12.5px] font-extrabold text-amber-300 tabular-nums truncate mt-0.5">
+                  {globalWorldStats.totalClansCount}{' '}
+                  <span className="text-[9.5px] font-sans font-normal text-slate-400">Klan</span>
+                </div>
+              </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {!isJoined ? (
-                    <button
-                      type="button"
-                      onClick={() => joinClan(clan.id)}
-                      className="rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/25"
-                    >
-                      Gabung
-                    </button>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-300">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      Aktif
-                    </span>
-                  )}
+              <div className="flex flex-col items-center justify-center min-w-0">
+                <div className="flex items-center gap-1 text-[9.5px] text-slate-400">
+                  <Users className="h-3 w-3 text-emerald-400 shrink-0" />
+                  <span className="truncate">Anggota</span>
+                </div>
+                <div className="font-mono text-[12.5px] font-extrabold text-emerald-300 tabular-nums truncate mt-0.5">
+                  {globalWorldStats.totalClanMembersCount}{' '}
+                  <span className="text-[9.5px] font-sans font-normal text-slate-400">Jiwa</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Active User Clan Banner */}
+            {joinedClan && (
+              <div className="relative overflow-hidden rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/40 via-emerald-950/20 to-slate-900/60 p-2.5 shadow-sm">
+                <div className="flex items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <ClanEmblemIcon
+                      variant={joinedClan.emblemVariant}
+                      accentColor={joinedClan.accentColor}
+                      size={36}
+                      className="shrink-0 drop-shadow"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="rounded bg-emerald-950/90 border border-emerald-500/50 px-1.5 py-0.2 text-[8.5px] font-bold text-emerald-300 uppercase tracking-wide">
+                          Klan Aktif Anda
+                        </span>
+                        <span className="rounded bg-sky-950/80 border border-sky-400/40 px-1.5 py-0.2 font-mono text-[8.5px] font-bold text-sky-200">
+                          [{joinedClan.tag}]
+                        </span>
+                      </div>
+                      <div className="truncate font-bold text-[13px] text-white mt-0.5">
+                        {joinedClan.name}
+                      </div>
+                      <div className="flex items-center gap-2 font-mono text-[10px] text-slate-400 mt-0.5">
+                        <span className="font-bold text-amber-300">
+                          {joinedClan.totalExp.toLocaleString('id-ID')} EXP
+                        </span>
+                        <span className="text-slate-600">·</span>
+                        <span className="text-sky-300 font-medium">Kota {joinedClan.cityName}</span>
+                      </div>
+                    </div>
+                  </div>
 
                   <button
                     type="button"
-                    onClick={() => onSelectClan(clan)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-sky-400/50 bg-sky-500/20 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-sky-500/30"
+                    onClick={() => onSelectClan(joinedClan)}
+                    className="flex h-[32px] items-center gap-1 rounded-xl border border-emerald-400/50 bg-gradient-to-r from-emerald-600 to-teal-600 px-3 text-[11px] font-bold text-white shadow-sm hover:from-emerald-500 hover:to-teal-500 active:scale-95 whitespace-nowrap shrink-0"
                   >
-                    <span>Detail</span>
+                    <span>Markas Klan</span>
                     <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
+            )}
+
+            {/* View Mode Switcher: Leaderboard vs Direktori A-Z */}
+            <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-800 bg-slate-900/90 p-1">
+              <button
+                type="button"
+                onClick={() => setViewMode('leaderboard')}
+                className={`flex h-[32px] items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-semibold transition-all whitespace-nowrap shrink-0 ${
+                  viewMode === 'leaderboard'
+                    ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow border border-sky-400/50'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Trophy className="h-3.5 w-3.5 text-amber-300 shrink-0" />
+                <span className="truncate">
+                  {selectedCityId === 'all'
+                    ? 'Leaderboard Dunia'
+                    : `Leaderboard ${activeCityObj?.name}`}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode('directory')}
+                className={`flex h-[32px] items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-semibold transition-all whitespace-nowrap shrink-0 ${
+                  viewMode === 'directory'
+                    ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow border border-sky-400/50'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Shield className="h-3.5 w-3.5 text-sky-300 shrink-0" />
+                <span>Direktori A-Z</span>
+              </button>
             </div>
-          );
-        })}
-      </div>
-      </>
+
+            {/* Search Input Bar */}
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari nama klan, kota, atau pemimpin..."
+                className="h-8.5 w-full rounded-xl border border-slate-800 bg-slate-900/90 pl-9 pr-8 text-xs text-slate-100 placeholder-slate-500 focus:border-sky-400/60 focus:outline-none transition-colors"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-white"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* City Filter Pills (Smooth horizontal scroll without ugly native scrollbars) */}
+            <div
+              className="no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-0.5"
+              style={{ WebkitOverflowScrolling: 'touch' }}
+            >
+              <button
+                type="button"
+                onClick={() => setSelectedCityId('all')}
+                className={`flex h-[30px] items-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all whitespace-nowrap shrink-0 ${
+                  selectedCityId === 'all'
+                    ? 'bg-sky-500/25 text-sky-200 border border-sky-400/50 shadow-sm'
+                    : 'bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-slate-200'
+                }`}
+              >
+                <Globe className="h-3.5 w-3.5 text-sky-300" />
+                <span>Semua ({allClans.length})</span>
+              </button>
+
+              {cities.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setSelectedCityId(c.id)}
+                  className={`flex h-[30px] items-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all whitespace-nowrap shrink-0 ${
+                    selectedCityId === c.id
+                      ? 'bg-sky-500/25 text-white border border-sky-400/50 shadow-sm'
+                      : 'bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-slate-200'
+                  }`}
+                >
+                  <CityEmblemBadge cityId={c.id} material={c.material} size={15} />
+                  <span>
+                    {c.name} ({c.clans.length})
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Scrollable Clan Leaderboard & Directory List */}
+          <div className="nuenime-scroll flex-1 space-y-2.5 overflow-y-auto px-3 py-2.5">
+            {visibleClans.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Shield className="h-10 w-10 text-slate-600 mb-2" />
+                <p className="text-sm font-semibold text-slate-300">Tidak ada klan ditemukan</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Coba ubah kata kunci pencarian atau filter kota
+                </p>
+              </div>
+            ) : (
+              visibleClans.map((clan, idx) => {
+                const rank = idx + 1;
+                const totalScore = getClanTotalScore(clan.id);
+                const isJoined = joinedClanId === clan.id;
+                const influence = districtInfluence[clan.id]?.influencePercent ?? 68;
+                const parentCity = cities.find((c) => c.id === clan.cityId);
+
+                return (
+                  <div
+                    key={clan.id}
+                    className={`relative overflow-hidden rounded-2xl border transition-all ${
+                      isJoined
+                        ? 'border-emerald-500/50 bg-gradient-to-b from-[#0e241c] to-[#0B0E14] shadow-[0_0_20px_rgba(16,185,129,0.12)]'
+                        : 'border-slate-800/90 bg-gradient-to-b from-[#111726]/90 to-[#0B0E14] hover:border-sky-500/40 shadow-sm'
+                    }`}
+                  >
+                    {/* Card Top: Rank + Emblem + Name & Tag + EXP */}
+                    <div className="p-3 pb-2.5">
+                      <div className="flex items-start gap-2.5">
+                        {/* Rank Badge */}
+                        {viewMode === 'leaderboard' && (
+                          <div
+                            className={`flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-xl font-mono font-black tabular-nums shadow-sm ${
+                              rank === 1
+                                ? 'bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 ring-1 ring-amber-300'
+                                : rank === 2
+                                ? 'bg-gradient-to-br from-slate-200 to-slate-400 text-slate-950 ring-1 ring-white/60'
+                                : rank === 3
+                                ? 'bg-gradient-to-br from-amber-600 to-orange-700 text-amber-100 ring-1 ring-orange-400/60'
+                                : 'bg-slate-900/90 text-slate-400 border border-slate-800 text-xs'
+                            }`}
+                          >
+                            <span className="text-[11px] leading-none">#{rank}</span>
+                            {rank <= 3 && (
+                              <span className="text-[7.5px] font-sans font-bold uppercase tracking-tight">
+                                Top
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Clan Emblem */}
+                        <div className="relative shrink-0">
+                          <ClanEmblemIcon
+                            variant={clan.emblemVariant}
+                            accentColor={clan.accentColor}
+                            size={38}
+                            className="shrink-0 drop-shadow-md"
+                          />
+                        </div>
+
+                        {/* Main Info */}
+                        <div className="min-w-0 flex-1">
+                          {/* Title + Tag */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h2 className="font-bold text-[13.5px] leading-snug text-white tracking-wide">
+                              {clan.name}
+                            </h2>
+                            <span className="rounded bg-sky-950/80 border border-sky-400/40 px-1.5 py-0.2 font-mono text-[9px] font-bold text-sky-300 shrink-0">
+                              [{clan.tag}]
+                            </span>
+                          </div>
+
+                          {/* Territory & City */}
+                          <div className="mt-1 flex items-center gap-1.5 text-[10.5px] text-slate-400 flex-wrap">
+                            <span className="font-semibold text-sky-400">
+                              Kota {clan.cityName}
+                              {parentCity ? ` (Lv.${parentCity.level})` : ''}
+                            </span>
+                            <span className="text-slate-600">·</span>
+                            <span className="text-slate-300 truncate">
+                              {clan.strongholdDistrict}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* EXP Display */}
+                        <div className="shrink-0 text-right pl-1">
+                          <div className="font-mono text-sm font-extrabold text-amber-300 tabular-nums">
+                            {totalScore.toLocaleString('id-ID')}
+                          </div>
+                          <div className="text-[9px] font-semibold uppercase tracking-wider text-amber-400/70">
+                            EXP
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Metadata Row: Pemimpin, Anggota, Pengaruh */}
+                      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-slate-800/60 pt-2 text-[10.5px]">
+                        <div className="flex items-center gap-3 text-slate-400 min-w-0 flex-1">
+                          <span className="flex items-center gap-1 truncate text-slate-300">
+                            <Crown className="h-3 w-3 text-amber-400 shrink-0" />
+                            <span className="truncate">{clan.leaderName}</span>
+                          </span>
+                          <span className="flex items-center gap-1 shrink-0 font-mono text-sky-300 font-medium">
+                            <Users className="h-3 w-3 text-sky-400 shrink-0" />
+                            {clan.memberCount}/{clan.maxMembers}
+                          </span>
+                          <span className="flex items-center gap-1 shrink-0 font-mono text-emerald-300 font-medium">
+                            <Zap className="h-3 w-3 text-emerald-400 shrink-0" />
+                            {influence}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Bottom: Clean Actions */}
+                    <div className="flex items-center justify-between gap-2 border-t border-slate-800/80 bg-slate-950/40 px-3 py-2">
+                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                        <span className="text-[10px] text-slate-400 italic truncate">
+                          "{clan.motto || clan.specialization}"
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!isJoined ? (
+                          <button
+                            type="button"
+                            onClick={() => joinClan(clan.id)}
+                            className="flex h-[30px] items-center gap-1 rounded-xl border border-emerald-500/40 bg-emerald-950/60 px-2.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-900/50 active:scale-95 transition-all"
+                          >
+                            <Shield className="h-3 w-3" />
+                            <span>Gabung</span>
+                          </button>
+                        ) : (
+                          <span className="flex h-[30px] items-center gap-1 rounded-xl border border-emerald-500/50 bg-emerald-950/90 px-2.5 text-[11px] font-bold text-emerald-300">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>Klan Anda</span>
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => onSelectClan(clan)}
+                          className="flex h-[30px] items-center gap-1 rounded-xl border border-sky-400/50 bg-gradient-to-r from-sky-600 to-blue-600 px-3 text-[11px] font-bold text-white shadow-sm hover:from-sky-500 hover:to-blue-500 active:scale-95 transition-all"
+                        >
+                          <span>Detail</span>
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </>
       )}
     </div>
   );

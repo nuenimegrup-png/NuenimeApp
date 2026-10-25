@@ -56,6 +56,14 @@
   border-radius: 9999px;
 }
 
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 @keyframes floatSlow {
   0%, 100% {
     transform: translate3d(0, 0px, 0);
