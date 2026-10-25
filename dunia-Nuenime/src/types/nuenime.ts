@@ -398,6 +398,8 @@ export type ScreenViewState =
       cityId: CityId;
       initialTab?: 'map' | 'clans' | 'lore';
     }
+  | { type: 'CLAN_MAIN' }
+  | { type: 'CLAN_LEADERBOARD'; cityId?: CityId }
   | { type: 'CLAN_LIST'; cityId?: CityId; initialView?: 'leaderboard' | 'directory' }
   | { type: 'CLAN_DETAIL'; clanId: string; returnToCityId?: CityId };
 

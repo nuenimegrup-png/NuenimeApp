@@ -4,6 +4,8 @@ import { WorldCity, Clan, BottomNavTab, ScreenViewState, CityId } from './types/
 import { NuenimeRpgProvider, useNuenimeRpg } from './context/NuenimeRpgContext';
 import { WorldMapScreen } from './components/WorldMapScreen';
 import { CityDetailScreen } from './components/CityDetailScreen';
+import { ClanHomeScreen } from './components/ClanHomeScreen';
+import { ClanLeaderboardScreen } from './components/ClanLeaderboardScreen';
 import { ClanListScreen } from './components/ClanListScreen';
 import { ClanDetailScreen } from './components/ClanDetailScreen';
 import { BottomNavigationBar } from './components/BottomNavigationBar';
@@ -186,7 +188,7 @@ function NuenimeWorldAppInner() {
     if (tab === 'dunia') {
       setScreenStack([{ type: 'WORLD_MAP' }]);
     } else if (tab === 'klan') {
-      setScreenStack([{ type: 'CLAN_LIST' }]);
+      setScreenStack([{ type: 'CLAN_MAIN' }]);
     }
   };
 
@@ -312,16 +314,33 @@ function NuenimeWorldAppInner() {
       );
     }
 
-    if (currentScreen.type === 'CLAN_LIST') {
+    if (currentScreen.type === 'CLAN_MAIN') {
       return (
-        <ClanListScreen
+        <ClanHomeScreen
+          cities={cities}
+          onOpenLeaderboard={(cityId) => pushScreen({ type: 'CLAN_LEADERBOARD', cityId })}
+          onSelectClan={(clan) => handleOpenClanDetail(clan, clan.cityId)}
+          onBack={() => {
+            if (screenStack.length > 1) {
+              popScreen();
+            } else {
+              handleSelectBottomTab('dunia');
+            }
+          }}
+        />
+      );
+    }
+
+    if (currentScreen.type === 'CLAN_LEADERBOARD' || currentScreen.type === 'CLAN_LIST') {
+      return (
+        <ClanLeaderboardScreen
           cities={cities}
           initialCityFilter={currentScreen.cityId}
           onBack={() => {
             if (screenStack.length > 1) {
               popScreen();
             } else {
-              handleSelectBottomTab('dunia');
+              setScreenStack([{ type: 'CLAN_MAIN' }]);
             }
           }}
           onSelectClan={(clan) => handleOpenClanDetail(clan, currentScreen.cityId)}
