@@ -18,9 +18,12 @@ import { useAnirakuAuth } from "@/providers/auth-provider";
 import { getTierForLevel } from "@/components/level-progress-modal";
 import { DuniaView } from "@/components/dunia/dunia-view";
 
-// Default URL deploy Vercel atau environment variable
+// Default URL deploy Vercel atau local dev server
 const DEFAULT_DUNIA_URL =
-  process.env.EXPO_PUBLIC_DUNIA_NUENIME_URL || "https://dunia-nuenime.vercel.app";
+  process.env.EXPO_PUBLIC_DUNIA_NUENIME_URL ||
+  (Platform.OS === "web" && typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? "http://localhost:3001"
+    : "https://dunia-nuenime.vercel.app");
 
 const LOADING_STEPS = [
   "Menghubungkan ke server Dunia Nuenime...",

@@ -704,6 +704,30 @@ export default function ProfileScreen() {
           </View>
         </ScrollView>
 
+        {/* 2. FLOATING ACTION BUTTON (DUNIA NUENIME) - DI ATAS ICON PERTEMANAN */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Masuk Dunia Nuenime"
+          onPress={() => {
+            hapticLight();
+            router.push("/dunia" as never);
+          }}
+          // @ts-ignore
+          onClick={() => {
+            hapticLight();
+            router.push("/dunia" as never);
+          }}
+          style={({ pressed }) => [styles.duniaFab, pressed && styles.btnPressed]}
+          hitSlop={8}
+        >
+          <View pointerEvents="none" style={{ pointerEvents: "none", alignItems: "center", justifyContent: "center" } as any}>
+            <AppIcon name="earth" size={26} color="#38BDF8" />
+          </View>
+          <View style={styles.duniaFabBadge}>
+            <Text style={styles.duniaFabBadgeText}>RPG</Text>
+          </View>
+        </Pressable>
+
         {/* 3. FLOATING ACTION BUTTON (ADD FRIENDS) - SILVER & RAISED */}
         <Pressable
           accessibilityRole="button"
@@ -1994,6 +2018,48 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#64748B",
     lineHeight: 15,
+  },
+  duniaFab: {
+    position: "absolute",
+    bottom: 178,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#0F172A",
+    borderWidth: 1.5,
+    borderColor: "#38BDF8",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 50,
+    shadowColor: "#38BDF8",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 8,
+    ...(Platform.OS === "web"
+      ? ({
+          cursor: "pointer",
+          boxShadow: "0 6px 16px rgba(56, 189, 248, 0.3)",
+        } as any)
+      : {}),
+  },
+  duniaFabBadge: {
+    position: "absolute",
+    top: -4,
+    right: -2,
+    backgroundColor: "#EF4444",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#0F172A",
+  },
+  duniaFabBadgeText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 9,
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
   },
   socialFab: {
     position: "absolute",
