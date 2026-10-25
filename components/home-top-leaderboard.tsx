@@ -142,26 +142,37 @@ export function HomeTopLeaderboard() {
 
   // Realtime listener Supabase untuk update otomatis seketika
   useEffect(() => {
-    const channel = supabase
-      .channel("home-top-leaderboard-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "profiles" },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["home-top-leaderboard"] });
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "user_xp_transactions" },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["home-top-leaderboard"] });
-        }
-      )
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    const channelName = `home-top-leaderboard-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    try {
+      channel = supabase
+        .channel(channelName)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "profiles" },
+          () => {
+            queryClient.invalidateQueries({ queryKey: ["home-top-leaderboard"] });
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "user_xp_transactions" },
+          () => {
+            queryClient.invalidateQueries({ queryKey: ["home-top-leaderboard"] });
+          }
+        )
+        .subscribe();
+    } catch (err) {
+      console.warn("[home-leaderboard] Supabase realtime subscription warning:", err);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) {
+        try {
+          supabase.removeChannel(channel).catch(() => {});
+        } catch {}
+      }
     };
   }, [queryClient]);
 

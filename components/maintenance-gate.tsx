@@ -45,53 +45,64 @@ export function MaintenanceGate() {
     checkMaintenance();
 
     // Listen real-time dari Supabase jika admin mengaktifkan / menonaktifkan maintenance
-    const channel = supabase
-      .channel("realtime-maintenance-mode")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "system_configs",
-          filter: "key=eq.maintenance_mode",
-        },
-        (payload: any) => {
-          if (payload.new && payload.new.value) {
-            const val = typeof payload.new.value === "string" ? JSON.parse(payload.new.value) : payload.new.value;
-            const isActive = Boolean(val.is_active ?? val.isActive);
-            setConfig({
-              isActive,
-              message: val.message || "Server sedang dalam pemeliharaan berkala.",
-              endsAt: val.ends_at ?? val.endsAt ?? null,
-              iconUrl: val.icon_url ?? val.iconUrl ?? undefined,
-              primaryButtonText: val.primary_button_text ?? val.primaryButtonText ?? undefined,
-              secondaryButtonText: val.secondary_button_text ?? val.secondaryButtonText ?? undefined,
-              secondaryButtonUrl: val.secondary_button_url ?? val.secondaryButtonUrl ?? undefined,
-            });
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    const channelName = `realtime-maintenance-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-            if (isActive) {
-              void showSystemBarNotification({
-                title: "Pemeliharaan Sistem Nuenime 🛠️",
-                body: val.message || "Server sedang dalam pemeliharaan berkala untuk peningkatan performa.",
-                channelId: "nuenime_maintenance",
-                channelName: "Status Pemeliharaan Sistem",
+    try {
+      channel = supabase
+        .channel(channelName)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "system_configs",
+            filter: "key=eq.maintenance_mode",
+          },
+          (payload: any) => {
+            if (payload.new && payload.new.value) {
+              const val = typeof payload.new.value === "string" ? JSON.parse(payload.new.value) : payload.new.value;
+              const isActive = Boolean(val.is_active ?? val.isActive);
+              setConfig({
+                isActive,
+                message: val.message || "Server sedang dalam pemeliharaan berkala.",
+                endsAt: val.ends_at ?? val.endsAt ?? null,
+                iconUrl: val.icon_url ?? val.iconUrl ?? undefined,
+                primaryButtonText: val.primary_button_text ?? val.primaryButtonText ?? undefined,
+                secondaryButtonText: val.secondary_button_text ?? val.secondaryButtonText ?? undefined,
+                secondaryButtonUrl: val.secondary_button_url ?? val.secondaryButtonUrl ?? undefined,
               });
-            } else {
-              // 🔔 Notifikasi pemeliharaan selesai!
-              void showSystemBarNotification({
-                title: "Pemeliharaan Selesai! 🎉",
-                body: "Server Nuenime telah kembali online dan siap digunakan. Selamat menonton kembali!",
-                channelId: "nuenime_maintenance",
-                channelName: "Status Pemeliharaan Sistem",
-              });
+
+              if (isActive) {
+                void showSystemBarNotification({
+                  title: "Pemeliharaan Sistem Nuenime 🛠️",
+                  body: val.message || "Server sedang dalam pemeliharaan berkala untuk peningkatan performa.",
+                  channelId: "nuenime_maintenance",
+                  channelName: "Status Pemeliharaan Sistem",
+                });
+              } else {
+                // 🔔 Notifikasi pemeliharaan selesai!
+                void showSystemBarNotification({
+                  title: "Pemeliharaan Selesai! 🎉",
+                  body: "Server Nuenime telah kembali online dan siap digunakan. Selamat menonton kembali!",
+                  channelId: "nuenime_maintenance",
+                  channelName: "Status Pemeliharaan Sistem",
+                });
+              }
             }
           }
-        }
-      )
-      .subscribe();
+        )
+        .subscribe();
+    } catch (err) {
+      console.warn("[maintenance-gate] Supabase realtime subscription warning:", err);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) {
+        try {
+          supabase.removeChannel(channel).catch(() => {});
+        } catch {}
+      }
     };
   }, [checkMaintenance]);
 

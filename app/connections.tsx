@@ -19,6 +19,7 @@ import { AppIcon } from "@/components/app-icon";
 import { BorderAvatar } from "@/components/border-avatar";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { isSpecialRole } from "@/lib/admin-service";
+import { UserVerificationBadge } from "@/components/user-verification-badge";
 import {
   type FriendUser,
   getFriends,
@@ -199,6 +200,19 @@ export default function ConnectionsScreen() {
         </View>
 
         <View style={styles.headerRight}>
+          {/* Chat Global Button */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Chat Global"
+            onPress={() => {
+              hapticLight();
+              router.push("/chat-global" as never);
+            }}
+            style={({ pressed }) => [styles.headerBtn, pressed && styles.btnPressed]}
+          >
+            <AppIcon name="forum" size={21} color="#38BDF8" />
+          </Pressable>
+
           {/* Info Modal Button */}
           <Pressable
             accessibilityRole="button"
@@ -345,11 +359,7 @@ export default function ConnectionsScreen() {
                     <Text style={styles.displayNameText} numberOfLines={1}>
                       {item.displayName}
                     </Text>
-                    <AppIcon
-                      name={isSpecial ? "check-decagram" : "check-circle"}
-                      size={14}
-                      color={isSpecial ? "#EF4444" : "#38BDF8"}
-                    />
+                    <UserVerificationBadge role={item.role} isVip={item.isVip} size={14} />
                   </View>
 
                   <View style={styles.badgesRow}>
@@ -437,11 +447,7 @@ export default function ConnectionsScreen() {
                       <Text style={styles.displayNameText} numberOfLines={1}>
                         {item.displayName}
                       </Text>
-                      <AppIcon
-                        name={isSpecial ? "check-decagram" : "check-circle"}
-                        size={14}
-                        color={isSpecial ? "#EF4444" : "#38BDF8"}
-                      />
+                      <UserVerificationBadge role={item.role} isVip={item.isVip} size={14} />
                     </View>
 
                     {/* Level + Tier + Member Number */}
@@ -605,11 +611,7 @@ export default function ConnectionsScreen() {
                         <Text style={styles.displayNameText} numberOfLines={1}>
                           {item.displayName}
                         </Text>
-                        <AppIcon
-                          name={srIsSpecial ? "check-decagram" : "check-circle"}
-                          size={13}
-                          color={srIsSpecial ? "#EF4444" : "#38BDF8"}
-                        />
+                        <UserVerificationBadge role={item.role} isVip={item.isVip} size={13} />
                       </View>
                       {/* Level + Tier + Member Number */}
                       <View style={styles.badgesRow}>

@@ -25,6 +25,7 @@ import {
 } from "@/lib/private-chat-service";
 import { getPublicUserProfile, type FriendUser } from "@/lib/friends-service";
 import { isSpecialRole } from "@/lib/admin-service";
+import { UserVerificationBadge } from "@/components/user-verification-badge";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
 import { filterAndCensorMessage } from "@/lib/word-filter";
 
@@ -229,11 +230,7 @@ export default function PrivateChatRoomScreen() {
                 <Text style={styles.headerMemberTag}>
                   #{String(friend.memberNumber).replace(/[^0-9]/g, "").replace(/^0+/, "") || "1"}
                 </Text>
-                <AppIcon
-                  name={isSpecialRole(friend.role) ? "check-decagram" : "check-circle"}
-                  size={14}
-                  color={isSpecialRole(friend.role) ? "#EF4444" : "#38BDF8"}
-                />
+                <UserVerificationBadge role={friend.role} isVip={friend.isVip} size={14} />
               </View>
               <Text style={styles.headerSubtitle}>Chat pribadi</Text>
             </View>

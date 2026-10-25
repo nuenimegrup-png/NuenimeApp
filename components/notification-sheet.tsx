@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -70,22 +70,47 @@ export function NotificationSheet({
   }, [visible, loadGifts]);
 
   // Realtime subscription untuk system_gifts baru dari Admin
+  // Channel ini menggunakan nama statis, jadi kita HARUS bersihkan channel
+  // sisa dari registry Supabase sebelum subscribe agar tidak error
+  // "cannot add postgres_changes callbacks after subscribe()".
+  const loadGiftsRef = useRef(loadGifts);
+  useEffect(() => { loadGiftsRef.current = loadGifts; }, [loadGifts]);
+
   useEffect(() => {
-    const channel = supabase
-      .channel("realtime-system-gifts-listener")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "system_gifts" },
-        () => {
-          loadGifts();
-        }
-      )
-      .subscribe();
+    const channelName = `realtime-system-gifts-listener-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    // Bersihkan semua channel lama dengan prefix ini dari registry global
+    try {
+      const stale = supabase.getChannels().filter((c) =>
+        c.topic?.includes("realtime-system-gifts-listener")
+      );
+      for (const ch of stale) {
+        supabase.removeChannel(ch).catch(() => {});
+      }
+    } catch {}
+
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      channel = supabase
+        .channel(channelName)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "system_gifts" },
+          () => {
+            loadGiftsRef.current();
+          }
+        )
+        .subscribe();
+    } catch (err) {
+      console.warn("[notification-sheet] Supabase realtime subscription warning:", err);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      try {
+        if (channel) supabase.removeChannel(channel).catch(() => {});
+      } catch {}
     };
-  }, [loadGifts]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- channel statis, cukup subscribe sekali
 
   const items = notifications.data ?? [];
   const filteredNotifs = filter === "unread" ? items.filter((n) => !n.read) : items;

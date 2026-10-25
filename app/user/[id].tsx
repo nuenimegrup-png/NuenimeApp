@@ -31,6 +31,7 @@ import {
 import { getTierForLevel } from "@/components/level-progress-modal";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
 import { isSpecialRole } from "@/lib/admin-service";
+import { UserVerificationBadge } from "@/components/user-verification-badge";
 
 const DEFAULT_BANNER =
   "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1200";
@@ -368,11 +369,7 @@ export default function PublicUserProfileScreen() {
               </Text>
               <Text style={styles.userTagText}>{cleanMemberNum}</Text>
               <View style={styles.verifiedBadge}>
-                <AppIcon
-                  name={isSpecial ? "check-decagram" : "check-circle"}
-                  size={17}
-                  color={isSpecial ? "#EF4444" : "#38BDF8"}
-                />
+                <UserVerificationBadge role={targetUser.role} isVip={targetUser.isVip} size={17} />
               </View>
             </View>
 

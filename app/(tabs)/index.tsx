@@ -34,6 +34,7 @@ import { useAnirakuAuth } from "@/providers/auth-provider";
 import { useExp } from "@/providers/exp-toast-provider";
 import { EXP_RULES } from "@/lib/user-level";
 import { HomeTopLeaderboard } from "@/components/home-top-leaderboard";
+import { HomePublicDiscussionBar } from "@/components/home-public-discussion-bar";
 
 export const SERIES_GENRES = [
   { id: "Action", label: "Action" },
@@ -247,8 +248,21 @@ export default function HomeScreen() {
             />
           </View>
 
-          {/* Right Action Icons: Search, Notifications/Hadiah & DylanCrystal */}
+          {/* Right Action Icons: Chat Global, Search, Notifications/Hadiah & DylanCrystal */}
           <View style={styles.topHeaderActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Chat Global"
+              onPress={() => {
+                hapticLight();
+                router.push("/chat-global" as never);
+              }}
+              style={({ pressed }) => [styles.headerIconBtn, pressed && styles.btnPressed]}
+              hitSlop={10}
+            >
+              <AppIcon name="chat" size={21} color="#FFFFFF" />
+            </Pressable>
+
             <Pressable
               onPress={() => {
                 hapticLight();
@@ -432,6 +446,10 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
+        {/* ══════════════════════════════════════════════════════════════
+            4.5 PUBLIC DISKUSI (AKSES LANGSUNG KE CHAT GLOBAL)
+            ══════════════════════════════════════════════════════════════ */}
+        <HomePublicDiscussionBar />
 
         {/* ══════════════════════════════════════════════════════════════
             5. TOP LEADERBOARD CARD (REALTIME)

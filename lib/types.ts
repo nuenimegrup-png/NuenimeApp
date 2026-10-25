@@ -114,6 +114,7 @@ export type AnirakuProfile = {
   banner_updated_at?: string | null;
   name_updated_at?: string | null;
   avatar_updated_at?: string | null;
+  equipped_border?: string | null;
 };
 
 export type WatchHistoryEntry = {

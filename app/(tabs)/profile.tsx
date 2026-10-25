@@ -31,6 +31,7 @@ import { AppIcon } from "@/components/app-icon";
 import { hapticLight, hapticSuccess, hapticWarning } from "@/lib/haptics";
 import { supabase } from "@/lib/supabase";
 import { LevelProgressModal, getTierForLevel } from "@/components/level-progress-modal";
+import { UserVerificationBadge } from "@/components/user-verification-badge";
 import { getLevelProgressInfo } from "@/lib/user-level";
 import {
   AVATAR_COOLDOWN_SECONDS,
@@ -428,11 +429,7 @@ export default function ProfileScreen() {
                   {userTag}
                 </Text>
                 <View style={styles.socialVerifiedBadge}>
-                  <AppIcon
-                    name={isSpecial ? "check-decagram" : "check-circle"}
-                    size={15}
-                    color={isSpecial ? "#EF4444" : "#38BDF8"}
-                  />
+                  <UserVerificationBadge role={auth.profile?.role} isVip={auth.profile?.is_vip} size={15} />
                 </View>
               </Pressable>
 
@@ -503,6 +500,32 @@ export default function ProfileScreen() {
               </View>
             </View>
           </View>
+
+          {/* Chat Global Button */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Chat Global"
+            onPress={() => {
+              hapticLight();
+              router.push("/chat-global" as never);
+            }}
+            // @ts-ignore
+            onClick={() => {
+              hapticLight();
+              router.push("/chat-global" as never);
+            }}
+            style={({ pressed }) => [
+              styles.socialSettingsBtn,
+              pressed && styles.btnPressed,
+              Platform.OS === "web" && ({ cursor: "pointer" } as any),
+              { marginRight: 8 },
+            ]}
+            hitSlop={12}
+          >
+            <View pointerEvents="none" style={{ pointerEvents: "none" } as any}>
+              <AppIcon name="chat" size={22} color="#FFFFFF" />
+            </View>
+          </Pressable>
 
           {/* Settings Gear Icon */}
           <Pressable
@@ -871,11 +894,7 @@ export default function ProfileScreen() {
               </Text>
               <Text style={styles.userTagText}>{userTag}</Text>
               <View style={styles.verifiedBadge}>
-                <AppIcon
-                  name={isSpecial ? "check-decagram" : "check-circle"}
-                  size={17}
-                  color={isSpecial ? "#EF4444" : "#38BDF8"}
-                />
+                <UserVerificationBadge role={auth.profile?.role} isVip={auth.profile?.is_vip} size={17} />
               </View>
             </View>
 

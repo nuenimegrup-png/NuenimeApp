@@ -29,11 +29,8 @@ import { AppIcon } from "@/components/app-icon";
 import { BorderAvatar } from "@/components/border-avatar";
 import { getEquippedBorderId } from "@/lib/avatar-borders";
 import {
-  BANNER_COOLDOWN_SECONDS,
   NAME_COOLDOWN_SECONDS,
   getProfileCooldownStatus,
-  validateImageUrl,
-  extractDirectImageUrl,
 } from "@/lib/profile-cooldown";
 import {
   setHapticsEnabled,
@@ -88,18 +85,13 @@ export default function SettingsScreen() {
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
 
-  const [showEditBannerModal, setShowEditBannerModal] = useState(false);
-  const [bannerInput, setBannerInput] = useState("");
-  const [savingBanner, setSavingBanner] = useState(false);
-  const [bannerError, setBannerError] = useState<string | null>(null);
-  const [bannerPreviewFailed, setBannerPreviewFailed] = useState(false);
   const [, setCooldownTick] = useState(0);
 
   useEffect(() => {
-    if (!showEditNameModal && !showEditBannerModal) return;
+    if (!showEditNameModal) return;
     const interval = setInterval(() => setCooldownTick((t) => t + 1), 10000);
     return () => clearInterval(interval);
-  }, [showEditNameModal, showEditBannerModal]);
+  }, [showEditNameModal]);
 
   // ─── Notification & System ───
   const [notifTopic, setNotifTopic] = useState(true);
@@ -296,12 +288,7 @@ export default function SettingsScreen() {
     );
   };
 
-  // Real cooldown calculation for Name (24h) and Banner (7d)
-  const bannerCooldown = getProfileCooldownStatus(
-    auth.profile?.banner_updated_at,
-    BANNER_COOLDOWN_SECONDS,
-    "banner"
-  );
+  // Real cooldown calculation for Name (24h)
   const nameCooldown = getProfileCooldownStatus(
     auth.profile?.name_updated_at,
     NAME_COOLDOWN_SECONDS,
@@ -340,47 +327,7 @@ export default function SettingsScreen() {
     }
   };
 
-  // Real banner URL update to Supabase (enforces 7-day cooldown & image validation)
-  const handleSaveBannerUrl = async () => {
-    const cleanBanner = extractDirectImageUrl(bannerInput.trim());
-    if (!bannerCooldown.canChange) {
-      setBannerError(bannerCooldown.message);
-      return;
-    }
-    const validation = validateImageUrl(cleanBanner);
-    if (!validation.valid) {
-      setBannerError(validation.error || "URL banner tidak valid.");
-      return;
-    }
 
-    setBannerError(null);
-    setSavingBanner(true);
-    try {
-      await auth.updateBanner(cleanBanner);
-      hapticSuccess();
-      setShowEditBannerModal(false);
-      Alert.alert("Sukses", "Banner profil berhasil diperbarui.");
-    } catch (err: any) {
-      const msg = err?.message || "Terjadi kesalahan saat menyimpan banner.";
-      setBannerError(msg);
-      Alert.alert("Gagal Memperbarui", msg);
-    } finally {
-      setSavingBanner(false);
-    }
-  };
-
-  const handlePasteBannerUrl = async () => {
-    try {
-      const text = await Clipboard.getStringAsync();
-      if (text) {
-        const extracted = extractDirectImageUrl(text.trim());
-        setBannerInput(extracted);
-        setBannerError(null);
-        setBannerPreviewFailed(false);
-        hapticLight();
-      }
-    } catch {}
-  };
 
   // Check app update
   const handleCheckUpdate = async () => {
@@ -651,37 +598,26 @@ export default function SettingsScreen() {
               </View>
             </Pressable>
 
-            {/* Banner URL */}
+            {/* Banner Profil (Koleksi Gacha Nuenime) */}
             <Pressable
               onPress={() => {
-                setBannerInput(auth.profile?.banner_url || "");
-                setBannerError(null);
-                setBannerPreviewFailed(false);
-                setShowEditBannerModal(true);
+                hapticLight();
+                router.push("/gacha" as never);
               }}
               style={({ pressed }) => [styles.rowItemClickable, styles.rowBorder, pressed && styles.btnPressed]}
             >
               <View style={styles.rowTextCol}>
-                <Text style={styles.rowLabel}>Banner URL</Text>
+                <Text style={styles.rowLabel}>Banner Profil</Text>
                 <Text style={styles.rowSubLabel} numberOfLines={1}>
-                  {!bannerCooldown.canChange
-                    ? `Cooldown: ${bannerCooldown.remainingText}`
-                    : (auth.profile?.banner_url ? auth.profile.banner_url : "Belum diatur (Default)")}
+                  {auth.profile?.banner_url ? "Wallpaper aktif dari Gacha Nuenime" : "Pasang koleksi dari Gacha Nuenime"}
                 </Text>
               </View>
               <View style={styles.rowRightWrap}>
-                <Text
-                  style={[
-                    styles.actionEditText,
-                    !bannerCooldown.canChange && { color: "#F59E0B" },
-                  ]}
-                >
-                  {!bannerCooldown.canChange ? "Cooldown" : (auth.profile?.banner_url ? "Ubah" : "Atur")}
-                </Text>
+                <Text style={styles.actionEditText}>Gacha</Text>
                 <AppIcon
-                  name={!bannerCooldown.canChange ? "clock-outline" : "pencil"}
-                  size={13}
-                  color={!bannerCooldown.canChange ? "#F59E0B" : "#38BDF8"}
+                  name="chevron-forward"
+                  size={14}
+                  color="#38BDF8"
                 />
               </View>
             </Pressable>
@@ -1135,142 +1071,7 @@ export default function SettingsScreen() {
         </Pressable>
       </Modal>
 
-      {/* Modal: Edit Banner URL */}
-      <Modal
-        visible={showEditBannerModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowEditBannerModal(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowEditBannerModal(false)}>
-          <Pressable style={[styles.modalCard, { maxHeight: "88%" }]} onPress={(e) => e.stopPropagation()}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <AppIcon name="camera" size={20} color="#38BDF8" />
-              <Text style={styles.modalTitle}>Banner URL Profil</Text>
-            </View>
-            <Text style={styles.modalSubtitle}>
-              Ganti banner profil dengan tautan gambar langsung (URL). Mendukung GIF animasi, PNG, JPG, dan JPEG. Banner hanya dapat diubah 1 kali per 7 hari.
-            </Text>
 
-            {!bannerCooldown.canChange && (
-              <View style={styles.cooldownAlertBox}>
-                <AppIcon name="clock-outline" size={16} color="#F59E0B" />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cooldownAlertTitle}>Batas Perubahan 7 Hari Aktif</Text>
-                  <Text style={styles.cooldownAlertDesc}>
-                    Banner dapat diganti lagi dalam {bannerCooldown.remainingText}
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            {/* Live Banner Preview Card */}
-            <View style={styles.bannerPreviewContainer}>
-              {bannerInput.trim().length > 0 && !bannerPreviewFailed ? (
-                <Image
-                  source={{ uri: bannerInput.trim() }}
-                  style={styles.bannerPreviewImage}
-                  contentFit="cover"
-                  transition={150}
-                  onError={() => setBannerPreviewFailed(true)}
-                  onLoad={() => setBannerPreviewFailed(false)}
-                />
-              ) : (
-                <View style={styles.bannerPreviewEmptyBox}>
-                  <AppIcon
-                    name={bannerPreviewFailed ? "alert-circle-outline" : "image-outline"}
-                    size={28}
-                    color={bannerPreviewFailed ? "#EF4444" : "#64748B"}
-                  />
-                  <Text style={[styles.bannerPreviewEmptyText, bannerPreviewFailed && { color: "#F87171" }]}>
-                    {bannerPreviewFailed
-                      ? "Gambar gagal dimuat atau tautan tidak valid"
-                      : "Pratinjau banner akan ditampilkan di sini"}
-                  </Text>
-                </View>
-              )}
-              {/* Format Support Badges */}
-              <View style={styles.formatBadgesRow}>
-                {["GIF Animasi", "PNG", "JPG", "JPEG"].map((fmt) => (
-                  <View key={fmt} style={styles.formatBadge}>
-                    <Text style={styles.formatBadgeText}>{fmt}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            {/* Input with Paste Helper */}
-            <View style={styles.bannerInputWrap}>
-              <TextInput
-                style={[
-                  styles.modalTextInput,
-                  styles.bannerTextInput,
-                  !bannerCooldown.canChange && styles.modalTextInputDisabled,
-                  bannerError ? styles.modalTextInputError : null,
-                ]}
-                value={bannerInput}
-                onChangeText={(t) => {
-                  setBannerInput(t);
-                  setBannerPreviewFailed(false);
-                  if (bannerError) setBannerError(null);
-                }}
-                placeholder="https://contoh.com/banner.gif"
-                placeholderTextColor="#71717A"
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={bannerCooldown.canChange && !savingBanner}
-                autoFocus={bannerCooldown.canChange}
-              />
-              {bannerCooldown.canChange && (
-                <Pressable
-                  onPress={handlePasteBannerUrl}
-                  style={({ pressed }) => [styles.bannerPasteBtn, pressed && styles.btnPressed]}
-                >
-                  <AppIcon name="clipboard-outline" size={15} color="#38BDF8" />
-                  <Text style={styles.bannerPasteText}>Tempel</Text>
-                </Pressable>
-              )}
-            </View>
-
-            {bannerError ? (
-              <Text style={styles.inputErrorText}>{bannerError}</Text>
-            ) : null}
-
-            <View style={styles.modalBtnRow}>
-              <Pressable
-                onPress={() => setShowEditBannerModal(false)}
-                style={({ pressed }) => [styles.modalBtnSecondary, pressed && styles.btnPressed]}
-              >
-                <Text style={styles.modalBtnSecondaryText}>Batal</Text>
-              </Pressable>
-              <Pressable
-                onPress={handleSaveBannerUrl}
-                disabled={
-                  savingBanner ||
-                  !bannerCooldown.canChange ||
-                  !bannerInput.trim() ||
-                  bannerPreviewFailed
-                }
-                style={({ pressed }) => [
-                  styles.modalBtnPrimary,
-                  (savingBanner ||
-                    !bannerCooldown.canChange ||
-                    !bannerInput.trim() ||
-                    bannerPreviewFailed) &&
-                    styles.modalBtnDisabled,
-                  pressed && styles.btnPressed,
-                ]}
-              >
-                {savingBanner ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.modalBtnPrimaryText}>Simpan</Text>
-                )}
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
 
       {/* Modal 2: Pilih Kualitas Video */}
       <Modal
@@ -1995,76 +1796,5 @@ const styles = StyleSheet.create({
     marginTop: -4,
   },
 
-  bannerPreviewContainer: {
-    width: "100%",
-    borderRadius: 14,
-    overflow: "hidden",
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-  },
-  bannerPreviewImage: {
-    width: "100%",
-    height: 110,
-  },
-  bannerPreviewEmptyBox: {
-    width: "100%",
-    height: 90,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-  },
-  bannerPreviewEmptyText: {
-    fontFamily: "Nunito-Regular",
-    fontSize: 11.5,
-    color: "#64748B",
-    textAlign: "center",
-  },
-  formatBadgesRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.05)",
-  },
-  formatBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-  },
-  formatBadgeText: {
-    fontFamily: "Nunito-Bold",
-    fontSize: 9.5,
-    color: "#94A3B8",
-  },
-  bannerInputWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  bannerTextInput: {
-    flex: 1,
-    marginTop: 0,
-  },
-  bannerPasteBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: "rgba(56, 189, 248, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(56, 189, 248, 0.25)",
-  },
-  bannerPasteText: {
-    fontFamily: "Nunito-Bold",
-    fontSize: 12,
-    color: "#38BDF8",
-  },
+
 });

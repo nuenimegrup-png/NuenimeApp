@@ -43,40 +43,51 @@ export function BroadcastNotificationListener() {
 
   useEffect(() => {
     // Listen real-time broadcast dari Supabase
-    const channel = supabase
-      .channel("realtime-broadcast-channel")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "system_configs",
-          filter: "key=eq.broadcast_latest",
-        },
-        async (payload: any) => {
-          if (payload.new && payload.new.value) {
-            try {
-              const val =
-                typeof payload.new.value === "string"
-                  ? JSON.parse(payload.new.value)
-                  : payload.new.value;
-              if (val && val.id && val.title) {
-                // Munculkan notifikasi murni di Status Bar HP (di luar aplikasi)
-                await AsyncStorage.setItem(`nuenime.system_notified.${val.id}`, "1");
-                void showSystemBarNotification({
-                  title: val.title,
-                  body: val.message || "",
-                  data: { actionUrl: val.actionUrl, type: val.type },
-                });
-              }
-            } catch {}
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    const channelName = `realtime-broadcast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    try {
+      channel = supabase
+        .channel(channelName)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "system_configs",
+            filter: "key=eq.broadcast_latest",
+          },
+          async (payload: any) => {
+            if (payload.new && payload.new.value) {
+              try {
+                const val =
+                  typeof payload.new.value === "string"
+                    ? JSON.parse(payload.new.value)
+                    : payload.new.value;
+                if (val && val.id && val.title) {
+                  // Munculkan notifikasi murni di Status Bar HP (di luar aplikasi)
+                  await AsyncStorage.setItem(`nuenime.system_notified.${val.id}`, "1");
+                  void showSystemBarNotification({
+                    title: val.title,
+                    body: val.message || "",
+                    data: { actionUrl: val.actionUrl, type: val.type },
+                  });
+                }
+              } catch {}
+            }
           }
-        }
-      )
-      .subscribe();
+        )
+        .subscribe();
+    } catch (err) {
+      console.warn("[broadcast-listener] Supabase realtime subscription warning:", err);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) {
+        try {
+          supabase.removeChannel(channel).catch(() => {});
+        } catch {}
+      }
     };
   }, []);
 

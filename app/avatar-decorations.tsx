@@ -137,28 +137,57 @@ export default function AvatarDecorationsScreen() {
   useEffect(() => {
     if (!userId) return;
 
-    const channel = supabase
-      .channel(`avatar_dec_balance_${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "user_balances",
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload: any) => {
-          const newBalance = payload.new?.crystal_balance;
-          if (typeof newBalance === "number") {
-            setCrystalBalance(newBalance);
-          }
-        }
-      )
-      .subscribe();
+    // Bersihkan channel lama dari ref maupun dari registry Supabase global.
+    // Tanpa ini, Supabase melempar error "cannot add postgres_changes callbacks
+    // after subscribe()" ketika useEffect jalan ulang dengan channel yang sama.
+    try {
+      const existing = realtimeChannelRef.current;
+      if (existing) {
+        supabase.removeChannel(existing).catch(() => {});
+        realtimeChannelRef.current = null;
+      }
+      // Bersihkan channel sisa dengan nama yang sama dari registry global
+      // (bisa terjadi karena hot-reload atau remount cepat)
+      const channelPrefix = `avatar_dec_balance_${userId}`;
+      const stale = supabase.getChannels().filter((c) =>
+        c.topic?.includes(channelPrefix)
+      );
+      for (const ch of stale) {
+        supabase.removeChannel(ch).catch(() => {});
+      }
+    } catch {}
 
-    realtimeChannelRef.current = channel;
+    const channelName = `avatar_dec_balance_${userId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      channel = supabase
+        .channel(channelName)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "user_balances",
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload: any) => {
+            const newBalance = payload.new?.crystal_balance;
+            if (typeof newBalance === "number") {
+              setCrystalBalance(newBalance);
+            }
+          }
+        )
+        .subscribe();
+      realtimeChannelRef.current = channel;
+    } catch (err) {
+      console.warn("[avatar-decorations] Supabase realtime subscription warning:", err);
+    }
+
     return () => {
-      supabase.removeChannel(channel);
+      try {
+        if (channel) supabase.removeChannel(channel).catch(() => {});
+      } catch {}
+      realtimeChannelRef.current = null;
     };
   }, [userId]);
 
