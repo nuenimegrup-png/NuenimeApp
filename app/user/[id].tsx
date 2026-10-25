@@ -32,6 +32,7 @@ import { getTierForLevel } from "@/components/level-progress-modal";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
 import { isSpecialRole } from "@/lib/admin-service";
 import { UserVerificationBadge } from "@/components/user-verification-badge";
+import { ProfileCityPlaque } from "@/components/profile-city-plaque";
 
 const DEFAULT_BANNER =
   "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1200";
@@ -348,6 +349,12 @@ export default function PublicUserProfileScreen() {
             ]}
             locations={[0, 0.25, 0.65, 0.88, 1]}
             style={StyleSheet.absoluteFillObject}
+          />
+
+          {/* Plakat Kota & Klan di Banner Kiri-Tengah */}
+          <ProfileCityPlaque
+            userId={id}
+            style={styles.bannerCityPlaque}
           />
         </View>
 
@@ -914,6 +921,12 @@ const styles = StyleSheet.create({
     position: "relative",
     backgroundColor: "#0B0E14",
     overflow: "hidden",
+  },
+  bannerCityPlaque: {
+    position: "absolute",
+    top: 16,
+    left: 14,
+    zIndex: 15,
   },
   bannerImage: {
     width: "100%",

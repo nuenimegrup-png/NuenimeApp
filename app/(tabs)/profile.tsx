@@ -44,6 +44,7 @@ import { getEquippedBorderId, subscribeEquippedBorder } from "@/lib/avatar-borde
 import { isSpecialRole } from "@/lib/admin-service";
 import { getFriends } from "@/lib/friends-service";
 import { loadAccountSettings } from "@/lib/user-settings";
+import { ProfileCityPlaque } from "@/components/profile-city-plaque";
 
 const DEFAULT_BANNER =
   "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1200";
@@ -866,6 +867,12 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
           </View>
+
+          {/* Plakat Kota & Klan di Banner Kiri-Tengah */}
+          <ProfileCityPlaque
+            userId={auth.user?.id}
+            style={styles.bannerCityPlaque}
+          />
         </View>
 
         {/* ─── 2. USER IDENTITY SECTION ─── */}
@@ -2131,6 +2138,12 @@ const styles = StyleSheet.create({
     position: "relative",
     backgroundColor: "#0B0E14",
     overflow: "hidden",
+  },
+  bannerCityPlaque: {
+    position: "absolute",
+    top: 56,
+    left: 14,
+    zIndex: 15,
   },
   bannerImage: {
     width: "100%",

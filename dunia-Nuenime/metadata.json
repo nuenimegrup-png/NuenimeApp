@@ -1,6 +1,0 @@
-{
-  "name": "Dunia Nuenime — Interactive Fantasy World Map",
-  "description": "Eksplorasi peta dunia fantasi 2D interaktif Nuenime dengan kontrol gesture, marker 7 kota utama, lore wilayah, dan direktori klan.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

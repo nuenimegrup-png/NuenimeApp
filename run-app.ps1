@@ -1,10 +1,14 @@
 # ==============================================================================
 # Nuenime App - PowerShell Launcher Script
-# Menjalankan Web & Expo Dev Server (Port 8081) + Backend API Server (Port 3000)
+# Menjalankan:
+# 1. Web App Utama (Expo Metro - Port 8081)
+# 2. Dunia Nuenime RPG (Vite React - Port 3001)
+# 3. Backend API Server (Node/Express - Port 3000)
 # ==============================================================================
 
 param (
     [int]$Port = 8081,
+    [int]$DuniaPort = 3001,
     [switch]$NoBrowser,
     [switch]$ClearCache
 )
@@ -17,7 +21,7 @@ Set-Location -Path $PSScriptRoot
 
 Clear-Host
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "                NUENIME APP - LAUNCHER                    " -ForegroundColor Yellow
+Write-Host "         NUENIME APP + DUNIA NUENIME LAUNCHER             " -ForegroundColor Yellow
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -35,7 +39,7 @@ if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
     Write-Host "[OK] Runtime terdeteksi: Bun ($(bun --version))" -ForegroundColor Green
 }
 
-# 2. Cek apakah port 8081 atau 3000 sedang terkunci oleh proses lama
+# 2. Bebaskan port 8081, 5173, dan 3000 dari proses lama yang mungkin masih mengunci
 function Free-Port([int]$TargetPort) {
     $conns = Get-NetTCPConnection -LocalPort $TargetPort -ErrorAction SilentlyContinue
     if ($conns) {
@@ -45,7 +49,7 @@ function Free-Port([int]$TargetPort) {
                 Write-Host "[INFO] Port $TargetPort sedang digunakan oleh PID $pidToKill. Menghentikan proses lama..." -ForegroundColor Yellow
                 try {
                     Stop-Process -Id $pidToKill -Force -ErrorAction SilentlyContinue
-                    Start-Sleep -Milliseconds 500
+                    Start-Sleep -Milliseconds 400
                 } catch {}
             }
         }
@@ -54,6 +58,7 @@ function Free-Port([int]$TargetPort) {
 
 Free-Port -TargetPort $Port
 Free-Port -TargetPort 3000
+Free-Port -TargetPort $DuniaPort
 
 # 3. Opsi bersihkan cache jika diminta
 if ($ClearCache) {
@@ -68,37 +73,55 @@ $localIP = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
 
 Write-Host ""
 Write-Host "----------------------------------------------------------" -ForegroundColor DarkGray
-Write-Host "  Web App (Browser) : " -NoNewline; Write-Host "http://localhost:$Port" -ForegroundColor Green
+Write-Host "  Web App Utama     : " -NoNewline; Write-Host "http://localhost:$Port" -ForegroundColor Green
 if ($localIP) {
 Write-Host "  Koneksi HP / APK  : " -NoNewline; Write-Host "http://${localIP}:$Port" -ForegroundColor Cyan
+}
+Write-Host "  Dunia Nuenime RPG : " -NoNewline; Write-Host "http://localhost:$DuniaPort" -ForegroundColor Yellow
+if ($localIP) {
+Write-Host "  Dunia Nuenime HP  : " -NoNewline; Write-Host "http://${localIP}:$DuniaPort" -ForegroundColor Cyan
 }
 Write-Host "  Backend Server    : " -NoNewline; Write-Host "http://localhost:3000" -ForegroundColor Green
 Write-Host "----------------------------------------------------------" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "[INFO] Menjalankan server Nuenime..." -ForegroundColor Magenta
-Write-Host "       Tekan Ctrl + C di terminal ini untuk berhenti." -ForegroundColor DarkGray
+Write-Host "[INFO] Menjalankan seluruh server (Nuenime App + Dunia Nuenime)..." -ForegroundColor Magenta
+Write-Host "       Tekan Ctrl + C di terminal ini untuk berhenti bersamaan." -ForegroundColor DarkGray
 Write-Host ""
 
-# 5. Buka browser otomatis setelah delay singkat jika tidak dicegah
+# 5. Buka browser otomatis untuk Web App Utama dan Dunia Nuenime RPG
 if (-not $NoBrowser) {
+    # Buka Web App Utama (Port 8081)
     Start-Job -ScriptBlock {
         param($targetUrl, $targetPort)
-        $ready = $false
         for ($i = 0; $i -lt 30; $i++) {
             Start-Sleep -Seconds 1
             try {
                 $res = Invoke-WebRequest -Uri "http://localhost:$targetPort/" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
                 if ($res -and $res.StatusCode -eq 200) {
-                    $ready = $true
                     break
                 }
             } catch {}
         }
         Start-Process $targetUrl
     } -ArgumentList "http://localhost:$Port", $Port | Out-Null
+
+    # Buka Dunia Nuenime RPG (Port 3001)
+    Start-Job -ScriptBlock {
+        param($targetUrl, $targetPort)
+        for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Seconds 1
+            try {
+                $res = Invoke-WebRequest -Uri "http://localhost:$targetPort/" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
+                if ($res -and $res.StatusCode -eq 200) {
+                    break
+                }
+            } catch {}
+        }
+        Start-Process $targetUrl
+    } -ArgumentList "http://localhost:$DuniaPort", $DuniaPort | Out-Null
 }
 
-# 6. Jalankan server dev utama
+# 6. Jalankan server dev utama (Server + Metro + Dunia Nuenime)
 if ($runtime -eq "bun") {
     bun run dev
 } else {

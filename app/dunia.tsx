@@ -19,6 +19,7 @@ import { useAnirakuAuth } from "@/providers/auth-provider";
 import { getTierForLevel } from "@/components/level-progress-modal";
 import { DuniaView } from "@/components/dunia/dunia-view";
 import { getCrystalBalance, deductCrystalBalance } from "@/lib/topup-service";
+import { getBorderByIdAsync } from "@/lib/avatar-borders";
 
 const DUNIA_EMBLEM_IMG = require("@/assets/images/dunia-nuenime-emblem.png");
 
@@ -138,20 +139,49 @@ export default function DuniaNuenimeScreen() {
   const isVip = Boolean(auth.profile?.is_vip);
   const userId = auth.user?.id || "guest";
 
+  const [resolvedBorderUrl, setResolvedBorderUrl] = useState<string>("");
+
+  useEffect(() => {
+    let mounted = true;
+    const raw = auth.profile?.equipped_border;
+    if (!raw) {
+      setResolvedBorderUrl("");
+      return;
+    }
+    if (raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("/")) {
+      setResolvedBorderUrl(raw);
+      return;
+    }
+    getBorderByIdAsync(raw)
+      .then((b) => {
+        if (mounted && b?.assetUrl) {
+          setResolvedBorderUrl(b.assetUrl);
+        } else if (mounted) {
+          setResolvedBorderUrl(raw);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [auth.profile?.equipped_border]);
+
   const targetUrl = React.useMemo(() => {
     const baseUrl = DEFAULT_DUNIA_URL.replace(/\/$/, "");
+    const userExp = Number(auth.profile?.exp) || 0;
     const params = new URLSearchParams({
       uid: userId,
       name: displayName,
       level: String(userLevel),
+      exp: String(userExp),
       rank: rankName,
       avatar: avatarUrl,
-      border: equippedBorder,
+      border: resolvedBorderUrl || equippedBorder,
       vip: isVip ? "1" : "0",
       crystals: String(userCrystals),
     });
     return `${baseUrl}/?${params.toString()}`;
-  }, [userId, displayName, userLevel, rankName, avatarUrl, equippedBorder, isVip, userCrystals]);
+  }, [userId, displayName, userLevel, auth.profile?.exp, rankName, avatarUrl, resolvedBorderUrl, equippedBorder, isVip, userCrystals]);
 
   const handleBack = () => {
     hapticLight();
