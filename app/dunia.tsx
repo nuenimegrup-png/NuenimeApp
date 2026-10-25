@@ -212,7 +212,7 @@ export default function DuniaNuenimeScreen() {
           >
             <Image
               source={DUNIA_EMBLEM_IMG}
-              style={{ width: 62, height: 62 }}
+              style={{ width: 84, height: 84 }}
               contentFit="contain"
             />
           </Animated.View>
@@ -362,17 +362,10 @@ const styles = StyleSheet.create({
   emblemCircle: {
     width: 90,
     height: 90,
-    borderRadius: 45,
-    backgroundColor: "rgba(56, 189, 248, 0.1)",
-    borderWidth: 1.5,
-    borderColor: "rgba(56, 189, 248, 0.4)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 20,
-    shadowColor: "#38BDF8",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
+    marginBottom: 16,
+    backgroundColor: "transparent",
   },
   loadingTitle: {
     fontFamily: "Nunito-Black",

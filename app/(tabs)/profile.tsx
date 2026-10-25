@@ -724,7 +724,7 @@ export default function ProfileScreen() {
           <View pointerEvents="none" style={{ pointerEvents: "none", alignItems: "center", justifyContent: "center" } as any}>
             <Image
               source={DUNIA_EMBLEM_IMG}
-              style={{ width: 36, height: 36 }}
+              style={{ width: 54, height: 54 }}
               contentFit="contain"
             />
           </View>
@@ -2027,25 +2027,17 @@ const styles = StyleSheet.create({
   duniaFab: {
     position: "absolute",
     bottom: 178,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#0F172A",
-    borderWidth: 1.5,
-    borderColor: "#38BDF8",
+    right: 18,
+    width: 60,
+    height: 60,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 50,
-    shadowColor: "#38BDF8",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 8,
+    backgroundColor: "transparent",
+    borderWidth: 0,
     ...(Platform.OS === "web"
       ? ({
           cursor: "pointer",
-          boxShadow: "0 6px 16px rgba(56, 189, 248, 0.3)",
         } as any)
       : {}),
   },

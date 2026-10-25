@@ -479,7 +479,7 @@ export default function HomeScreen() {
             <View style={styles.duniaIconBadge}>
               <Image
                 source={DUNIA_EMBLEM_IMG}
-                style={{ width: 24, height: 24 }}
+                style={{ width: 34, height: 34 }}
                 contentFit="contain"
               />
             </View>
@@ -1347,14 +1347,11 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   duniaIconBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(56, 189, 248, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(56, 189, 248, 0.35)",
+    width: 36,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "transparent",
   },
   duniaTextWrap: {
     flex: 1,
