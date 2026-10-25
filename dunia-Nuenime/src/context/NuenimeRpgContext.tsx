@@ -41,7 +41,7 @@ import {
 import { fantasySoundEngine } from '../utils/soundEngine';
 import { supabase } from '../lib/supabase';
 
-const STORAGE_KEY = 'nuenime_world_repository_v5_pure';
+const STORAGE_KEY = 'nuenime_world_repository_v6_database_pure';
 
 /**
  * Fungsi Rekonsiliasi & Pemeriksaan Konsistensi Data Dunia Nuenime (Bagian 9 & 13)
@@ -175,45 +175,23 @@ function buildDefaultLevelHistory(): Record<CityId, CityLevelHistoryRecord[]> {
   };
 }
 
-export const USER_SIMULATION_CLAN_LOGO =
-  'https://i.ibb.co.com/5h3d91xW/Black-and-White-Urban-Graffiti-Spray-Junior-Hype-Logo-2.png';
-
-function applySimulationClanLogo(cities: WorldCity[], joinedClanId?: string | null): WorldCity[] {
-  if (!joinedClanId) return cities;
-  return cities.map((city) => ({
-    ...city,
-    clans: city.clans.map((clan) => {
-      if (clan.id === joinedClanId) {
-        return {
-          ...clan,
-          logoUrl: clan.logoUrl || USER_SIMULATION_CLAN_LOGO,
-        };
-      }
-      return clan;
-    }),
-  }));
-}
-
 function loadInitialRepositoryState(): PersistedRepositoryState {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<PersistedRepositoryState>;
       if (parsed.cities && Array.isArray(parsed.cities) && parsed.cities.length === 7) {
-        const reconciledCities = applySimulationClanLogo(
-          verifyAndReconcileWorldCities(parsed.cities),
-          parsed.joinedClanId
-        );
+        const reconciledCities = verifyAndReconcileWorldCities(parsed.cities);
         return {
           cities: reconciledCities,
           cityBosses:
             parsed.cityBosses && parsed.cityBosses.length === 7
               ? parsed.cityBosses
               : INITIAL_CITY_BOSSES,
-          activeAccountId: parsed.activeAccountId ?? DEMO_SWITCHABLE_ACCOUNTS[0].id,
+          activeAccountId: parsed.activeAccountId ?? 'nuenime-adventurer',
           joinedClanId: parsed.joinedClanId ?? null,
           playerContribution: parsed.playerContribution ?? 0,
-          relicShards: parsed.relicShards ?? 6,
+          relicShards: parsed.relicShards ?? 0,
           relicLevels: parsed.relicLevels ?? buildDefaultRelicLevels(reconciledCities),
           districtInfluence:
             parsed.districtInfluence ?? buildDefaultDistrictInfluence(reconciledCities),
@@ -232,10 +210,10 @@ function loadInitialRepositoryState(): PersistedRepositoryState {
   return {
     cities: baseSeed,
     cityBosses: INITIAL_CITY_BOSSES,
-    activeAccountId: DEMO_SWITCHABLE_ACCOUNTS[0].id,
+    activeAccountId: 'nuenime-adventurer',
     joinedClanId: null,
     playerContribution: 0,
-    relicShards: 6,
+    relicShards: 0,
     relicLevels: buildDefaultRelicLevels(baseSeed),
     districtInfluence: buildDefaultDistrictInfluence(baseSeed),
     completedMissionCounts: {},
@@ -480,21 +458,21 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     } catch {}
 
-    const base =
-      DEMO_SWITCHABLE_ACCOUNTS.find((a) => a.id === repo.activeAccountId) ??
-      DEMO_SWITCHABLE_ACCOUNTS[0];
     return {
-      ...base,
+      id: 'nuenime-adventurer',
       displayName: 'Petualang Nuenime',
+      handle: '@petualang_nuenime',
       title: 'Petualang Nuenime (STONE Lv.1)',
       role: 'CLAN_MEMBER',
+      ledCityId: null,
       isDemoAccount: false,
+      isAppAdmin: false,
       joinedClanId: repo.joinedClanId,
       level: 1,
       rank: 'STONE',
       isVip: false,
     };
-  }, [repo.activeAccountId, repo.joinedClanId]);
+  }, [repo.joinedClanId]);
 
   // Sinkronisasi data real-time dari Database Supabase (Menghapus ketergantungan data dummy)
   useEffect(() => {
@@ -514,7 +492,7 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         if (isMounted) {
           setRepo((prev) => {
-            // 1. Sinkronisasi Data Kota & Klan Murni dari Database
+            // 1. Sinkronisasi Data Kota & Klan Murni dari Database Supabase
             const nextCities = prev.cities.map((city) => {
               const dbCity = dbCities?.find((c: any) => c.id === city.id);
               const matchedClans = (dbClans || []).filter((c: any) => c.city_id === city.id);
@@ -571,6 +549,21 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
               return {
                 ...city,
+                name: dbCity?.name || city.name,
+                epithet: dbCity?.epithet || city.epithet,
+                regionName: dbCity?.region || city.regionName,
+                element: dbCity?.element || city.element,
+                worldXPercent: dbCity?.world_x_percent != null ? Number(dbCity.world_x_percent) : city.worldXPercent,
+                worldYPercent: dbCity?.world_y_percent != null ? Number(dbCity.world_y_percent) : city.worldYPercent,
+                focusYPercent: dbCity?.focus_y_percent != null ? Number(dbCity.focus_y_percent) : city.focusYPercent,
+                material: dbCity?.material || city.material,
+                accentHex: dbCity?.accent_hex || city.accentHex,
+                secondaryHex: dbCity?.secondary_hex || city.secondaryHex,
+                thumbnailAsset: dbCity?.thumbnail_asset || city.thumbnailAsset,
+                emblemAsset: dbCity?.emblem_asset || city.emblemAsset,
+                shortDescription: dbCity?.description || city.shortDescription,
+                fullLore: dbCity?.full_lore || city.fullLore,
+                districts: dbCity?.districts && Array.isArray(dbCity.districts) && dbCity.districts.length > 0 ? dbCity.districts : city.districts,
                 level: dbCity ? Number(dbCity.level) : levelProgress.level,
                 tier: dbCity ? dbCity.tier_name || levelProgress.tier : levelProgress.tier,
                 totalExp: cityTotalExp,
@@ -582,23 +575,43 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               };
             });
 
-            // 2. Sinkronisasi Data Bos Kota Murni dari Database (Level 0 dan HP Awal)
+            // 2. Sinkronisasi Data Bos Kota Murni dari Database Supabase (Level 0, HP Awal, Status)
             const nextBosses = prev.cityBosses.map((boss) => {
               const dbBoss = dbBosses?.find((b: any) => b.city_id === boss.cityId);
               if (!dbBoss) return boss;
               return {
                 ...boss,
+                id: dbBoss.id || boss.id,
                 name: dbBoss.name || boss.name,
                 title: dbBoss.title || boss.title,
+                speciesType: dbBoss.species_type || boss.speciesType,
+                element: dbBoss.element || boss.element,
+                description: dbBoss.description || boss.description,
+                characteristic: dbBoss.characteristic || boss.characteristic,
                 level: Number(dbBoss.level) || 0,
                 currentHp: Number(dbBoss.current_hp) || 10000,
                 maxHp: Number(dbBoss.max_hp) || 10000,
                 status: (dbBoss.status as any) || 'ACTIVE',
+                worldXPercent: dbBoss.world_x_percent != null ? Number(dbBoss.world_x_percent) : boss.worldXPercent,
+                worldYPercent: dbBoss.world_y_percent != null ? Number(dbBoss.world_y_percent) : boss.worldYPercent,
+                accentColor: dbBoss.accent_color || boss.accentColor,
+                secondaryColor: dbBoss.secondary_color || boss.secondaryColor,
               };
             });
 
+            // 3. Deteksi Keanggotaan Klan Pengguna Murni dari Database
+            const userClan = (dbClans || []).find((c: any) =>
+              (c.members || []).some((m: any) => m.user_id === activeAccount.id)
+            );
+            const resolvedJoinedClanId = userClan ? userClan.id : prev.joinedClanId;
+
             const reconciled = verifyAndReconcileWorldCities(nextCities, nextBosses);
-            const nextState = { ...prev, cities: reconciled, cityBosses: nextBosses };
+            const nextState = {
+              ...prev,
+              cities: reconciled,
+              cityBosses: nextBosses,
+              joinedClanId: resolvedJoinedClanId,
+            };
             saveStoredRepository(nextState);
             return nextState;
           });
@@ -612,7 +625,7 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [activeAccount.id]);
 
   const switchDemoAccount = useCallback(
     (accountId: string) => {
@@ -970,10 +983,29 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         };
       });
 
+      // Simpan status bergabung ke database Supabase secara real-time
+      void (async () => {
+        try {
+          await supabase.from('rpg_clan_members').upsert({
+            clan_id: clanId,
+            user_id: activeAccount.id,
+            display_name: activeAccount.displayName.replace(/\s*\(.*\)/, ''),
+            avatar_url: activeAccount.avatarUrl || null,
+            border_url: activeAccount.borderUrl || null,
+            role: 'Anggota',
+            contribution_score: 0,
+            level: activeAccount.level || 1,
+            last_active_at: new Date().toISOString(),
+          });
+        } catch (dbErr) {
+          console.warn('[Supabase DB] Error simpan anggota klan:', dbErr);
+        }
+      })();
+
       showToast(`Berhasil bergabung sebagai anggota aktif di ${targetClan.name}!`);
       return { ok: true, message: `Bergabung ke ${targetClan.name}` };
     },
-    [activeAccount.displayName, activeAccount.id, activeAccount.title, allClans, repo.joinedClanId, showToast]
+    [activeAccount.avatarUrl, activeAccount.borderUrl, activeAccount.displayName, activeAccount.id, activeAccount.level, allClans, showToast]
   );
 
   const updateClanLogo = useCallback(
@@ -996,6 +1028,22 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         saveStoredRepository(nextState);
         return nextState;
       });
+
+      // Simpan perubahan logo klan ke database Supabase
+      void (async () => {
+        try {
+          await supabase
+            .from('rpg_clans')
+            .update({
+              logo_url: cleanUrl || null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', clanId);
+        } catch (dbErr) {
+          console.warn('[Supabase DB] Error update logo klan:', dbErr);
+        }
+      })();
+
       showToast('Logo klan berhasil diperbarui!');
       return { ok: true, message: 'Logo klan berhasil diperbarui!' };
     },
@@ -1336,6 +1384,40 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         );
       }
 
+      // Simpan transaksi EXP & perbarui kontribusi member ke Supabase secara real-time
+      void (async () => {
+        try {
+          await supabase.from('rpg_exp_transactions').insert({
+            user_id: activeAccount.id,
+            clan_id: targetClan.id,
+            city_id: targetCity.id,
+            amount: expReward,
+            source_type: mission.activityType,
+            description: `Misi: ${mission.title}`,
+          });
+
+          const { data: memberRows } = await supabase
+            .from('rpg_clan_members')
+            .select('contribution_score')
+            .eq('clan_id', targetClan.id)
+            .eq('user_id', activeAccount.id)
+            .limit(1);
+
+          const prevScore = memberRows && memberRows[0] ? Number(memberRows[0].contribution_score) : 0;
+          await supabase.from('rpg_clan_members').upsert({
+            clan_id: targetClan.id,
+            user_id: activeAccount.id,
+            display_name: activeAccount.displayName.replace(/\s*\(.*\)/, ''),
+            avatar_url: activeAccount.avatarUrl || null,
+            border_url: activeAccount.borderUrl || null,
+            contribution_score: prevScore + expReward,
+            last_active_at: new Date().toISOString(),
+          });
+        } catch (dbErr) {
+          console.warn('[Supabase DB] Error sync misi EXP ke database:', dbErr);
+        }
+      })();
+
       return {
         ok: true,
         expAdded: expReward,
@@ -1343,7 +1425,7 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         newCityLevel: cityLevelAfter,
       };
     },
-    [activeAccount.displayName, activeAccount.id, activeAccount.title, allClans, repo.cities, repo.joinedClanId, showToast]
+    [activeAccount.avatarUrl, activeAccount.borderUrl, activeAccount.displayName, activeAccount.id, activeAccount.title, allClans, repo.cities, repo.joinedClanId, showToast]
   );
 
   /**
@@ -1386,6 +1468,26 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         };
       });
 
+      // Persist status bos ke database Supabase secara real-time
+      void (async () => {
+        try {
+          const targetBoss = repo.cityBosses.find((b) => b.id === bossId);
+          if (targetBoss) {
+            const nextHp = Math.max(0, targetBoss.currentHp - baseDamage);
+            await supabase
+              .from('rpg_city_bosses')
+              .update({
+                current_hp: nextHp,
+                status: nextHp === 0 ? 'DORMANT' : 'ENRANGED',
+                last_attacked_at: new Date().toISOString(),
+              })
+              .eq('id', bossId);
+          }
+        } catch (dbErr) {
+          console.warn('[Supabase DB] Error simpan serangan bos ke database:', dbErr);
+        }
+      })();
+
       if (defeatedNow) {
         fantasySoundEngine.playClanJoinFanfare();
         showToast(
@@ -1395,7 +1497,7 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       return { damage: baseDamage, defeated: defeatedNow };
     },
-    [allClans, repo.joinedClanId, repo.relicLevels, showToast]
+    [allClans, repo.cityBosses, repo.joinedClanId, repo.relicLevels, showToast]
   );
 
   const resetWorldBoss = useCallback(
@@ -1414,6 +1516,23 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             : b
         ),
       }));
+
+      // Pulihkan bos di database Supabase
+      void (async () => {
+        try {
+          await supabase
+            .from('rpg_city_bosses')
+            .update({
+              current_hp: 10000,
+              status: 'ACTIVE',
+              last_attacked_at: new Date().toISOString(),
+            })
+            .eq('id', bossId);
+        } catch (dbErr) {
+          console.warn('[Supabase DB] Error reset bos di database:', dbErr);
+        }
+      })();
+
       showToast('HP Bos Kota telah dipulihkan ke kondisi penuh untuk simulasi pertarungan.');
     },
     [showToast]
@@ -1435,7 +1554,7 @@ export const NuenimeRpgProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setRepo({
       cities: freshCities,
       cityBosses: INITIAL_CITY_BOSSES,
-      activeAccountId: DEMO_SWITCHABLE_ACCOUNTS[0].id,
+      activeAccountId: 'nuenime-adventurer',
       joinedClanId: null,
       playerContribution: 0,
       relicShards: 6,

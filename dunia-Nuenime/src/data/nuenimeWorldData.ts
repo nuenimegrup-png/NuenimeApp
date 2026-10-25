@@ -5,12 +5,6 @@ import {
 } from '../config/nuenimeSystemConfig';
 import { DEMO_CITY_LEADERS, INITIAL_CITY_BOSSES } from './nuenimeRpgFeaturesData';
 
-/**
- * Data Dasar 7 Kota Resmi Dunia Nuenime (Tanpa Klan Dummy / Anggota Dummy).
- * Seluruh klan dalam setiap kota kini murni berasal dari klan nyata yang didirikan oleh pengguna
- * dan disinkronkan langsung melalui database Supabase (tabel rpg_clans & rpg_clan_members).
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const RAW_WORLD_CITIES: any[] = [
   {
     id: 'aetheria',
