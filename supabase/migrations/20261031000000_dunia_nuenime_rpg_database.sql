@@ -6,8 +6,16 @@
 -- Kota dimulai dari EXP 0, Level 1, HP 10.000, dan seluruh Bos dimulai dari Level 0.
 -- ==============================================================================
 
+-- 0. BERSIHKAN / RESET TABEL RPG LAMA (MEMASTIKAN SKEMA 100% BARU TANPA KONFLIK KOLOM)
+DROP TABLE IF EXISTS public.rpg_exp_transactions CASCADE;
+DROP TABLE IF EXISTS public.rpg_user_profiles CASCADE;
+DROP TABLE IF EXISTS public.rpg_clan_members CASCADE;
+DROP TABLE IF EXISTS public.rpg_clans CASCADE;
+DROP TABLE IF EXISTS public.rpg_city_bosses CASCADE;
+DROP TABLE IF EXISTS public.rpg_cities CASCADE;
+
 -- 1. TABEL: RPG CITIES (7 Kota Dunia Nuenime)
-CREATE TABLE IF NOT EXISTS public.rpg_cities (
+CREATE TABLE public.rpg_cities (
   id VARCHAR(64) PRIMARY KEY,
   name TEXT NOT NULL,
   title TEXT NOT NULL,

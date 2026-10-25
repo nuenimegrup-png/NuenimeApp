@@ -868,6 +868,13 @@ GRANT EXECUTE ON FUNCTION public.update_profile_avatar(TEXT) TO authenticated;
 -- ==============================================================================
 -- 25. DUNIA NUENIME RPG DATABASE (KOTA, KLAN, MEMBER, BOS, TRANSAKSI EXP)
 -- ==============================================================================
+DROP TABLE IF EXISTS public.rpg_exp_transactions CASCADE;
+DROP TABLE IF EXISTS public.rpg_user_profiles CASCADE;
+DROP TABLE IF EXISTS public.rpg_clan_members CASCADE;
+DROP TABLE IF EXISTS public.rpg_clans CASCADE;
+DROP TABLE IF EXISTS public.rpg_city_bosses CASCADE;
+DROP TABLE IF EXISTS public.rpg_cities CASCADE;
+
 CREATE TABLE IF NOT EXISTS public.rpg_cities (
   id VARCHAR(64) PRIMARY KEY,
   name TEXT NOT NULL,
