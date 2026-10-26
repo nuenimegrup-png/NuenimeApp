@@ -9,7 +9,7 @@ on:
       tag:
         description: "Release tag to build (must match the version in app.config.ts)"
         required: false
-        default: "v0.0.4"
+        default: "v0.0.5"
 
 env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
@@ -192,10 +192,10 @@ jobs:
           body: |
             ## Nuenime ${{ env.RELEASE_TAG }}
 
-            - **Fitur Gacha & Koleksi Banner Profil**: Dukungan GIF animasi, PNG, JPG, biaya kustom Dylan Crystal, setting drop rate dinamis di Admin Dashboard.
-            - **Hadiah Massal (Mailbox)**: Pengiriman hadiah massal admin ke seluruh pemain, notifikasi lonceng & popup klaim interaktif.
-            - **Stabilitas API**: Automatic failover ke official AniList GraphQL.
-            - **Perbaikan UI & Legalitas**: Dukungan support & donasi Saweria, Nothing UI styling.
+            - **Auto-scroll Chat Realtime**: Pesan baru di Chat Global dan Chat Pribadi langsung otomatis scroll ke pesan paling bawah.
+            - **Centang Biru Member**: Seluruh member terverifikasi memiliki badge centang biru di profil, koneksi, dan obrolan. Centang merah khusus untuk Admin & Developer.
+            - **Integrasi Web NuePet Zoo & Dunia Nuenime**: Terintegrasi via tautan responsif tanpa membebani ukuran bundle APK.
+            - **Perbaikan Transaksi & Keamanan**: Penyelesaian RPC approval top-up admin dan isolasi database Supabase.
 
             Download file APK di bawah ini dan pasang di perangkat Android Anda.
           files: ./artifacts/*.apk
