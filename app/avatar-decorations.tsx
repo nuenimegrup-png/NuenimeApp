@@ -34,6 +34,7 @@ import { BorderAvatar } from "@/components/border-avatar";
 import {
   getCrystalBalance,
   deductCrystalBalance,
+  addCrystalBalance,
 } from "@/lib/topup-service";
 import { useExp } from "@/providers/exp-toast-provider";
 import { awardDirectUserXp } from "@/lib/gacha-service";
@@ -269,6 +270,30 @@ export default function AvatarDecorationsScreen() {
       return;
     }
 
+    const price = (item.priceCrystal && item.priceCrystal > 0)
+      ? item.priceCrystal
+      : (BORDER_RARITY_PRICES[item.rarity] || 2000);
+
+    // Guard KETAT: Jika saldo Crystal habis (0) atau tidak cukup untuk harga border
+    if (crystalBalance < price || crystalBalance <= 0) {
+      hapticWarning();
+      Alert.alert(
+        "Saldo Crystal Tidak Cukup",
+        `Crystal Anda tidak mencukupi untuk membeli border "${item.name}".\n\n• Dibutuhkan: ${price.toLocaleString()} Crystal\n• Saldo Anda: ${crystalBalance.toLocaleString()} Crystal\n• Kekurangan: ${(price - crystalBalance).toLocaleString()} Crystal\n\nSilakan lakukan top up Crystal terlebih dahulu.`,
+        [
+          { text: "Batal", style: "cancel" },
+          {
+            text: "Top Up Sekarang",
+            style: "default",
+            onPress: () => {
+              router.push("/topup" as never);
+            },
+          },
+        ]
+      );
+      return;
+    }
+
     // Masuk ke Mode Checkout (CO) transparan
     setCheckoutBorder(item);
     setCheckoutState("review");
@@ -280,7 +305,17 @@ export default function AvatarDecorationsScreen() {
     if (!checkoutBorder || !userId || isPurchasing) return;
     const price = (checkoutBorder.priceCrystal && checkoutBorder.priceCrystal > 0)
       ? checkoutBorder.priceCrystal
-      : BORDER_RARITY_PRICES[checkoutBorder.rarity];
+      : (BORDER_RARITY_PRICES[checkoutBorder.rarity] || 2000);
+
+    // VALIDASI KETAT 1: Periksa state lokal komponen sebelum proses
+    if (crystalBalance < price || crystalBalance <= 0) {
+      hapticWarning();
+      setCheckoutState("error");
+      setCheckoutError(
+        `Saldo Crystal habis atau tidak mencukupi (${crystalBalance.toLocaleString()} Crystal). Anda membutuhkan ${price.toLocaleString()} Crystal.`
+      );
+      return;
+    }
 
     setIsPurchasing(true);
     setCheckoutState("processing");
@@ -296,19 +331,19 @@ export default function AvatarDecorationsScreen() {
         return;
       }
 
-      // 2. Cek saldo terbaru dari Supabase
+      // 2. Cek saldo terbaru LANGSUNG dari server (Single source of truth)
       const latestBalance = await getCrystalBalance(userId);
-      if (latestBalance < price) {
+      if (latestBalance < price || latestBalance <= 0) {
         hapticWarning();
         setCrystalBalance(latestBalance);
         setCheckoutState("error");
         setCheckoutError(
-          `Saldo Crystal tidak cukup. Anda membutuhkan ${price.toLocaleString()} Crystal, saldo saat ini ${latestBalance.toLocaleString()} Crystal.`
+          `Saldo Crystal tidak cukup. Anda membutuhkan ${price.toLocaleString()} Crystal, saldo saat ini ${latestBalance.toLocaleString()} Crystal. Pembelian dibatalkan.`
         );
         return;
       }
 
-      // 3. Kurangi saldo Crystal secara atomik
+      // 3. Kurangi saldo Crystal secara atomik (dengan penjaga saldo anti-negatif)
       const newBalance = await deductCrystalBalance(userId, price);
 
       // 4. Catat pembelian ke Supabase (tabel user_border_purchases)
@@ -320,9 +355,11 @@ export default function AvatarDecorationsScreen() {
 
       if (!result.success) {
         // Rollback saldo jika gagal catat di database
-        await deductCrystalBalance(userId, -price);
+        await addCrystalBalance(userId, price);
+        const rollbackBalance = await getCrystalBalance(userId);
+        setCrystalBalance(rollbackBalance);
         setCheckoutState("error");
-        setCheckoutError("Gagal mencatat transaksi pembelian border ke server. Saldo Anda aman dan tidak terpotong.");
+        setCheckoutError("Gagal mencatat transaksi pembelian border ke server. Saldo Anda aman dan telah dikembalikan.");
         return;
       }
 
@@ -389,10 +426,11 @@ export default function AvatarDecorationsScreen() {
   if (checkoutBorder) {
     const price = (checkoutBorder.priceCrystal && checkoutBorder.priceCrystal > 0)
       ? checkoutBorder.priceCrystal
-      : BORDER_RARITY_PRICES[checkoutBorder.rarity];
+      : (BORDER_RARITY_PRICES[checkoutBorder.rarity] || 2000);
     const theme = RARITY_THEME[checkoutBorder.rarity];
-    const hasEnough = crystalBalance >= price;
-    const remainingBalance = Math.max(0, crystalBalance - price);
+    const hasEnough = crystalBalance >= price && crystalBalance > 0;
+    const remainingBalance = crystalBalance - price;
+    const deficit = Math.max(0, price - crystalBalance);
 
     return (
       <SafeAreaView edges={["top", "left", "right"]} style={styles.safeContainer}>
@@ -591,7 +629,9 @@ export default function AvatarDecorationsScreen() {
                 <View style={styles.coDivider} />
 
                 <View style={styles.coSummaryRow}>
-                  <Text style={styles.coSummaryTotalLabel}>Sisa Saldo Setelah Beli:</Text>
+                  <Text style={styles.coSummaryTotalLabel}>
+                    {hasEnough ? "Sisa Saldo Setelah Beli:" : "Kekurangan Saldo:"}
+                  </Text>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                     <Image source={TOPUP_CRYSTAL_ICON} style={{ width: 15, height: 15 }} contentFit="contain" />
                     <Text
@@ -600,7 +640,9 @@ export default function AvatarDecorationsScreen() {
                         !hasEnough && { color: "#F43F5E" },
                       ]}
                     >
-                      {remainingBalance.toLocaleString()}
+                      {hasEnough
+                        ? `${remainingBalance.toLocaleString()} Crystal`
+                        : `- ${deficit.toLocaleString()} Crystal`}
                     </Text>
                   </View>
                 </View>
@@ -621,7 +663,7 @@ export default function AvatarDecorationsScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.coWarningTitle}>Saldo Crystal Tidak Mencukupi</Text>
                     <Text style={styles.coWarningText}>
-                      Anda membutuhkan {price.toLocaleString()} Crystal, saldo saat ini {crystalBalance.toLocaleString()} Crystal (kurang {(price - crystalBalance).toLocaleString()} Crystal).
+                      Anda membutuhkan {price.toLocaleString()} Crystal, saldo saat ini {crystalBalance.toLocaleString()} Crystal (kurang {deficit.toLocaleString()} Crystal).
                     </Text>
                   </View>
                 </View>
@@ -631,12 +673,12 @@ export default function AvatarDecorationsScreen() {
               {hasEnough ? (
                 <Pressable
                   accessibilityRole="button"
-                  disabled={isPurchasing}
+                  disabled={isPurchasing || !hasEnough || crystalBalance < price || crystalBalance <= 0}
                   onPress={handleConfirmPurchase}
                   style={({ pressed }) => [
                     styles.coPayBtn,
                     pressed && styles.btnPressed,
-                    isPurchasing && { opacity: 0.7 },
+                    (isPurchasing || !hasEnough || crystalBalance < price || crystalBalance <= 0) && { opacity: 0.5 },
                   ]}
                 >
                   {isPurchasing ? (
@@ -1024,16 +1066,33 @@ export default function AvatarDecorationsScreen() {
                       </View>
                     ) : (
                       // Sudah rilis, belum dimiliki: tombol Beli
-                      <Pressable
-                        accessibilityRole="button"
-                        onPress={() => handleBuyPress(border)}
-                        style={({ pressed }) => [
-                          styles.actionBtnBuy,
-                          pressed && styles.btnPressed,
-                        ]}
-                      >
-                        <Text style={styles.actionTextBuy}>Beli</Text>
-                      </Pressable>
+                      (() => {
+                        const borderPrice = (border.priceCrystal && border.priceCrystal > 0)
+                          ? border.priceCrystal
+                          : (BORDER_RARITY_PRICES[border.rarity] || 2000);
+                        const canAfford = crystalBalance >= borderPrice && crystalBalance > 0;
+
+                        return (
+                          <Pressable
+                            accessibilityRole="button"
+                            onPress={() => handleBuyPress(border)}
+                            style={({ pressed }) => [
+                              styles.actionBtnBuy,
+                              !canAfford && styles.actionBtnBuyInsufficient,
+                              pressed && styles.btnPressed,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.actionTextBuy,
+                                !canAfford && styles.actionTextBuyInsufficient,
+                              ]}
+                            >
+                              Beli
+                            </Text>
+                          </Pressable>
+                        );
+                      })()
                     )}
                   </View>
                 </View>
@@ -1456,11 +1515,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  actionBtnBuyInsufficient: {
+    backgroundColor: "rgba(100, 116, 139, 0.12)",
+    borderColor: "rgba(100, 116, 139, 0.35)",
+  },
   actionTextBuy: {
     fontFamily: "Nunito-ExtraBold",
     fontSize: 13,
     color: "#FBBF24",
     letterSpacing: 0.2,
+  },
+  actionTextBuyInsufficient: {
+    color: "#94A3B8",
   },
   priceRow: {
     flexDirection: "row",

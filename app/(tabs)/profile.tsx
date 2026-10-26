@@ -1039,8 +1039,11 @@ export default function ProfileScreen() {
             {/* Peliharaan */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Fitur Peliharaan"
-              onPress={() => showToast("Fitur Peliharaan akan segera hadir.")}
+              accessibilityLabel="Fitur Peliharaan NuePet Zoo"
+              onPress={() => {
+                hapticLight();
+                router.push("/nuepet" as any);
+              }}
               style={({ pressed }) => [styles.featureCardBtn, pressed && styles.btnPressed]}
             >
               <View style={styles.featureLabelRow}>

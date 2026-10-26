@@ -414,8 +414,25 @@ export async function recordBorderPurchaseToSupabase(
   userId: string,
   border: { id: string; name: string; rarity: string },
   pricePaid: number
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; newBalance?: number }> {
   try {
+    // 1. Coba eksekusi fungsi database atomik (aman dari tampering & bypass saldo)
+    const { data: rpcData, error: rpcError } = await supabase.rpc("execute_border_purchase", {
+      p_user_id: userId,
+      p_border_id: border.id,
+      p_border_name: border.name,
+      p_rarity: border.rarity,
+      p_cost: pricePaid,
+    });
+
+    if (!rpcError && rpcData && typeof rpcData === "object") {
+      if (rpcData.success === false) {
+        return { success: false, error: rpcData.error || "Gagal memproses transaksi border" };
+      }
+      return { success: true, newBalance: rpcData.new_balance };
+    }
+
+    // 2. Fallback upsert standar
     const { error } = await supabase.from("user_border_purchases").upsert(
       {
         user_id: userId,

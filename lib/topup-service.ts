@@ -1,6 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Linking, Platform } from "react-native";
 import { supabase } from "@/lib/supabase";
+import {
+  sanitizeMessage,
+  checkTopupCooldown,
+  recordTopupTimestamp,
+  validateTopupPackageSecurity,
+} from "./security-defense";
 
 export interface CrystalPackage {
   id: string;
@@ -404,21 +410,38 @@ export async function getCrystalBalance(userId?: string | null): Promise<number>
         .eq("user_id", userId)
         .maybeSingle();
 
-      if (!error && data && typeof data.crystal_balance === "number") {
-        const key = getCrystalBalanceStorageKey(userId);
-        await AsyncStorage.setItem(key, String(data.crystal_balance));
-        return data.crystal_balance;
+      if (!error) {
+        if (data && typeof data.crystal_balance === "number") {
+          const key = getCrystalBalanceStorageKey(userId);
+          await AsyncStorage.setItem(key, String(data.crystal_balance));
+          return data.crystal_balance;
+        } else if (!data) {
+          // Baris belum ada di user_balances -> Saldo resmi di server adalah 0!
+          const key = getCrystalBalanceStorageKey(userId);
+          await AsyncStorage.setItem(key, "0");
+          try {
+            await supabase.from("user_balances").upsert(
+              {
+                user_id: userId,
+                crystal_balance: 0,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "user_id" }
+            );
+          } catch {}
+          return 0;
+        }
       }
     } catch {}
   }
 
-  // 2. Fallback AsyncStorage
+  // 2. Fallback AsyncStorage HANYA jika query Supabase error (misal offline)
   try {
     const key = getCrystalBalanceStorageKey(userId);
     const val = await AsyncStorage.getItem(key);
     if (val !== null) {
       const num = parseInt(val, 10);
-      if (!isNaN(num)) return num;
+      if (!isNaN(num)) return Math.max(0, num);
     }
 
     // Fallback legacy HANYA untuk pengguna tamu (guest / tanpa userId)
@@ -426,7 +449,7 @@ export async function getCrystalBalance(userId?: string | null): Promise<number>
       const legacy = await AsyncStorage.getItem(LEGACY_STORAGE_CRYSTAL_BALANCE);
       if (legacy !== null) {
         const num = parseInt(legacy, 10);
-        if (!isNaN(num)) return num;
+        if (!isNaN(num)) return Math.max(0, num);
       }
     }
 
@@ -481,14 +504,19 @@ export async function addCrystalBalance(
 }
 
 /**
- * Mengurangi Crystal dari saldo akun dengan penjaga saldo tidak negatif (floor 0)
+ * Mengurangi Crystal dari saldo akun dengan penjaga saldo tidak negatif dan pencegahan beli tanpa saldo
  */
 export async function deductCrystalBalance(
   userId: string | null | undefined,
   amountToDeduct: number
 ): Promise<number> {
   const current = await getCrystalBalance(userId);
-  const positiveDeduct = Math.max(0, Math.floor(amountToDeduct));
+  const positiveDeduct = Math.floor(amountToDeduct);
+  if (positiveDeduct > 0 && current < positiveDeduct) {
+    throw new Error(
+      `Saldo Crystal tidak cukup. Saldo saat ini: ${current}, dibutuhkan: ${positiveDeduct}`
+    );
+  }
   const next = Math.max(0, current - positiveDeduct);
   return setCrystalBalance(userId, next);
 }
@@ -677,13 +705,26 @@ export async function createTopUpTransaction(params: {
   paymentMethod: PaymentMethodId;
   additionalFee?: number;
 }): Promise<TopUpTransaction> {
-  const fee = params.additionalFee ?? 0;
+  // 1. Validasi Keamanan Paket (Anti-Fraud & Validasi Nilai)
+  const pkgCheck = validateTopupPackageSecurity(params.packageItem);
+  if (!pkgCheck.valid) {
+    throw new Error(pkgCheck.reason || "Paket top up tidak valid.");
+  }
+
+  // 2. Proteksi Anti-Flood / DDoS Pembuatan Transaksi
+  const cooldown = await checkTopupCooldown(params.userId);
+  if (!cooldown.canCreate) {
+    throw new Error(`Harap tunggu ${cooldown.remainingSeconds} detik sebelum membuat transaksi baru.`);
+  }
+
+  const fee = Math.max(0, params.additionalFee ?? 0);
   const total = params.packageItem.price + fee;
+  const safeUsername = sanitizeMessage(params.username || "Pengguna", 50);
 
   const transaction: TopUpTransaction = {
     id: generateTransactionId(),
     userId: params.userId,
-    username: params.username,
+    username: safeUsername,
     packageId: params.packageItem.id,
     packageName: params.packageItem.name,
     crystalAmount: params.packageItem.amount,
@@ -702,7 +743,7 @@ export async function createTopUpTransaction(params: {
       await supabase.from("topup_transactions").insert({
         id: transaction.id,
         user_id: params.userId,
-        username: params.username,
+        username: safeUsername,
         package_id: params.packageItem.id,
         package_name: params.packageItem.name,
         crystal_amount: params.packageItem.amount,
@@ -718,6 +759,9 @@ export async function createTopUpTransaction(params: {
       console.warn("createTopUpTransaction Supabase insert error:", e);
     }
   }
+
+  // Catat waktu transaksi berhasil dibuat untuk anti-flood
+  await recordTopupTimestamp(params.userId);
 
   // 2. Simpan ke AsyncStorage lokal
   const key = getTopUpTransactionsStorageKey(params.userId);
@@ -755,7 +799,7 @@ export async function updateTransactionStatus(
 
   tx.status = newStatus;
   if (statusNote !== undefined) {
-    tx.statusNote = statusNote;
+    tx.statusNote = sanitizeMessage(statusNote, 200);
   }
 
   list[index] = tx;

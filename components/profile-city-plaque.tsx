@@ -18,6 +18,13 @@ interface CityTheme {
   material: string;
 }
 
+export const WANDERER_THEME: CityTheme = {
+  name: 'GELANDANGAN',
+  accent: '#94A3B8',
+  secondary: '#CBD5E1',
+  material: 'iron',
+};
+
 const CITY_THEMES: Record<string, CityTheme> = {
   aetheria: { name: 'AETHERIA', accent: '#38BDF8', secondary: '#E0F2FE', material: 'diamond' },
   lunaris: { name: 'LUNARIS', accent: '#22D3EE', secondary: '#CFFAFE', material: 'silver' },
@@ -56,7 +63,40 @@ const CityEmblemSvg: React.FC<{ cityId: string; size?: number; accent: string }>
       <Path d="M32 1.5L36 8H28L32 1.5ZM32 62.5L36 56H28L32 62.5ZM1.5 32L8 28V36L1.5 32ZM62.5 32L56 28V36L62.5 32Z" fill="url(#shieldGrad)" />
 
       {/* Emblem Symbol Inside */}
-      {normId === 'aetheria' || !CITY_THEMES[normId] ? (
+      {normId === 'gelandangan' ? (
+        <>
+          {/* Wanderer / Vagabond / Nomad: Crossed Explorer Staffs & Wind Rose */}
+          <Defs>
+            <SvgGradient id="wandererGrad" x1="10" y1="10" x2="54" y2="54">
+              <Stop offset="0%" stopColor="#E2E8F0" />
+              <Stop offset="50%" stopColor="#94A3B8" />
+              <Stop offset="100%" stopColor="#475569" />
+            </SvgGradient>
+          </Defs>
+          {/* Crossed traveler walking staff & explorer blade */}
+          <Path
+            d="M18 46L46 18M46 18L43 14L39 18M18 46L21 50L25 46"
+            stroke="#94A3B8"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+          />
+          <Path
+            d="M46 46L18 18M18 18L14 21L18 25M46 46L50 43L46 39"
+            stroke="#64748B"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+          />
+          {/* Center 4-Point Explorer Wind Rose / Wanderer Compass Star */}
+          <Path
+            d="M32 15L35.5 28.5L49 32L35.5 35.5L32 49L28.5 35.5L15 32L28.5 28.5L32 15Z"
+            fill="url(#wandererGrad)"
+            stroke="#F1F5F9"
+            strokeWidth="1.6"
+          />
+          <Circle cx="32" cy="32" r="4.2" fill="#0B132B" stroke="#E2E8F0" strokeWidth="1.5" />
+          <Circle cx="32" cy="32" r="1.8" fill="#38BDF8" />
+        </>
+      ) : normId === 'aetheria' || !CITY_THEMES[normId] ? (
         <>
           <Path
             d="M32 12L37.5 24.5L50 27L39.5 35.5L42 48.5L32 41L22 48.5L24.5 35.5L14 27L26.5 24.5L32 12Z"
@@ -140,12 +180,13 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = ({ userId, st
       if (!targetUserId) return null;
 
       try {
-        // 1. Cek dari keanggotaan klan (rpg_clan_members)
+        // 1. Cek dari keanggotaan klan aktif (rpg_clan_members WHERE status = 'active')
         const { data: memberData } = await supabase
           .from('rpg_clan_members')
           .select(`
             role,
             contribution_score,
+            status,
             rpg_clans (
               id,
               name,
@@ -153,27 +194,30 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = ({ userId, st
               city_id,
               logo_url,
               level,
-              total_exp
+              total_exp,
+              status
             )
           `)
           .eq('user_id', targetUserId)
+          .eq('status', 'active')
           .maybeSingle();
 
         const rawClan = (memberData as any)?.rpg_clans;
         const joinedClan = Array.isArray(rawClan) ? rawClan[0] : rawClan;
 
-        if (joinedClan) {
+        if (joinedClan && joinedClan.status !== 'disbanded') {
           return {
             clan: joinedClan,
             role: memberData?.role,
           };
         }
 
-        // 2. Fallback: Cek apakah user adalah pembuat/pemimpin klan langsung di rpg_clans
+        // 2. Fallback: Cek apakah user adalah pembuat/pemimpin klan langsung di rpg_clans yang belum dibubarkan
         const { data: leaderClan } = await supabase
           .from('rpg_clans')
-          .select('id, name, tag, city_id, logo_url, level, total_exp')
+          .select('id, name, tag, city_id, logo_url, level, total_exp, status')
           .eq('leader_id', targetUserId)
+          .neq('status', 'disbanded')
           .maybeSingle();
 
         if (leaderClan) {
@@ -195,25 +239,36 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = ({ userId, st
   const clanInfo = clanData?.clan;
   const isJoinedClan = !!clanInfo;
 
-  const cityId = (clanInfo?.city_id || 'aetheria').toLowerCase();
-  const theme = CITY_THEMES[cityId] || CITY_THEMES.aetheria;
+  // Jika belum gabung klan: Plakat menampilkan "GELANDANGAN" dengan logo pengelana/wanderer
+  // Jika sudah gabung klan: Otomatis menyesuaikan dengan kota dan klan tempat bernaung
+  const cityId = isJoinedClan
+    ? (clanInfo.city_id || 'aetheria').toLowerCase()
+    : 'gelandangan';
+
+  const theme = isJoinedClan
+    ? (CITY_THEMES[cityId] || CITY_THEMES.aetheria)
+    : WANDERER_THEME;
+
   const cityName = theme.name;
   const clanTag = clanInfo?.tag ? clanInfo.tag.toUpperCase() : null;
   const clanName = clanInfo?.name || null;
-  const cityLevel = clanInfo?.level || 1;
+  const cityLevel = isJoinedClan ? (clanInfo?.level || 1) : 0;
   const accentColor = theme.accent;
 
   const handlePress = () => {
     hapticLight();
-    router.push('/dunia' as never);
+    router.push({
+      pathname: '/dunia',
+      params: { tab: 'klan' },
+    } as never);
   };
 
   return (
     <View style={[styles.outerContainer, style]}>
-      {/* 1. Plakat Kota Tunggal (Persis Gambar 1) */}
+      {/* 1. Plakat Kota / Status Pengelana */}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Kota ${cityName}`}
+        accessibilityLabel={isJoinedClan ? `Kota ${cityName}` : 'Status Gelandangan / Pengelana'}
         onPress={handlePress}
         // @ts-ignore
         onClick={handlePress}
@@ -296,7 +351,7 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = ({ userId, st
       ) : (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Belum bergabung klan"
+          accessibilityLabel="Belum memiliki klan — Ketuk untuk cari klan"
           onPress={handlePress}
           // @ts-ignore
           onClick={handlePress}
@@ -306,7 +361,8 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = ({ userId, st
             Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
           ]}
         >
-          <Text style={styles.noClanText}>Belum Bergabung Klan</Text>
+          <View style={styles.noClanDot} />
+          <Text style={styles.noClanText}>Belum Punya Klan (Cari Klan)</Text>
         </Pressable>
       )}
     </View>
@@ -418,20 +474,30 @@ const styles = StyleSheet.create({
     color: '#E2E8F0',
     letterSpacing: 0.3,
   },
+  noClanDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#94A3B8',
+    opacity: 0.8,
+  },
   noClanBadgeBelow: {
     marginTop: 4,
     marginLeft: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4.5,
     backgroundColor: 'rgba(7, 14, 28, 0.85)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
     borderRadius: 6,
     paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingVertical: 2.5,
   },
   noClanText: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: 'Nunito-Bold',
     fontSize: 9,
     color: '#94A3B8',
-    fontStyle: 'italic',
+    letterSpacing: 0.2,
   },
 });

@@ -1,6 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabase";
 import { filterAndCensorMessage } from "./word-filter";
+import {
+  sanitizeMessage,
+  checkChatCooldown,
+  recordChatTimestamp,
+  checkDuplicateSpamAndAutoBan,
+} from "./security-defense";
 
 export type GlobalRoom = "ngobrol_1" | "ngobrol_2" | "rekrut_clan";
 
@@ -224,30 +230,39 @@ export async function sendGlobalMessage({
   clanTag?: string | null;
   message: string;
   replyTo?: GlobalChatReplyInfo | null;
-}): Promise<{ success: boolean; data?: GlobalChatMessage; error?: string }> {
-  const cleanText = message.trim();
-  if (!cleanText) {
-    return { success: false, error: "Pesan tidak boleh kosong." };
-  }
-  if (cleanText.length > 255) {
-    return { success: false, error: "Pesan maksimal 255 karakter." };
-  }
+}): Promise<{ success: boolean; data?: GlobalChatMessage; error?: string; warning?: string; isBanned?: boolean }> {
   if (!senderId || senderId === "guest") {
     return { success: false, error: "Silakan login terlebih dahulu untuk mengirim pesan." };
   }
 
-  // Rate Limiting anti-spam (minimal jeda 1.5 detik per pesan)
-  const lastSentStr = await AsyncStorage.getItem(LAST_SENT_TIMESTAMP_KEY);
-  const now = Date.now();
-  if (lastSentStr) {
-    const lastSent = Number(lastSentStr) || 0;
-    if (now - lastSent < 1500) {
-      return { success: false, error: "Terlalu cepat. Harap tunggu 1 detik sebelum mengirim lagi." };
-    }
+  // 1. Sanitasi anti-injeksi XSS, Script, SQL & Zero-Width Evasion
+  const sanitizedText = sanitizeMessage(message, 500);
+  if (!sanitizedText) {
+    return { success: false, error: "Pesan tidak boleh kosong." };
   }
 
-  // Filter kata kasar & terlarang
-  const filtered = filterAndCensorMessage(cleanText);
+  // 2. Anti-DDoS & Flood Protection (Rate Limiting Jeda Chat)
+  const cooldownCheck = await checkChatCooldown(senderId);
+  if (!cooldownCheck.allowed) {
+    return {
+      success: false,
+      error: `Terlalu cepat. Harap tunggu ${cooldownCheck.remainingSeconds} detik sebelum mengirim lagi.`,
+    };
+  }
+
+  // 3. Deteksi Spam Pesan Sama (4x Berturut-turut = AUTO-BAN AKUN)
+  const spamCheck = await checkDuplicateSpamAndAutoBan(senderId, "chat_global", sanitizedText);
+  if (spamCheck.isBanned) {
+    return {
+      success: false,
+      isBanned: true,
+      error: spamCheck.errorMessage || "AKUN DIBLOKIR: Anda telah diblokir permanen karena mengirim pesan yang sama 4 kali!",
+    };
+  }
+
+  // 4. Filter sensor kata terlarang
+  const filtered = filterAndCensorMessage(sanitizedText);
+  const now = Date.now();
 
   try {
     const payload: any = {
@@ -285,7 +300,8 @@ export async function sendGlobalMessage({
       createdAt: data?.created_at || new Date().toISOString(),
     };
 
-    // Perbarui timestamp pengiriman terakhir
+    // Perbarui timestamp pengiriman terakhir (Anti-DDoS / Rate Limiting)
+    await recordChatTimestamp(senderId);
     await AsyncStorage.setItem(LAST_SENT_TIMESTAMP_KEY, String(now));
 
     // Perbarui cache lokal
@@ -297,7 +313,11 @@ export async function sendGlobalMessage({
       await AsyncStorage.setItem(cacheKey, JSON.stringify(list.slice(-100)));
     } catch {}
 
-    return { success: true, data: createdMsg };
+    return {
+      success: true,
+      data: createdMsg,
+      warning: spamCheck.warningMessage,
+    };
   } catch (err: any) {
     console.warn("[global-chat] sendGlobalMessage error:", err);
     return { success: false, error: err?.message || "Gagal mengirim pesan." };

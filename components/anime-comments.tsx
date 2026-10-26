@@ -22,6 +22,10 @@ import { canSubmitSharedComment, commentAuthorLabel } from "@/lib/comment-conten
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { BorderAvatar } from "@/components/border-avatar";
 import { getEquippedBorderId } from "@/lib/avatar-borders";
+import {
+  checkDiscussionCooldown,
+  checkDuplicateSpamAndAutoBan,
+} from "@/lib/security-defense";
 
 function authorName(comment: SharedComment) {
   return commentAuthorLabel(comment.author);
@@ -122,12 +126,45 @@ export const AnimeComments = memo(function AnimeComments({
   const [hideAllSpoilers, setHideAllSpoilers] = useState(false);
   const [sort, setSort] = useState<"popular" | "newest">("newest");
   const [replyTo, setReplyTo] = useState<SharedComment | null>(null);
+  const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
+  const [securityWarning, setSecurityWarning] = useState<string | null>(null);
 
   const [visibleCount, setVisibleCount] = useState(COMMENTS_PAGE_SIZE);
 
   useEffect(() => {
     setVisibleCount(COMMENTS_PAGE_SIZE);
   }, [animeId, episodeNumber, sort]);
+
+  // Cek jeda diskusi 1 menit saat pertama kali load
+  useEffect(() => {
+    let mounted = true;
+    if (!auth.user?.id) return;
+
+    checkDiscussionCooldown(auth.user.id).then((res) => {
+      if (mounted && res.remainingSeconds > 0) {
+        setCooldownSeconds(res.remainingSeconds);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [auth.user?.id]);
+
+  // Interval timer countdown 60 detik
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const interval = setInterval(() => {
+      setCooldownSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cooldownSeconds]);
 
   const canPost = canSubmitSharedComment(content);
   const sortedComments = useMemo(() => {
@@ -161,7 +198,38 @@ export const AnimeComments = memo(function AnimeComments({
     }
   }, [replyTo, sortedComments]);
 
-  const post = () =>
+  const post = async () => {
+    if (cooldownSeconds > 0) {
+      Alert.alert(
+        "Jeda Diskusi Aktif",
+        `Mohon tunggu ${cooldownSeconds} detik sebelum mengirim komentar berikutnya (aturan jeda 1 menit).`
+      );
+      return;
+    }
+
+    if (!auth.user) {
+      router.push("/auth" as never);
+      return;
+    }
+
+    // Cek spam pesan berulang (4x = Auto-Ban Akun)
+    const spamCheck = await checkDuplicateSpamAndAutoBan(auth.user.id, "diskusi", content);
+    if (spamCheck.isBanned) {
+      await auth.refreshProfile();
+      Alert.alert(
+        "AKUN DIBLOKIR",
+        spamCheck.errorMessage || "Akun Anda telah DIBLOKIR permanen karena melakukan spam pesan yang sama sebanyak 4 kali!"
+      );
+      return;
+    }
+
+    if (spamCheck.warningMessage) {
+      setSecurityWarning(spamCheck.warningMessage);
+      Alert.alert("Peringatan Keamanan", spamCheck.warningMessage);
+    } else {
+      setSecurityWarning(null);
+    }
+
     comments.add.mutate(
       {
         content,
@@ -174,9 +242,17 @@ export const AnimeComments = memo(function AnimeComments({
           setContent("");
           setSpoiler(false);
           setReplyTo(null);
+          setCooldownSeconds(60); // Jalankan countdown 60 detik (1 menit)
+          setSecurityWarning(null);
+        },
+        onError: (err: any) => {
+          if (err.message?.includes("diblokir") || err.message?.includes("AKUN DIBLOKIR")) {
+            auth.refreshProfile();
+          }
         },
       }
     );
+  };
 
   const requireUser = () => {
     if (!auth.user) {
@@ -373,22 +449,45 @@ export const AnimeComments = memo(function AnimeComments({
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Post comment"
-              disabled={!canPost || comments.add.isPending}
+              accessibilityLabel={cooldownSeconds > 0 ? `Jeda diskusi ${cooldownSeconds}s` : "Post comment"}
+              disabled={!canPost || comments.add.isPending || cooldownSeconds > 0}
               onPress={post}
               style={({ pressed }) => [
                 styles.sendBtn,
-                (!canPost || comments.add.isPending) && styles.sendBtnDisabled,
+                (!canPost || comments.add.isPending || cooldownSeconds > 0) && styles.sendBtnDisabled,
+                cooldownSeconds > 0 && { width: "auto", minWidth: 44, paddingHorizontal: 8 },
                 pressed && styles.pressed,
               ]}
             >
               {comments.add.isPending ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : cooldownSeconds > 0 ? (
+                <Text style={{ fontFamily: "Nunito-Bold", fontSize: 11, color: "#94A3B8" }}>
+                  {cooldownSeconds}s
+                </Text>
               ) : (
                 <AppIcon name="send" size={15} color="#FFFFFF" />
               )}
             </Pressable>
           </View>
+
+          {cooldownSeconds > 0 ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 6 }}>
+              <AppIcon name="clock-outline" size={13} color="#38BDF8" />
+              <Text style={{ fontFamily: "Nunito-Medium", fontSize: 11, color: "#38BDF8" }}>
+                Jeda 1 menit aktif: dapat mengirim lagi dalam {cooldownSeconds} detik.
+              </Text>
+            </View>
+          ) : null}
+
+          {securityWarning ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 6, backgroundColor: "rgba(245, 158, 11, 0.12)", padding: 6, borderRadius: 8 }}>
+              <AppIcon name="alert-circle-outline" size={14} color="#F59E0B" />
+              <Text style={{ fontFamily: "Nunito-Medium", fontSize: 11, color: "#FBBF24", flex: 1 }}>
+                {securityWarning}
+              </Text>
+            </View>
+          ) : null}
 
           {comments.add.isError ? (
             <Text style={styles.error}>{comments.add.error.message}</Text>

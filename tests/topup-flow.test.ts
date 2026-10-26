@@ -1,7 +1,38 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { memoryStorage } = vi.hoisted(() => ({
-  memoryStorage: new Map<string, string>(),
+const { memoryStorage } = vi.hoisted(() => {
+  // @ts-ignore
+  globalThis.expo = globalThis.expo || { EventEmitter: class {} };
+  return {
+    memoryStorage: new Map<string, string>(),
+  };
+});
+
+vi.mock("expo", () => ({
+  isRunningInExpoGo: () => false,
+}));
+vi.mock("expo-application", () => ({
+  applicationName: "Nuenime",
+  applicationId: "com.nuenime.app",
+}));
+vi.mock("expo-notifications", () => ({
+  scheduleNotificationAsync: vi.fn(),
+  setNotificationHandler: vi.fn(),
+}));
+
+vi.mock("expo-asset", () => ({
+  Asset: { fromModule: vi.fn(() => ({ uri: "test" })) },
+}));
+
+vi.mock("expo-constants", () => ({
+  default: {},
+}));
+
+vi.mock("expo-haptics", () => ({
+  impactAsync: vi.fn(),
+  notificationAsync: vi.fn(),
+  ImpactFeedbackStyle: {},
+  NotificationFeedbackType: {},
 }));
 
 vi.mock("react-native", () => ({
@@ -12,6 +43,9 @@ vi.mock("react-native", () => ({
   },
   DeviceEventEmitter: { emit: vi.fn(), addListener: vi.fn() },
   TurboModuleRegistry: { get: vi.fn(), getEnforcing: vi.fn() },
+  StyleSheet: { create: (s: any) => s, flatten: (s: any) => s },
+  View: "View",
+  Text: "Text",
 }));
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
@@ -39,7 +73,7 @@ vi.mock("@/lib/supabase", () => ({
       insert: vi.fn().mockResolvedValue({ error: null }),
       update: vi.fn().mockResolvedValue({ error: null }),
       delete: vi.fn().mockResolvedValue({ error: null }),
-      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: new Error("Test fallback") }),
       upsert: vi.fn().mockResolvedValue({ error: null }),
     })),
   },
@@ -81,10 +115,10 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
       expect(CRYSTAL_PACKAGES.length).toBe(6);
 
       const expected = [
-        { id: "starter", name: "Starter", amount: 300, price: 300, amountFormatted: "300", priceFormatted: "Rp300" },
-        { id: "basic", name: "Basic", amount: 500, price: 500, amountFormatted: "500", priceFormatted: "Rp500" },
-        { id: "standard", name: "Standard", amount: 1000, price: 1000, amountFormatted: "1.000", priceFormatted: "Rp1.000" },
-        { id: "advanced", name: "Advanced", amount: 2500, price: 2500, amountFormatted: "2.500", priceFormatted: "Rp2.500" },
+        { id: "starter", name: "Starter", amount: 1500, price: 1500, amountFormatted: "1.500", priceFormatted: "Rp1.500" },
+        { id: "basic", name: "Basic", amount: 2500, price: 2500, amountFormatted: "2.500", priceFormatted: "Rp2.500" },
+        { id: "standard", name: "Standard", amount: 4000, price: 4000, amountFormatted: "4.000", priceFormatted: "Rp4.000" },
+        { id: "advanced", name: "Advanced", amount: 10000, price: 10000, amountFormatted: "10.000", priceFormatted: "Rp10.000" },
         { id: "premium", name: "Premium", amount: 25000, price: 25000, amountFormatted: "25.000", priceFormatted: "Rp25.000" },
         { id: "ultimate", name: "Ultimate", amount: 50000, price: 50000, amountFormatted: "50.000", priceFormatted: "Rp50.000" },
       ];
@@ -100,19 +134,19 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
     });
 
     it("formatter formatRupiah dan formatCrystalAmount menghasilkan output yang benar tanpa perkalian tidak sengaja", () => {
-      expect(formatRupiah(300)).toBe("Rp300");
-      expect(formatRupiah(500)).toBe("Rp500");
-      expect(formatRupiah(1000)).toBe("Rp1.000");
+      expect(formatRupiah(1500)).toBe("Rp1.500");
       expect(formatRupiah(2500)).toBe("Rp2.500");
+      expect(formatRupiah(4000)).toBe("Rp4.000");
+      expect(formatRupiah(10000)).toBe("Rp10.000");
       expect(formatRupiah(25000)).toBe("Rp25.000");
       expect(formatRupiah(50000)).toBe("Rp50.000");
 
-      expect(formatCrystalAmount(300)).toBe("300");
-      expect(formatCrystalAmount(1000)).toBe("1.000");
+      expect(formatCrystalAmount(1500)).toBe("1.500");
+      expect(formatCrystalAmount(4000)).toBe("4.000");
       expect(formatCrystalAmount(25000)).toBe("25.000");
     });
 
-    it("menghitung total pembayaran dengan benar berdasarkan harga paket (misal 300 Crystal = Rp300)", async () => {
+    it("menghitung total pembayaran dengan benar berdasarkan harga paket (misal Starter = Rp1.500)", async () => {
       const starterPkg = CRYSTAL_PACKAGES[0];
       const tx = await createTopUpTransaction({
         userId: "user-test-1",
@@ -122,9 +156,9 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
         additionalFee: 0,
       });
 
-      expect(tx.price).toBe(300);
+      expect(tx.price).toBe(starterPkg.price);
       expect(tx.additionalFee).toBe(0);
-      expect(tx.totalPayment).toBe(300);
+      expect(tx.totalPayment).toBe(starterPkg.price);
     });
   });
 
@@ -148,7 +182,7 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
 
       expect(tx.status).toBe("menunggu_konfirmasi");
       expect(tx.crystalsGranted).toBe(false);
-      expect(tx.crystalAmount).toBe(300);
+      expect(tx.crystalAmount).toBe(pkg.amount);
       expect(tx.userId).toBe("user-123");
       expect(tx.username).toBe("naruto99");
 
@@ -183,7 +217,7 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
 
   describe("4. Format Pesan WhatsApp Konfirmasi", () => {
     it("menghasilkan pesan WhatsApp dengan format resmi dan data transaksi aktual", async () => {
-      const pkg = CRYSTAL_PACKAGES[0]; // 300 Crystal
+      const pkg = CRYSTAL_PACKAGES[0];
       const tx = await createTopUpTransaction({
         userId: "user-001",
         username: "dylan_kun",
@@ -195,9 +229,9 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
 
       expect(msg).toContain("Halo Admin Nuenime, saya ingin melakukan konfirmasi pembayaran Top Up Crystal.");
       expect(msg).toContain(`- ID Transaksi: ${tx.id}`);
-      expect(msg).toContain("300 Crystal");
+      expect(msg).toContain(pkg.amountFormatted);
       expect(msg).toContain("- Metode Pembayaran: QRIS");
-      expect(msg).toContain("Rp300");
+      expect(msg).toContain(pkg.priceFormatted);
       expect(msg).toContain("- Username: dylan_kun");
       expect(msg).toContain("Bukti pembayaran:");
     });
@@ -248,10 +282,10 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
       // Verifikasi berhasil oleh admin
       const result = await updateTransactionStatus("user-buyer", tx.id, "berhasil");
       expect(result.success).toBe(true);
-      expect(result.newBalance).toBe(300);
+      expect(result.newBalance).toBe(pkg.amount);
 
       const currentBalance = await getCrystalBalance("user-buyer");
-      expect(currentBalance).toBe(300);
+      expect(currentBalance).toBe(pkg.amount);
 
       const savedTx = await getTransactionById("user-buyer", tx.id);
       expect(savedTx?.crystalsGranted).toBe(true);
@@ -259,7 +293,7 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
     });
 
     it("mencegah penambahan Crystal ganda jika tombol/verifikasi 'berhasil' dipanggil berulang kali", async () => {
-      const pkg = CRYSTAL_PACKAGES[0]; // 300 Crystal
+      const pkg = CRYSTAL_PACKAGES[0];
       const tx = await createTopUpTransaction({
         userId: "user-buyer",
         username: "buyer",
@@ -267,21 +301,21 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
         paymentMethod: "gopay",
       });
 
-      // Panggilan pertama: berhasil (+300)
+      // Panggilan pertama: berhasil (+pkg.amount)
       const res1 = await updateTransactionStatus("user-buyer", tx.id, "berhasil");
-      expect(res1.newBalance).toBe(300);
+      expect(res1.newBalance).toBe(pkg.amount);
 
       // Panggilan kedua: dipanggil lagi (misal re-trigger atau spam tombol)
       const res2 = await updateTransactionStatus("user-buyer", tx.id, "berhasil");
       expect(res2.newBalance).toBeUndefined(); // Tidak ada penambahan baru
 
-      // Saldo tetap 300, bukan 600!
+      // Saldo tetap pkg.amount
       const currentBalance = await getCrystalBalance("user-buyer");
-      expect(currentBalance).toBe(300);
+      expect(currentBalance).toBe(pkg.amount);
     });
 
     it("tidak menambahkan Crystal jika transaksi 'ditolak'", async () => {
-      const pkg = CRYSTAL_PACKAGES[1]; // 500 Crystal
+      const pkg = CRYSTAL_PACKAGES[1];
       const tx = await createTopUpTransaction({
         userId: "user-rejected",
         username: "user_fail",
@@ -301,7 +335,7 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
 
   describe("6. Isolasi Saldo Antar Pengguna", () => {
     it("memastikan saldo dan riwayat transaksi tidak bercampur antar akun pengguna", async () => {
-      const pkg = CRYSTAL_PACKAGES[0]; // 300 Crystal
+      const pkg = CRYSTAL_PACKAGES[0];
 
       // Transaksi User A
       const txA = await createTopUpTransaction({
@@ -316,7 +350,7 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
       const balanceA = await getCrystalBalance("user-A");
       const balanceB = await getCrystalBalance("user-B");
 
-      expect(balanceA).toBe(300);
+      expect(balanceA).toBe(pkg.amount);
       expect(balanceB).toBe(0);
 
       // Riwayat transaksi User A vs User B
@@ -421,10 +455,10 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
       expect(res.success).toBe(true);
       expect(res.transaction?.status).toBe("berhasil");
       expect(res.transaction?.crystalsGranted).toBe(true);
-      expect(res.newBalance).toBe(300);
+      expect(res.newBalance).toBe(pkg.amount);
 
-      // Saldo user bertambah jadi 300
-      expect(await getCrystalBalance("user-approve-test")).toBe(300);
+      // Saldo user bertambah jadi pkg.amount
+      expect(await getCrystalBalance("user-approve-test")).toBe(pkg.amount);
     });
 
     it("adminApproveTransaction menolak persetujuan ulang pada transaksi yang sudah disetujui", async () => {
@@ -443,8 +477,8 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
       expect(res2.success).toBe(false);
       expect(res2.error).toContain("sudah pernah disetujui");
 
-      // Saldo tetap 300, tidak dobel
-      expect(await getCrystalBalance("user-dup-approve")).toBe(300);
+      // Saldo tetap pkg.amount, tidak dobel
+      expect(await getCrystalBalance("user-dup-approve")).toBe(pkg.amount);
     });
 
     it("adminRejectTransaction mewajibkan alasan penolakan dan tidak mengubah saldo pengguna", async () => {
@@ -501,7 +535,7 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
     });
 
     it("adminReverseTransaction menolak penarikan jika saldo pengguna saat ini tidak mencukupi (mencegah saldo negatif)", async () => {
-      const pkg = CRYSTAL_PACKAGES[2]; // 1.000 Crystal
+      const pkg = CRYSTAL_PACKAGES[2];
       const tx = await createTopUpTransaction({
         userId: "user-insufficient",
         username: "gacha_addict",
@@ -509,15 +543,15 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
         paymentMethod: "qris",
       });
 
-      // Setujui transaksi (+1000 Crystal)
+      // Setujui transaksi (+pkg.amount Crystal)
       await adminApproveTransaction({ transactionId: tx.id, admin: mockSuperAdmin });
-      expect(await getCrystalBalance("user-insufficient")).toBe(1000);
+      expect(await getCrystalBalance("user-insufficient")).toBe(pkg.amount);
 
-      // Simulasikan pengguna membelanjakan 600 Crystal (misal gacha / border) sehingga sisa 400
+      // Simulasikan pengguna membelanjakan Crystal sehingga sisa 400
       await setCrystalBalance("user-insufficient", 400);
       expect(await getCrystalBalance("user-insufficient")).toBe(400);
 
-      // Admin mencoba menarik 1.000 Crystal dari transaksi tersebut
+      // Admin mencoba menarik Crystal dari transaksi tersebut
       const res = await adminReverseTransaction({
         transactionId: tx.id,
         reason: "Pembayaran terindikasi fraud / di-chargeback",
@@ -528,12 +562,12 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
       expect(res.error).toContain("tidak mencukupi");
       expect(res.error).toContain("tidak boleh menjadi negatif");
 
-      // Saldo tidak berubah menjadi negatif (-600), tetap 400
+      // Saldo tidak berubah menjadi negatif, tetap 400
       expect(await getCrystalBalance("user-insufficient")).toBe(400);
     });
 
     it("adminReverseTransaction berhasil menarik Crystal, mengubah status ke reversed, dan mencatat alasan jika saldo cukup", async () => {
-      const pkg = CRYSTAL_PACKAGES[1]; // 500 Crystal
+      const pkg = CRYSTAL_PACKAGES[1];
       const tx = await createTopUpTransaction({
         userId: "user-reverse-success",
         username: "rev_user",
@@ -541,9 +575,9 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
         paymentMethod: "gopay",
       });
 
-      // Setujui transaksi (+500 Crystal)
+      // Setujui transaksi (+pkg.amount Crystal)
       await adminApproveTransaction({ transactionId: tx.id, admin: mockSuperAdmin });
-      expect(await getCrystalBalance("user-reverse-success")).toBe(500);
+      expect(await getCrystalBalance("user-reverse-success")).toBe(pkg.amount);
 
       // Admin melakukan Tarik Kembali Crystal
       const revRes = await adminReverseTransaction({
@@ -562,7 +596,7 @@ describe("Top Up Crystal - Business Logic & Verification Tests", () => {
     });
 
     it("adminReverseTransaction menolak jika ditarik kembali untuk kedua kalinya (anti double reversal)", async () => {
-      const pkg = CRYSTAL_PACKAGES[0]; // 300 Crystal
+      const pkg = CRYSTAL_PACKAGES[0];
       const tx = await createTopUpTransaction({
         userId: "user-anti-dup-rev",
         username: "antidup",

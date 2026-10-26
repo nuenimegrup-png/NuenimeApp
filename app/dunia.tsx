@@ -10,9 +10,9 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Image } from "expo-image";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppIcon } from "@/components/app-icon";
 import { hapticLight, hapticSuccess, hapticWarning } from "@/lib/haptics";
 import { useAnirakuAuth } from "@/providers/auth-provider";
@@ -41,6 +41,8 @@ const LOADING_STEPS = [
 export default function DuniaNuenimeScreen() {
   const insets = useSafeAreaInsets();
   const auth = useAnirakuAuth();
+  const routeParams = useLocalSearchParams<{ tab?: string }>();
+  const initialTab = routeParams.tab;
   const [loadProgress, setLoadProgress] = useState(0.1);
   const [currentStepIdx, setCurrentStepIdx] = useState(0);
   const [isReady, setIsReady] = useState(false);
@@ -166,9 +168,15 @@ export default function DuniaNuenimeScreen() {
     };
   }, [auth.profile?.equipped_border]);
 
+  const initialCrystalsRef = React.useRef<number | null>(null);
+  if (initialCrystalsRef.current === null && userCrystals > 0) {
+    initialCrystalsRef.current = userCrystals;
+  }
+
   const targetUrl = React.useMemo(() => {
     const baseUrl = DEFAULT_DUNIA_URL.replace(/\/$/, "");
     const userExp = Number(auth.profile?.exp) || 0;
+    const initialCrystals = initialCrystalsRef.current ?? userCrystals;
     const params = new URLSearchParams({
       uid: userId,
       name: displayName,
@@ -178,10 +186,11 @@ export default function DuniaNuenimeScreen() {
       avatar: avatarUrl,
       border: resolvedBorderUrl || equippedBorder,
       vip: isVip ? "1" : "0",
-      crystals: String(userCrystals),
+      crystals: String(initialCrystals || 0),
+      ...(initialTab ? { tab: initialTab } : {}),
     });
     return `${baseUrl}/?${params.toString()}`;
-  }, [userId, displayName, userLevel, auth.profile?.exp, rankName, avatarUrl, resolvedBorderUrl, equippedBorder, isVip, userCrystals]);
+  }, [userId, displayName, userLevel, rankName, avatarUrl, resolvedBorderUrl, equippedBorder, isVip, initialTab]);
 
   const handleBack = () => {
     hapticLight();

@@ -244,6 +244,19 @@ export default function ChatGlobalScreen() {
 
     setSending(false);
 
+    if (res.isBanned) {
+      await auth.refreshProfile();
+      Alert.alert(
+        "AKUN DIBLOKIR",
+        res.error || "Akun Anda telah DIBLOKIR permanen karena melakukan spam pesan berulang 4 kali!"
+      );
+      return;
+    }
+
+    if (res.warning) {
+      Alert.alert("Peringatan Keamanan", res.warning);
+    }
+
     if (res.success && res.data) {
       hapticSuccess();
       setInputText("");
@@ -258,6 +271,9 @@ export default function ChatGlobalScreen() {
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 80);
+    } else if (!res.success && res.error) {
+      hapticWarning();
+      Alert.alert("Pesan Gagal Terkirim", res.error);
     }
   };
 
@@ -277,11 +293,10 @@ export default function ChatGlobalScreen() {
       return;
     }
     if (tab === "clan") {
-      // Fitur clan: Coming Soon
-      Alert.alert(
-        "Fitur Clan",
-        "Fitur Clan sedang dalam tahap pengembangan dan akan segera hadir (Coming Soon)!"
-      );
+      router.push({
+        pathname: "/dunia",
+        params: { tab: "klan" },
+      } as never);
       return;
     }
     setBottomNavTab("global");

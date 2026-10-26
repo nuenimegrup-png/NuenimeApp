@@ -2,6 +2,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabase";
 import { filterAndCensorMessage } from "./word-filter";
 import { sendPushToUser } from "./push-notification-service";
+import {
+  sanitizeMessage,
+  checkChatCooldown,
+  recordChatTimestamp,
+  checkDuplicateSpamAndAutoBan,
+} from "./security-defense";
 
 export interface PrivateMessage {
   id: string;
@@ -90,14 +96,38 @@ export async function sendPrivateMessage(
   receiverId: string,
   text: string,
   senderName?: string | null
-): Promise<{ success: boolean; data?: PrivateMessage; error?: string }> {
-  const cleanText = text.trim();
-  if (!cleanText || !senderId || !receiverId) {
+): Promise<{ success: boolean; data?: PrivateMessage; error?: string; warning?: string; isBanned?: boolean }> {
+  if (!senderId || !receiverId) {
+    return { success: false, error: "Sesi pengguna tidak valid." };
+  }
+
+  // 1. Sanitasi anti-injeksi XSS, Script, dan batas karakter
+  const sanitized = sanitizeMessage(text, 1000);
+  if (!sanitized) {
     return { success: false, error: "Pesan tidak boleh kosong." };
   }
 
-  // Filter kata terlarang secara otomatis sebelum disimpan ke database
-  const filtered = filterAndCensorMessage(cleanText);
+  // 2. Cek Anti-Flood / Rate Limiting (Jeda Chat)
+  const cooldownCheck = await checkChatCooldown(senderId);
+  if (!cooldownCheck.allowed) {
+    return {
+      success: false,
+      error: `Terlalu cepat. Harap tunggu ${cooldownCheck.remainingSeconds} detik sebelum mengirim lagi.`,
+    };
+  }
+
+  // 3. Deteksi Spam Pesan Sama (4x Berturut-turut = AUTO-BAN AKUN)
+  const spamCheck = await checkDuplicateSpamAndAutoBan(senderId, "chat_pribadi", sanitized);
+  if (spamCheck.isBanned) {
+    return {
+      success: false,
+      isBanned: true,
+      error: spamCheck.errorMessage || "AKUN DIBLOKIR: Anda telah diblokir permanen karena mengirim pesan yang sama 4 kali!",
+    };
+  }
+
+  // 4. Filter kata terlarang secara otomatis sebelum disimpan ke database
+  const filtered = filterAndCensorMessage(sanitized);
   const textToSave = filtered.processedText;
 
   try {
@@ -115,6 +145,9 @@ export async function sendPrivateMessage(
     if (error || !data) {
       return { success: false, error: error?.message || "Gagal mengirim pesan." };
     }
+
+    // Catat timestamp sukses
+    await recordChatTimestamp(senderId);
 
     const newMsg: PrivateMessage = {
       id: data.id,
@@ -147,7 +180,11 @@ export async function sendPrivateMessage(
       },
     });
 
-    return { success: true, data: newMsg };
+    return {
+      success: true,
+      data: newMsg,
+      warning: spamCheck.warningMessage,
+    };
   } catch (err: any) {
     return { success: false, error: err?.message || "Gagal mengirim pesan." };
   }

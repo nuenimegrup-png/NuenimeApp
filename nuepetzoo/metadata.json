@@ -1,0 +1,6 @@
+{
+  "name": "AnipetZoo 3D: Floating Island Pet Sanctuary",
+  "description": "Game idle pet sanctuary 3D interaktif dengan pulau melayang low-poly stylized, AI hewan otonom, sistem Gacha telur magis 3D, dan dokumentasi arsitektur lengkap.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

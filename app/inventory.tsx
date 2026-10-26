@@ -55,9 +55,8 @@ const MENU_ITEMS: MenuItem[] = [
   {
     id: "clans",
     title: "Clans",
-    subtitle: "Coming Soon",
+    subtitle: "Komunitas & Wilayah",
     image: CLAN_CREST,
-    isComingSoon: true,
   },
   {
     id: "gacha",
@@ -217,13 +216,10 @@ export default function InventoryScreen() {
       return;
     }
     if (id === "clans") {
-      showToastNotice("Fitur Clans & Squad sedang dalam tahap pengembangan (Coming Soon)!");
-      setComingSoonModal({
-        title: "Fitur Clans & Squad",
-        description:
-          "Fitur Clans & Squad komunitas sedang dalam tahap pengembangan. Nantinya kamu bisa bergabung dengan squad anime, mabar, dan klaim bonus Daylan Crystal mingguan!",
-        image: CLAN_CREST,
-      });
+      router.push({
+        pathname: "/dunia",
+        params: { tab: "klan" },
+      } as never);
       return;
     }
     if (id === "profile_effects") {

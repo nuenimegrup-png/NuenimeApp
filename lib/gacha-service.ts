@@ -279,22 +279,44 @@ export async function addGachaBanner(
   };
 
   try {
-    const { error } = await supabase.from("gacha_banners").insert({
-      id: newBanner.id,
-      name: newBanner.name,
-      anime: newBanner.anime,
-      rarity: newBanner.rarity,
-      category: newBanner.category,
-      exp_bonus: newBanner.expBonus,
-      image: newBanner.image,
-      color: newBanner.color,
-      is_active: newBanner.isActive,
-      created_at: newBanner.createdAt,
-      updated_at: newBanner.updatedAt,
-    });
+    let rpcDone = false;
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_upsert_gacha_banner", {
+        p_banner: {
+          id: newBanner.id,
+          name: newBanner.name,
+          anime: newBanner.anime,
+          rarity: newBanner.rarity,
+          category: newBanner.category,
+          exp_bonus: newBanner.expBonus,
+          image: newBanner.image,
+          color: newBanner.color,
+          is_active: newBanner.isActive,
+        },
+      });
+      if (!rpcErr && rpcRes && (rpcRes as any).success) {
+        rpcDone = true;
+      }
+    } catch {}
 
-    if (error) {
-      return { success: false, error: error.message };
+    if (!rpcDone) {
+      const { error } = await supabase.from("gacha_banners").insert({
+        id: newBanner.id,
+        name: newBanner.name,
+        anime: newBanner.anime,
+        rarity: newBanner.rarity,
+        category: newBanner.category,
+        exp_bonus: newBanner.expBonus,
+        image: newBanner.image,
+        color: newBanner.color,
+        is_active: newBanner.isActive,
+        created_at: newBanner.createdAt,
+        updated_at: newBanner.updatedAt,
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
     }
   } catch (err: any) {
     console.warn("[gacha-service] Supabase insert failed:", err);
@@ -443,15 +465,27 @@ export async function deleteGachaBanner(
         .eq("banner_id", id);
     } catch {}
 
-    // 5. Hapus banner dari tabel gacha_banners
-    const { error } = await supabase.from("gacha_banners").delete().eq("id", id);
-    if (error) {
-      console.warn("deleteGachaBanner delete error:", error.message);
-      // Fallback nonaktifkan jika foreign key membatasi
-      await supabase
-        .from("gacha_banners")
-        .update({ is_active: false })
-        .eq("id", id);
+    // 5. Hapus banner dari tabel gacha_banners via RPC atau fallback
+    let rpcDone = false;
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_delete_gacha_banner", {
+        p_banner_id: id,
+      });
+      if (!rpcErr && rpcRes && (rpcRes as any).success) {
+        rpcDone = true;
+      }
+    } catch {}
+
+    if (!rpcDone) {
+      const { error } = await supabase.from("gacha_banners").delete().eq("id", id);
+      if (error) {
+        console.warn("deleteGachaBanner delete error:", error.message);
+        // Fallback nonaktifkan jika foreign key membatasi
+        await supabase
+          .from("gacha_banners")
+          .update({ is_active: false })
+          .eq("id", id);
+      }
     }
 
     // 6. Update local cache

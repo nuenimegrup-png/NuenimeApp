@@ -60,6 +60,33 @@ export {
 
 const STORAGE_SYSTEM_CONFIGS = "nuenime.admin.system_configs";
 
+/**
+ * Helper terverifikasi untuk menyimpan konfigurasi ke Supabase system_configs
+ * Mendukung RPC Security Definer admin_set_system_config dengan fallback upsert langsung.
+ */
+export async function saveSystemConfigToSupabase(key: string, value: any, adminId?: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc("admin_set_system_config", {
+      p_key: key,
+      p_value: value,
+      p_admin_id: adminId || null,
+    });
+    if (!error && data && (data as any).success) return true;
+  } catch {}
+
+  try {
+    const { error } = await supabase.from("system_configs").upsert({
+      key,
+      value,
+      updated_at: new Date().toISOString(),
+    });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+
 // ─── 1. FINANCE & TOP UP TRANSACTIONS ───
 
 export interface AdminTopUpFilter {
@@ -72,11 +99,24 @@ export async function getAllTransactionsForAdmin(
   filter?: AdminTopUpFilter
 ): Promise<TopUpTransaction[]> {
   try {
-    // 1. Coba ambil dari Supabase
-    const { data: dbData, error } = await supabase
-      .from("topup_transactions")
-      .select("*")
-      .order("created_at", { ascending: false });
+    // 1. Coba ambil via Admin RPC resmi (kebal dari pembatasan RLS anon)
+    let dbData: any = null;
+    let error: any = null;
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_get_all_transactions");
+      if (!rpcErr && Array.isArray(rpcData)) {
+        dbData = rpcData;
+      }
+    } catch {}
+
+    if (!dbData) {
+      const res = await supabase
+        .from("topup_transactions")
+        .select("*")
+        .order("created_at", { ascending: false });
+      dbData = res.data;
+      error = res.error;
+    }
 
     let list: TopUpTransaction[] = [];
     if (!error && Array.isArray(dbData) && dbData.length > 0) {
@@ -193,27 +233,41 @@ export async function adminApproveTransaction(params: {
 
   // 3. Update Supabase
   try {
-    await supabase
-      .from("topup_transactions")
-      .update({
-        status: "berhasil",
-        crystals_granted: true,
-        verified_at: tx.verifiedAt,
-        status_note: tx.statusNote,
-      })
-      .eq("id", tx.id);
-
-    // Catat ke balance_adjustments di Supabase jika userId valid
-    if (tx.userId && tx.userId !== "guest") {
-      await supabase.from("balance_adjustments").insert({
-        user_id: tx.userId,
-        admin_id: params.admin.id && params.admin.id.length === 36 ? params.admin.id : "73f6e447-2f8c-4f12-ad94-a737a78e279b",
-        admin_email: params.admin.email,
-        amount: tx.crystalAmount,
-        balance_before: newBalance - tx.crystalAmount,
-        balance_after: newBalance,
-        reason: `Persetujuan Top Up Transaksi ${tx.id}`,
+    let rpcDone = false;
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_approve_topup_transaction", {
+        p_transaction_id: tx.id,
+        p_admin_id: params.admin.id || "admin-super-01",
+        p_admin_email: params.admin.email || "admin@nuenime.com",
       });
+      if (!rpcErr && rpcRes && (rpcRes as any).success) {
+        rpcDone = true;
+      }
+    } catch {}
+
+    if (!rpcDone) {
+      await supabase
+        .from("topup_transactions")
+        .update({
+          status: "berhasil",
+          crystals_granted: true,
+          verified_at: tx.verifiedAt,
+          status_note: tx.statusNote,
+        })
+        .eq("id", tx.id);
+
+      // Catat ke balance_adjustments di Supabase jika userId valid
+      if (tx.userId && tx.userId !== "guest") {
+        await supabase.from("balance_adjustments").insert({
+          user_id: tx.userId,
+          admin_id: params.admin.id && params.admin.id.length === 36 ? params.admin.id : "73f6e447-2f8c-4f12-ad94-a737a78e279b",
+          admin_email: params.admin.email,
+          amount: tx.crystalAmount,
+          balance_before: newBalance - tx.crystalAmount,
+          balance_after: newBalance,
+          reason: `Persetujuan Top Up Transaksi ${tx.id}`,
+        });
+      }
     }
   } catch {}
 
@@ -283,14 +337,29 @@ export async function adminRejectTransaction(params: {
 
   // Update Supabase
   try {
-    await supabase
-      .from("topup_transactions")
-      .update({
-        status: "ditolak",
-        status_note: tx.statusNote,
-        verified_at: tx.verifiedAt,
-      })
-      .eq("id", tx.id);
+    let rpcDone = false;
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_reject_topup_transaction", {
+        p_transaction_id: tx.id,
+        p_reason: params.reason.trim(),
+        p_admin_id: params.admin.id || "admin-super-01",
+        p_admin_email: params.admin.email || "admin@nuenime.com",
+      });
+      if (!rpcErr && rpcRes && (rpcRes as any).success) {
+        rpcDone = true;
+      }
+    } catch {}
+
+    if (!rpcDone) {
+      await supabase
+        .from("topup_transactions")
+        .update({
+          status: "ditolak",
+          status_note: tx.statusNote,
+          verified_at: tx.verifiedAt,
+        })
+        .eq("id", tx.id);
+    }
   } catch {}
 
   // Audit Log
@@ -388,26 +457,41 @@ export async function adminReverseTransaction(params: {
 
   // 3. Update Supabase
   try {
-    await supabase
-      .from("topup_transactions")
-      .update({
-        status: "reversed",
-        status_note: tx.statusNote,
-        verified_at: tx.verifiedAt,
-      })
-      .eq("id", tx.id);
-
-    // Catat ke balance_adjustments di Supabase jika userId valid
-    if (tx.userId && tx.userId !== "guest") {
-      await supabase.from("balance_adjustments").insert({
-        user_id: tx.userId,
-        admin_id: params.admin.id && params.admin.id.length === 36 ? params.admin.id : "73f6e447-2f8c-4f12-ad94-a737a78e279b",
-        admin_email: params.admin.email,
-        amount: -tx.crystalAmount,
-        balance_before: currentBalance,
-        balance_after: newBalance,
-        reason: `Reversal Transaksi ${tx.id}: ${params.reason.trim()}`,
+    let rpcDone = false;
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_reverse_topup_transaction", {
+        p_transaction_id: tx.id,
+        p_reason: params.reason.trim(),
+        p_admin_id: params.admin.id || "admin-super-01",
+        p_admin_email: params.admin.email || "admin@nuenime.com",
       });
+      if (!rpcErr && rpcRes && (rpcRes as any).success) {
+        rpcDone = true;
+      }
+    } catch {}
+
+    if (!rpcDone) {
+      await supabase
+        .from("topup_transactions")
+        .update({
+          status: "reversed",
+          status_note: tx.statusNote,
+          verified_at: tx.verifiedAt,
+        })
+        .eq("id", tx.id);
+
+      // Catat ke balance_adjustments di Supabase jika userId valid
+      if (tx.userId && tx.userId !== "guest") {
+        await supabase.from("balance_adjustments").insert({
+          user_id: tx.userId,
+          admin_id: params.admin.id && params.admin.id.length === 36 ? params.admin.id : "73f6e447-2f8c-4f12-ad94-a737a78e279b",
+          admin_email: params.admin.email,
+          amount: -tx.crystalAmount,
+          balance_before: currentBalance,
+          balance_after: newBalance,
+          reason: `Reversal Transaksi ${tx.id}: ${params.reason.trim()}`,
+        });
+      }
     }
   } catch {}
 
@@ -1606,14 +1690,28 @@ export async function createAdminBorder(
       updated_at: new Date().toISOString(),
     };
 
-    const { data, error } = await supabase
-      .from("avatar_borders_config")
-      .upsert(rowPayload, { onConflict: "id" })
-      .select()
-      .single();
+    let data: any = rowPayload;
+    let rpcSuccess = false;
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_upsert_avatar_border", {
+        p_border: rowPayload,
+      });
+      if (!rpcErr && rpcRes && (rpcRes as any).success) {
+        rpcSuccess = true;
+      }
+    } catch {}
 
-    if (error) {
-      return { success: false, error: error.message };
+    if (!rpcSuccess) {
+      const res = await supabase
+        .from("avatar_borders_config")
+        .upsert(rowPayload, { onConflict: "id" })
+        .select()
+        .single();
+
+      if (res.error) {
+        return { success: false, error: res.error.message };
+      }
+      data = res.data;
     }
 
     const createdBorder: AvatarBorder = {
@@ -1707,19 +1805,31 @@ export async function deleteAdminBorder(
         .eq("border_id", borderId);
     } catch {}
 
-    // 5. Hapus langsung dari tabel avatar_borders_config
-    const { error } = await supabase
-      .from("avatar_borders_config")
-      .delete()
-      .eq("id", borderId);
+    // 5. Hapus via Admin RPC atau fallback langsung
+    let rpcDelDone = false;
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_delete_avatar_border", {
+        p_border_id: borderId,
+      });
+      if (!rpcErr && rpcRes && (rpcRes as any).success) {
+        rpcDelDone = true;
+      }
+    } catch {}
 
-    if (error) {
-      console.warn("deleteAdminBorder delete error:", error.message);
-      // Fallback: jika delete dihalangi foreign key, update status menjadi nonaktif
-      await supabase
+    if (!rpcDelDone) {
+      const { error } = await supabase
         .from("avatar_borders_config")
-        .update({ is_released: false, is_active: false })
+        .delete()
         .eq("id", borderId);
+
+      if (error) {
+        console.warn("deleteAdminBorder delete error:", error.message);
+        // Fallback: jika delete dihalangi foreign key, update status menjadi nonaktif
+        await supabase
+          .from("avatar_borders_config")
+          .update({ is_released: false, is_active: false })
+          .eq("id", borderId);
+      }
     }
 
     // 6. Hapus dari in-memory cache dan disk storage

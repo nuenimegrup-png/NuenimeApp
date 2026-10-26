@@ -6,6 +6,13 @@ import { EXP_RULES } from "@/lib/user-level";
 import { canSubmitSharedComment, cleanCommentContent } from "@/lib/comment-content";
 import { filterAndCensorMessage } from "@/lib/word-filter";
 
+import {
+  sanitizeMessage,
+  checkDiscussionCooldown,
+  recordDiscussionTimestamp,
+  checkDuplicateSpamAndAutoBan,
+} from "@/lib/security-defense";
+
 export type SharedComment = {
   id: string;
   user_id: string;
@@ -63,37 +70,70 @@ export function useComments(animeId?: number, episodeNumber?: number) {
     void queryClient.invalidateQueries({ queryKey: repliesKey });
     void queryClient.invalidateQueries({ queryKey: likesKey });
   };
-  const add = useMutation({ mutationFn: async (input: { content?: string; spoiler?: boolean; episode?: number | null; parentId?: string | null }) => {
-    if (!user || !animeId) throw new Error("Sign in to post a comment.");
-    const rawContent = cleanCommentContent(input.content);
-    if (!canSubmitSharedComment(rawContent)) throw new Error("Write a comment before posting.");
-    const content = filterAndCensorMessage(rawContent).processedText;
-    const { data, error } = await supabase
-      .from("comments")
-      .insert({
-        user_id: user.id,
-        anime_id: animeId,
-        episode_number: input.episode ?? episodeNumber ?? null,
-        parent_id: input.parentId ?? null,
-        content,
-        gif_url: null,
-        is_spoiler: Boolean(input.spoiler),
-      })
-      .select("id")
-      .single();
-    if (error) throw error;
+  const add = useMutation({
+    mutationFn: async (input: { content?: string; spoiler?: boolean; episode?: number | null; parentId?: string | null }) => {
+      if (!user || !animeId) throw new Error("Sign in to post a comment.");
 
-    // Berikan EXP untuk komentar valid
-    if (data?.id) {
-      void grantXp({
-        activityType: EXP_RULES.COMMENT.type,
-        targetId: data.id,
-        baseXp: EXP_RULES.COMMENT.xp,
-        description: EXP_RULES.COMMENT.label,
-        metadata: { anime_id: animeId, episode: input.episode ?? episodeNumber ?? null },
-      });
-    }
-  }, onSuccess: refresh });
+      const rawContent = cleanCommentContent(input.content);
+      if (!canSubmitSharedComment(rawContent)) throw new Error("Write a comment before posting.");
+
+      // 1. Sanitasi anti-injeksi XSS, script, dan batasi panjang karakter
+      const sanitized = sanitizeMessage(rawContent, 1000);
+      if (!sanitized) throw new Error("Komentar tidak valid.");
+
+      // 2. Cek jeda pengiriman diskusi 1 menit (60 detik)
+      const cooldownCheck = await checkDiscussionCooldown(user.id);
+      if (!cooldownCheck.allowed) {
+        throw new Error(`Jeda keamanan aktif. Mohon tunggu ${cooldownCheck.remainingSeconds} detik sebelum mengirim komentar berikutnya.`);
+      }
+
+      // 3. Cek spam pesan sama berulang (4x = Auto-Ban Akun)
+      const spamCheck = await checkDuplicateSpamAndAutoBan(user.id, "diskusi", sanitized);
+      if (spamCheck.isBanned) {
+        auth.refreshProfile();
+        throw new Error(spamCheck.errorMessage || "Akun Anda telah DIBLOKIR permanen karena melakukan spam pesan berulang 4 kali!");
+      }
+
+      // 4. Filter kata terlarang
+      const content = filterAndCensorMessage(sanitized).processedText;
+
+      const { data, error } = await supabase
+        .from("comments")
+        .insert({
+          user_id: user.id,
+          anime_id: animeId,
+          episode_number: input.episode ?? episodeNumber ?? null,
+          parent_id: input.parentId ?? null,
+          content,
+          gif_url: null,
+          is_spoiler: Boolean(input.spoiler),
+        })
+        .select("id")
+        .single();
+
+      if (error) {
+        if (error.message?.includes("AKUN DIBLOKIR") || error.message?.includes("diblokir")) {
+          auth.refreshProfile();
+        }
+        throw error;
+      }
+
+      // Catat timestamp sukses untuk menghitung jeda 1 menit
+      await recordDiscussionTimestamp(user.id);
+
+      // Berikan EXP untuk komentar valid
+      if (data?.id) {
+        void grantXp({
+          activityType: EXP_RULES.COMMENT.type,
+          targetId: data.id,
+          baseXp: EXP_RULES.COMMENT.xp,
+          description: EXP_RULES.COMMENT.label,
+          metadata: { anime_id: animeId, episode: input.episode ?? episodeNumber ?? null },
+        });
+      }
+    },
+    onSuccess: refresh,
+  });
   const toggleLike = useMutation({ mutationFn: async (comment: SharedComment) => {
     if (!user) throw new Error("Sign in to like comments.");
     const isLiked = liked.data?.has(comment.id);

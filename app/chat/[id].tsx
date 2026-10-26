@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
@@ -181,6 +182,22 @@ export default function PrivateChatRoomScreen() {
     );
 
     setSending(false);
+
+    if (res.isBanned) {
+      // Buang optimistic message jika akun diblokir
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      await auth.refreshProfile();
+      Alert.alert(
+        "AKUN DIBLOKIR",
+        res.error || "Akun Anda telah DIBLOKIR permanen karena melakukan spam pesan berulang 4 kali!"
+      );
+      return;
+    }
+
+    if (res.warning) {
+      Alert.alert("Peringatan Keamanan", res.warning);
+    }
+
     if (res.success && res.data) {
       hapticSuccess();
       const serverMsg = res.data;
@@ -194,6 +211,10 @@ export default function PrivateChatRoomScreen() {
         // Gantikan tempId dengan data resmi dari server
         return prev.map((m) => (m.id === tempId ? serverMsg : m));
       });
+    } else if (!res.success && res.error) {
+      // Buang optimistic message jika pengiriman gagal
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      Alert.alert("Pesan Gagal Terkirim", res.error);
     }
   };
 

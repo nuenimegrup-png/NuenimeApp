@@ -588,7 +588,10 @@ export default function PublicUserProfileScreen() {
           {/* Secondary: Peliharaan & Afinitas (Persis Screenshot 2) */}
           <View style={styles.featureRow}>
             <Pressable
-              onPress={() => showToast("Fitur Peliharaan akan segera hadir.")}
+              onPress={() => {
+                hapticLight();
+                router.push("/nuepet" as any);
+              }}
               style={({ pressed }) => [styles.featureCardBtn, pressed && styles.btnPressed]}
             >
               <View style={styles.featureLabelRow}>
