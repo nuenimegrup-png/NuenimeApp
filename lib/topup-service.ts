@@ -397,6 +397,55 @@ export function getTopUpTransactionsStorageKey(userId?: string | null): string {
   return "nuenime.topup_transactions.guest";
 }
 
+const ACTIVE_PENDING_TX_STORAGE_KEY = "nuenime.topup_active_pending_tx.";
+
+export function getActivePendingTxStorageKey(userId?: string | null): string {
+  if (userId && userId.trim().length > 0) {
+    return `${ACTIVE_PENDING_TX_STORAGE_KEY}${userId.trim()}`;
+  }
+  return `${ACTIVE_PENDING_TX_STORAGE_KEY}guest`;
+}
+
+export async function setActivePendingTransaction(
+  userId: string | null | undefined,
+  tx: TopUpTransaction
+): Promise<void> {
+  try {
+    const key = getActivePendingTxStorageKey(userId);
+    await AsyncStorage.setItem(key, JSON.stringify(tx));
+  } catch {}
+}
+
+export async function getActivePendingTransaction(
+  userId: string | null | undefined
+): Promise<TopUpTransaction | null> {
+  try {
+    const key = getActivePendingTxStorageKey(userId);
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw) return null;
+    const tx: TopUpTransaction = JSON.parse(raw);
+    if (
+      tx &&
+      (tx.status === "menunggu_verifikasi" || tx.status === "menunggu_konfirmasi")
+    ) {
+      return tx;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearActivePendingTransaction(
+  userId: string | null | undefined
+): Promise<void> {
+  try {
+    const key = getActivePendingTxStorageKey(userId);
+    await AsyncStorage.removeItem(key);
+  } catch {}
+}
+
+
 /**
  * Mengambil saldo Crystal akun pengguna dari Supabase user_balances atau AsyncStorage
  */
@@ -565,6 +614,22 @@ export async function getUserTransactions(userId?: string | null): Promise<TopUp
           crystalsGranted: d.crystals_granted ?? false,
         }));
         const key = getTopUpTransactionsStorageKey(userId);
+        try {
+          const raw = await AsyncStorage.getItem(key);
+          if (raw) {
+            const localList: TopUpTransaction[] = JSON.parse(raw);
+            if (Array.isArray(localList)) {
+              const localPending = localList.filter(
+                (lt) =>
+                  (lt.status === "menunggu_verifikasi" || lt.status === "menunggu_konfirmasi") &&
+                  !mapped.some((mt) => mt.id === lt.id)
+              );
+              if (localPending.length > 0) {
+                mapped.unshift(...localPending);
+              }
+            }
+          }
+        } catch {}
         await AsyncStorage.setItem(key, JSON.stringify(mapped));
         return mapped;
       }
@@ -591,6 +656,10 @@ export async function getUserTransactions(userId?: string | null): Promise<TopUp
 export async function fetchActivePendingTransaction(
   userId?: string | null
 ): Promise<TopUpTransaction | null> {
+  // 1. Cek cache persisten khusus transaksi aktif (instan 0ms)
+  const cachedPending = await getActivePendingTransaction(userId);
+
+  // 2. Cek backend Supabase untuk status terbaru jika user valid
   if (userId && userId.trim().length > 0 && userId !== "guest") {
     try {
       const { data, error } = await supabase
@@ -601,36 +670,63 @@ export async function fetchActivePendingTransaction(
         .order("created_at", { ascending: false })
         .limit(1);
 
-      if (!error && Array.isArray(data) && data.length > 0) {
-        const d = data[0];
-        return {
-          id: d.id,
-          userId: d.user_id,
-          username: d.username,
-          packageId: d.package_id,
-          packageName: d.package_name,
-          crystalAmount: d.crystal_amount,
-          price: d.price,
-          additionalFee: d.additional_fee ?? 0,
-          totalPayment: d.total_payment,
-          paymentMethod: d.payment_method,
-          status: d.status,
-          statusNote: d.status_note,
-          createdAt: d.created_at,
-          verifiedAt: d.verified_at,
-          crystalsGranted: d.crystals_granted ?? false,
-        };
+      if (!error && Array.isArray(data)) {
+        if (data.length > 0) {
+          const d = data[0];
+          const tx: TopUpTransaction = {
+            id: d.id,
+            userId: d.user_id,
+            username: d.username,
+            packageId: d.package_id,
+            packageName: d.package_name,
+            crystalAmount: d.crystal_amount,
+            price: d.price,
+            additionalFee: d.additional_fee ?? 0,
+            totalPayment: d.total_payment,
+            paymentMethod: d.payment_method,
+            status: d.status,
+            statusNote: d.status_note,
+            createdAt: d.created_at,
+            verifiedAt: d.verified_at,
+            crystalsGranted: d.crystals_granted ?? false,
+          };
+          await setActivePendingTransaction(userId, tx);
+          return tx;
+        } else if (cachedPending) {
+          // Jika di cache masih pending tapi di Supabase sudah tidak ada yang pending,
+          // cek apakah transaksi tersebut sudah final (berhasil/ditolak/reversed)
+          const { data: statusCheck } = await supabase
+            .from("topup_transactions")
+            .select("status, status_note, verified_at, crystals_granted")
+            .eq("id", cachedPending.id)
+            .maybeSingle();
+
+          if (
+            statusCheck &&
+            (statusCheck.status === "berhasil" ||
+              statusCheck.status === "ditolak" ||
+              statusCheck.status === "reversed")
+          ) {
+            await clearActivePendingTransaction(userId);
+            return null;
+          }
+        }
       }
     } catch {}
   }
 
-  // Fallback lokal jika offline
+  if (cachedPending) return cachedPending;
+
+  // 3. Fallback riwayat lokal jika offline
   const all = await getUserTransactions(userId);
-  return (
+  const found =
     all.find(
       (t) => t.status === "menunggu_verifikasi" || t.status === "menunggu_konfirmasi"
-    ) || null
-  );
+    ) || null;
+  if (found) {
+    await setActivePendingTransaction(userId, found);
+  }
+  return found;
 }
 
 /**
@@ -704,6 +800,7 @@ export async function createTopUpTransaction(params: {
   packageItem: CrystalPackage;
   paymentMethod: PaymentMethodId;
   additionalFee?: number;
+  initialStatus?: TopUpStatus;
 }): Promise<TopUpTransaction> {
   // 1. Validasi Keamanan Paket (Anti-Fraud & Validasi Nilai)
   const pkgCheck = validateTopupPackageSecurity(params.packageItem);
@@ -721,6 +818,8 @@ export async function createTopUpTransaction(params: {
   const total = params.packageItem.price + fee;
   const safeUsername = sanitizeMessage(params.username || "Pengguna", 50);
 
+  const status: TopUpStatus = params.initialStatus || "menunggu_konfirmasi";
+
   const transaction: TopUpTransaction = {
     id: generateTransactionId(),
     userId: params.userId,
@@ -732,7 +831,7 @@ export async function createTopUpTransaction(params: {
     additionalFee: fee,
     totalPayment: total,
     paymentMethod: params.paymentMethod,
-    status: "menunggu_konfirmasi",
+    status,
     createdAt: new Date().toISOString(),
     crystalsGranted: false,
   };
@@ -768,6 +867,9 @@ export async function createTopUpTransaction(params: {
   const existing = await getUserTransactions(params.userId);
   const updated = [transaction, ...existing.filter((t) => t.id !== transaction.id)];
   await AsyncStorage.setItem(key, JSON.stringify(updated));
+
+  // 3. Simpan sebagai active pending transaction agar terkunci di Tahap 3 secara persisten
+  await setActivePendingTransaction(params.userId, transaction);
 
   return transaction;
 }
@@ -805,6 +907,14 @@ export async function updateTransactionStatus(
   list[index] = tx;
   const key = getTopUpTransactionsStorageKey(userId);
   await AsyncStorage.setItem(key, JSON.stringify(list));
+
+  // Update status di cache penguncian persisten
+  if (newStatus === "menunggu_verifikasi" || newStatus === "menunggu_konfirmasi") {
+    await setActivePendingTransaction(userId, tx);
+  } else {
+    // Transaksi selesai (berhasil/ditolak/reversed) -> lepas penguncian Tahap 3!
+    await clearActivePendingTransaction(userId);
+  }
 
   // Sinkronkan pembaruan ke Supabase
   if (userId && userId !== "guest") {
@@ -858,22 +968,61 @@ export async function openWhatsAppConfirmation(
   adminNumber?: string
 ): Promise<{ opened: boolean; url: string }> {
   const rawAdminNumber = adminNumber || (await fetchAdminWhatsAppNumber());
-  const targetPhone = rawAdminNumber.replace(/\D/g, "");
+  let targetPhone = rawAdminNumber.replace(/\D/g, "");
+  if (targetPhone.startsWith("0")) {
+    targetPhone = "62" + targetPhone.slice(1);
+  } else if (!targetPhone.startsWith("62") && targetPhone.length >= 9) {
+    targetPhone = "62" + targetPhone;
+  }
+
   const message = buildWhatsAppConfirmationMessage(tx);
   const encodedText = encodeURIComponent(message);
 
-  let waUrl = "";
-  if (targetPhone.length > 0) {
-    waUrl = `https://wa.me/${targetPhone}?text=${encodedText}`;
-  } else {
-    // Jika nomor belum diisi, buka tautan wa.me dengan teks saja
-    waUrl = `https://wa.me/?text=${encodedText}`;
-  }
+  const phoneForUrl = adminNumber ? adminNumber : targetPhone;
+  const waUrl = phoneForUrl.length > 0
+    ? `https://wa.me/${phoneForUrl}?text=${encodedText}`
+    : `https://wa.me/?text=${encodedText}`;
 
-  try {
-    await Linking.openURL(waUrl);
-    return { opened: true, url: waUrl };
-  } catch {
-    return { opened: false, url: waUrl };
+  if (Platform.OS === "web") {
+    try {
+      if (typeof window !== "undefined") {
+        const win = window.open(waUrl, "_blank");
+        if (!win || win.closed || typeof win.closed === "undefined") {
+          window.location.href = waUrl;
+        }
+      } else {
+        await Linking.openURL(waUrl);
+      }
+      return { opened: true, url: waUrl };
+    } catch {
+      try {
+        await Linking.openURL(waUrl);
+        return { opened: true, url: waUrl };
+      } catch {
+        return { opened: false, url: waUrl };
+      }
+    }
+  } else {
+    // Mobile Android / iOS: Coba buka aplikasi native WhatsApp via deep link terlebih dahulu
+    const nativeDeepLink = targetPhone.length > 0
+      ? `whatsapp://send?phone=${targetPhone}&text=${encodedText}`
+      : `whatsapp://send?text=${encodedText}`;
+
+    try {
+      const canOpen = await Linking.canOpenURL(nativeDeepLink);
+      if (canOpen) {
+        await Linking.openURL(nativeDeepLink);
+        return { opened: true, url: nativeDeepLink };
+      }
+    } catch {}
+
+    // Fallback ke browser URL jika app native tidak tersedia
+    try {
+      await Linking.openURL(waUrl);
+      return { opened: true, url: waUrl };
+    } catch {
+      return { opened: false, url: waUrl };
+    }
   }
 }
+

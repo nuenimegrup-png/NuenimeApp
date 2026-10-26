@@ -17,12 +17,9 @@ import { DuniaView } from "@/components/dunia/dunia-view";
 import { getCrystalBalance, deductCrystalBalance, addCrystalBalance } from "@/lib/topup-service";
 import { getBorderByIdAsync } from "@/lib/avatar-borders";
 
-// Default URL deploy Vercel atau local dev server port 3002
+// URL resmi Vercel NuePet Zoo
 const DEFAULT_NUEPET_URL =
-  process.env.EXPO_PUBLIC_NUEPET_URL ||
-  (Platform.OS === "web" && typeof window !== "undefined" && window.location.hostname === "localhost"
-    ? "http://localhost:3002"
-    : "https://nuepet-zoo.vercel.app");
+  process.env.EXPO_PUBLIC_NUEPET_URL || "https://nuepet-zoo.vercel.app";
 
 export default function NuePetZooScreen() {
   const insets = useSafeAreaInsets();
@@ -218,7 +215,7 @@ export default function NuePetZooScreen() {
           <Text style={styles.errorTitle}>Koneksi Terputus</Text>
           <Text style={styles.errorDesc}>
             Gagal terhubung ke server NuePet Zoo ({DEFAULT_NUEPET_URL}).
-            {"\n\n"}Pastikan server NuePet Zoo sudah berjalan (jalankan 'bun run dev:nuepet').
+            {"\n\n"}Pastikan koneksi internet aktif dan server Vercel dapat diakses.
           </Text>
           <Pressable
             onPress={handleRefresh}

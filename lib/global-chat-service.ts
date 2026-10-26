@@ -265,12 +265,15 @@ export async function sendGlobalMessage({
   const now = Date.now();
 
   try {
+    const isValidUuid = (str?: string | null) =>
+      Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str));
+
     const payload: any = {
       room,
       sender_id: senderId,
       message: filtered.processedText,
       clan_tag: clanTag || null,
-      reply_to_id: replyTo?.id || null,
+      reply_to_id: isValidUuid(replyTo?.id) ? replyTo!.id : null,
       reply_to_sender_name: replyTo?.senderName || null,
       reply_to_text: replyTo?.text ? replyTo.text.slice(0, 100) : null,
       reply_to_member_number: replyTo?.memberNumber || null,
@@ -282,8 +285,16 @@ export async function sendGlobalMessage({
       .select("id, created_at")
       .single();
 
+    if (error || !data) {
+      console.warn("[global-chat] sendGlobalMessage error from Supabase:", error);
+      return {
+        success: false,
+        error: error?.message || "Gagal mengirim pesan ke server chat.",
+      };
+    }
+
     const createdMsg: GlobalChatMessage = {
-      id: data?.id || `local-${now}`,
+      id: data.id,
       room,
       senderId,
       senderName,

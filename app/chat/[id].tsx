@@ -29,6 +29,7 @@ import { isSpecialRole } from "@/lib/admin-service";
 import { UserVerificationBadge } from "@/components/user-verification-badge";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
 import { filterAndCensorMessage } from "@/lib/word-filter";
+import { checkChatCooldown, CHAT_COOLDOWN_SECONDS } from "@/lib/security-defense";
 
 function formatChatTime(dateStr: string): string {
   try {
@@ -53,8 +54,25 @@ export default function PrivateChatRoomScreen() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
 
   const flatListRef = useRef<FlatList>(null);
+  const cooldownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startCooldownTimer = useCallback((seconds: number) => {
+    if (seconds <= 0) return;
+    setCooldownRemaining(seconds);
+    if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+    cooldownTimerRef.current = setInterval(() => {
+      setCooldownRemaining((prev) => {
+        if (prev <= 1) {
+          if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
 
   // Tandai partner chat yang aktif dibuka agar notifikasi tidak membunyikan HP saat sedang membaca chat ini
   useEffect(() => {
@@ -84,8 +102,19 @@ export default function PrivateChatRoomScreen() {
     return () => {
       showSub.remove();
       hideSub.remove();
+      if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
     };
   }, []);
+
+  // Cek sisa jeda waktu chat aktif saat ruang chat dibuka
+  useEffect(() => {
+    if (!currentUserId || currentUserId === "guest") return;
+    void checkChatCooldown(currentUserId).then((res) => {
+      if (!res.allowed && res.remainingSeconds > 0) {
+        startCooldownTimer(res.remainingSeconds);
+      }
+    });
+  }, [currentUserId, startCooldownTimer]);
 
   // Load friend profile and chat messages
   const loadChat = useCallback(async () => {
@@ -109,6 +138,12 @@ export default function PrivateChatRoomScreen() {
       console.warn("[private-chat-screen] loadChat error:", err);
     } finally {
       setLoading(false);
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 50);
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 150);
     }
   }, [id, currentUserId]);
 
@@ -137,9 +172,15 @@ export default function PrivateChatRoomScreen() {
 
         return [...prev, newMsg];
       });
+
+      // Otomatis langsung scroll ke pesan baru seketika
+      flatListRef.current?.scrollToEnd({ animated: true });
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      }, 60);
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 150);
     });
 
     return () => {
@@ -150,7 +191,7 @@ export default function PrivateChatRoomScreen() {
   // Handle Send Message
   const handleSend = async () => {
     const text = inputText.trim();
-    if (!text || !currentUserId || !id || sending) return;
+    if (!text || !currentUserId || !id || sending || cooldownRemaining > 0) return;
 
     hapticLight();
     setSending(true);
@@ -200,6 +241,7 @@ export default function PrivateChatRoomScreen() {
 
     if (res.success && res.data) {
       hapticSuccess();
+      startCooldownTimer(CHAT_COOLDOWN_SECONDS);
       const serverMsg = res.data;
       setMessages((prev) => {
         // Cek apakah pesan server ini sudah dimasukkan duluan oleh WebSocket Realtime
@@ -214,6 +256,10 @@ export default function PrivateChatRoomScreen() {
     } else if (!res.success && res.error) {
       // Buang optimistic message jika pengiriman gagal
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      const matchSeconds = res.error.match(/tunggu\s+(\d+)\s+detik/i);
+      if (matchSeconds && matchSeconds[1]) {
+        startCooldownTimer(Number(matchSeconds[1]));
+      }
       Alert.alert("Pesan Gagal Terkirim", res.error);
     }
   };
@@ -248,10 +294,10 @@ export default function PrivateChatRoomScreen() {
                 <Text style={styles.headerFriendName} numberOfLines={1}>
                   {friend.displayName}
                 </Text>
+                <UserVerificationBadge role={friend.role} isVip={friend.isVip} size={14} />
                 <Text style={styles.headerMemberTag}>
                   #{String(friend.memberNumber).replace(/[^0-9]/g, "").replace(/^0+/, "") || "1"}
                 </Text>
-                <UserVerificationBadge role={friend.role} isVip={friend.isVip} size={14} />
               </View>
               <Text style={styles.headerSubtitle}>Chat pribadi</Text>
             </View>
@@ -266,7 +312,7 @@ export default function PrivateChatRoomScreen() {
       {/* ─── 2. CHAT MESSAGES BODY ─── */}
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
       >
         {loading ? (
@@ -287,7 +333,12 @@ export default function PrivateChatRoomScreen() {
             data={messages}
             keyExtractor={(item, index) => `${item.id}_${index}`}
             contentContainerStyle={styles.messageList}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            onContentSizeChange={() => {
+              flatListRef.current?.scrollToEnd({ animated: true });
+            }}
+            onLayout={() => {
+              flatListRef.current?.scrollToEnd({ animated: false });
+            }}
             renderItem={({ item }) => {
               const isMine = item.senderId === currentUserId;
               const isCensored = item.message.includes("[Pesan mengandung kata terlarang]");
@@ -333,12 +384,12 @@ export default function PrivateChatRoomScreen() {
           />
         )}
 
-        {/* ─── 3. BOTTOM INPUT BAR (PERSIS SCREENSHOT 1) ─── */}
+        {/* ─── 3. BOTTOM INPUT BAR (DILENGKAPI DETIK JEDA COOLDOWN) ─── */}
         <View
           style={[
             styles.bottomBar,
             {
-              paddingBottom: keyboardOpen ? 10 : Math.max(insets.bottom, 12),
+              paddingBottom: keyboardOpen ? 8 : Math.max(insets.bottom, 12),
             },
           ]}
         >
@@ -346,7 +397,7 @@ export default function PrivateChatRoomScreen() {
             <TextInput
               value={inputText}
               onChangeText={setInputText}
-              placeholder="Ketik pesan..."
+              placeholder={cooldownRemaining > 0 ? `Tunggu ${cooldownRemaining} detik...` : "Ketik pesan..."}
               placeholderTextColor="#64748B"
               style={styles.textInput}
               multiline
@@ -357,19 +408,26 @@ export default function PrivateChatRoomScreen() {
           </View>
 
           <Pressable
-            disabled={!inputText.trim() || sending}
+            disabled={!inputText.trim() || sending || cooldownRemaining > 0}
             onPress={handleSend}
             style={({ pressed }) => [
               styles.sendBtn,
-              inputText.trim() ? styles.sendBtnActive : styles.sendBtnInactive,
+              inputText.trim() && cooldownRemaining === 0 ? styles.sendBtnActive : styles.sendBtnInactive,
+              cooldownRemaining > 0 && styles.sendBtnCooldown,
               pressed && styles.btnPressed,
             ]}
           >
-            <AppIcon
-              name="send"
-              size={18}
-              color={inputText.trim() ? "#0B0E14" : "#64748B"}
-            />
+            {sending ? (
+              <ActivityIndicator size="small" color="#0B0E14" />
+            ) : cooldownRemaining > 0 ? (
+              <Text style={styles.sendBtnCooldownText}>{cooldownRemaining}s</Text>
+            ) : (
+              <AppIcon
+                name="send"
+                size={18}
+                color={inputText.trim() ? "#0B0E14" : "#64748B"}
+              />
+            )}
           </Pressable>
         </View>
       </KeyboardAvoidingView>
@@ -559,5 +617,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#161B26",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  sendBtnCooldown: {
+    backgroundColor: "rgba(245, 158, 11, 0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.45)",
+  },
+  sendBtnCooldownText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#F59E0B",
   },
 });

@@ -171,7 +171,7 @@ CREATE POLICY "Users can read own topup transactions"
   );
 
 -- 2. INSERT: Pengguna hanya boleh membuat transaksi atas nama dirinya sendiri
--- dengan status WAJIB 'menunggu_pembayaran' atau 'menunggu_verifikasi'
+-- dengan status WAJIB 'menunggu_pembayaran', 'menunggu_verifikasi', atau 'menunggu_konfirmasi'
 DROP POLICY IF EXISTS "Users can insert own topup transaction" ON public.topup_transactions;
 CREATE POLICY "Users can insert own topup transaction"
   ON public.topup_transactions
@@ -179,7 +179,7 @@ CREATE POLICY "Users can insert own topup transaction"
   TO authenticated
   WITH CHECK (
     (auth.uid())::text = user_id::text AND
-    status IN ('menunggu_pembayaran', 'menunggu_verifikasi') AND
+    status IN ('menunggu_pembayaran', 'menunggu_verifikasi', 'menunggu_konfirmasi') AND
     crystals_granted = FALSE
   );
 
@@ -200,7 +200,7 @@ CREATE POLICY "Users can update own topup pending status"
     -- Jika user biasa, hanya boleh mengubah dari menunggu_pembayaran -> menunggu_verifikasi / dibatalkan
     (
       (auth.uid())::text = user_id::text AND
-      status IN ('menunggu_pembayaran', 'menunggu_verifikasi', 'dibatalkan') AND
+      status IN ('menunggu_pembayaran', 'menunggu_verifikasi', 'menunggu_konfirmasi', 'dibatalkan') AND
       crystals_granted = FALSE
     )
     OR

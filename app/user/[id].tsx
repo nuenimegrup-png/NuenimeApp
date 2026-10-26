@@ -368,16 +368,16 @@ export default function PublicUserProfileScreen() {
             />
           </View>
 
-          {/* User Name, Clean Member Tag, & Verified Badge */}
+          {/* User Name, Verified Badge, & Clean Member Tag */}
           <View style={styles.nameBlock}>
             <View style={styles.nameRow}>
               <Text style={styles.displayNameText} numberOfLines={1}>
                 {targetUser.displayName}
               </Text>
-              <Text style={styles.userTagText}>{cleanMemberNum}</Text>
               <View style={styles.verifiedBadge}>
                 <UserVerificationBadge role={targetUser.role} isVip={targetUser.isVip} size={17} />
               </View>
+              <Text style={styles.userTagText}>{cleanMemberNum}</Text>
             </View>
 
             {/* Level Pill, Role Tag, & Teman Pill */}

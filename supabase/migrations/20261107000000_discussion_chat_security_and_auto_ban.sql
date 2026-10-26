@@ -18,8 +18,6 @@ BEGIN
   END IF;
 
   v_result := p_text;
-  -- Hapus karakter null byte (\0)
-  v_result := replace(v_result, chr(0), '');
 
   -- Hapus tag script, iframe, object, embed
   v_result := regexp_replace(v_result, '(?i)<\s*(script|iframe|object|embed|svg|style|link|meta|base|form|input)[^>]*>.*?<\s*/\s*\1\s*>', '', 'g');

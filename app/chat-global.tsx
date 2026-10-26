@@ -33,6 +33,7 @@ import {
   subscribeGlobalMessages,
   purgeGlobalChatMockCache,
 } from "@/lib/global-chat-service";
+import { checkChatCooldown, CHAT_COOLDOWN_SECONDS } from "@/lib/security-defense";
 
 function formatChatTime(dateStr: string): string {
   try {
@@ -147,9 +148,59 @@ export default function ChatGlobalScreen() {
   const [sending, setSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<GlobalChatMessage | null>(null);
   const [bottomNavTab, setBottomNavTab] = useState<"global" | "clan" | "teman">("global");
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
 
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
+  const cooldownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startCooldownTimer = useCallback((seconds: number) => {
+    if (seconds <= 0) return;
+    setCooldownRemaining(seconds);
+    if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+    cooldownTimerRef.current = setInterval(() => {
+      setCooldownRemaining((prev) => {
+        if (prev <= 1) {
+          if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  // ─── 0. KEYBOARD LISTENER (AGAR INPUT NAIK TEPAT DI ATAS KEYBOARD) ───
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSub = Keyboard.addListener(showEvent, () => {
+      setKeyboardVisible(true);
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 60);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+      if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+    };
+  }, []);
+
+  // Cek sisa jeda waktu chat aktif saat layar dibuka
+  useEffect(() => {
+    if (!currentUserId || currentUserId === "guest") return;
+    void checkChatCooldown(currentUserId).then((res) => {
+      if (!res.allowed && res.remainingSeconds > 0) {
+        startCooldownTimer(res.remainingSeconds);
+      }
+    });
+  }, [currentUserId, startCooldownTimer]);
 
   // ─── 1. LOAD PESAN ───
   const loadMessages = useCallback(async (isRefresh = false) => {
@@ -182,10 +233,14 @@ export default function ChatGlobalScreen() {
         return [...prev, newMsg];
       });
 
-      // Otomatis scroll ke pesan terbaru
+      // Otomatis langsung scroll ke pesan terbaru seketika
+      flatListRef.current?.scrollToEnd({ animated: true });
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      }, 60);
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 150);
     });
 
     return () => {
@@ -196,16 +251,20 @@ export default function ChatGlobalScreen() {
   // Scroll to bottom on initial load
   useEffect(() => {
     if (!loading && messages.length > 0) {
+      flatListRef.current?.scrollToEnd({ animated: false });
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: false });
-      }, 120);
+      }, 50);
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 150);
     }
   }, [loading, activeRoom]);
 
   // ─── 3. SEND MESSAGE ───
   const handleSendMessage = async () => {
     const textToSend = inputText.trim();
-    if (!textToSend || sending) return;
+    if (!textToSend || sending || cooldownRemaining > 0) return;
 
     if (!currentUserId || currentUserId === "guest") {
       hapticWarning();
@@ -262,6 +321,9 @@ export default function ChatGlobalScreen() {
       setInputText("");
       setReplyingTo(null);
 
+      // Mulai jeda countdown 30 detik setelah berhasil mengirim pesan
+      startCooldownTimer(CHAT_COOLDOWN_SECONDS);
+
       // Tambahkan ke UI lokal seketika jika belum ada
       setMessages((prev) => {
         if (prev.some((m) => m.id === res.data!.id)) return prev;
@@ -273,6 +335,11 @@ export default function ChatGlobalScreen() {
       }, 80);
     } else if (!res.success && res.error) {
       hapticWarning();
+      // Jika error terkait jeda waktu, ekstrak detiknya dan mulai timer
+      const matchSeconds = res.error.match(/tunggu\s+(\d+)\s+detik/i);
+      if (matchSeconds && matchSeconds[1]) {
+        startCooldownTimer(Number(matchSeconds[1]));
+      }
       Alert.alert("Pesan Gagal Terkirim", res.error);
     }
   };
@@ -384,6 +451,12 @@ export default function ChatGlobalScreen() {
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.messageListContent}
             showsVerticalScrollIndicator={false}
+            onContentSizeChange={() => {
+              flatListRef.current?.scrollToEnd({ animated: true });
+            }}
+            onLayout={() => {
+              flatListRef.current?.scrollToEnd({ animated: false });
+            }}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -410,7 +483,7 @@ export default function ChatGlobalScreen() {
 
               return (
                 <View style={styles.messageRow}>
-                  {/* Left Avatar with live border */}
+                  {/* Left Avatar with live border (diperkecil agar proporsional & rapi) */}
                   <Pressable
                     onPress={() => {
                       hapticLight();
@@ -419,7 +492,7 @@ export default function ChatGlobalScreen() {
                     style={styles.avatarWrap}
                   >
                     <BorderAvatar
-                      size={42}
+                      size={32}
                       borderId={item.senderBorder}
                       avatarUrl={item.senderAvatar || "https://images.alphacoders.com/132/1328004.png"}
                     />
@@ -448,7 +521,7 @@ export default function ChatGlobalScreen() {
                           </Text>
                         </Pressable>
 
-                        {/* Otoritatif Checkmark: Merah (Admin/Dev) | Biru (VIP/Verified) | None */}
+                        {/* Otoritatif Checkmark */}
                         <UserVerificationBadge
                           role={item.senderRole}
                           isVip={item.senderIsVip}
@@ -560,16 +633,35 @@ export default function ChatGlobalScreen() {
           </View>
         )}
 
-        {/* ─── F. INPUT BAR (PERSIS SCREENSHOT: COUNTER 0/255 & TOMBOL SEND BULAT) ─── */}
-        <View style={styles.inputContainer}>
-          {/* Character Counter */}
-          <Text style={styles.charCounterText}>{inputText.length}/255</Text>
+        {/* ─── F. INPUT BAR (DILENGKAPI DETIK COOLDOWN & POSISI TEPAT DI ATAS KEYBOARD) ─── */}
+        <View
+          style={[
+            styles.inputContainer,
+            {
+              paddingBottom: keyboardVisible
+                ? 8
+                : Math.max(insets.bottom > 0 ? 8 : 12, 10),
+            },
+          ]}
+        >
+          {/* Metadata Row: Detik Cooldown & Counter Karakter 0/255 */}
+          <View style={styles.inputMetaRow}>
+            {cooldownRemaining > 0 ? (
+              <View style={styles.cooldownBadge}>
+                <AppIcon name="timer-outline" size={12} color="#F59E0B" />
+                <Text style={styles.cooldownBadgeText}>Jeda chat: {cooldownRemaining}s</Text>
+              </View>
+            ) : (
+              <View />
+            )}
+            <Text style={styles.charCounterText}>{inputText.length}/255</Text>
+          </View>
 
           <View style={styles.inputRow}>
             <TextInput
               ref={inputRef}
               style={styles.textInput}
-              placeholder="Silakan masukkan pesan..."
+              placeholder={cooldownRemaining > 0 ? `Tunggu ${cooldownRemaining} detik...` : "Silakan masukkan pesan..."}
               placeholderTextColor="#64748B"
               value={inputText}
               onChangeText={setInputText}
@@ -583,15 +675,18 @@ export default function ChatGlobalScreen() {
               accessibilityRole="button"
               accessibilityLabel="Kirim pesan"
               onPress={handleSendMessage}
-              disabled={sending || !inputText.trim()}
+              disabled={sending || cooldownRemaining > 0 || !inputText.trim()}
               style={({ pressed }) => [
                 styles.sendBtn,
-                (!inputText.trim() || sending) && styles.sendBtnDisabled,
+                (!inputText.trim() || sending || cooldownRemaining > 0) && styles.sendBtnDisabled,
+                cooldownRemaining > 0 && styles.sendBtnCooldown,
                 pressed && styles.btnPressed,
               ]}
             >
               {sending ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : cooldownRemaining > 0 ? (
+                <Text style={styles.sendBtnCooldownText}>{cooldownRemaining}s</Text>
               ) : (
                 <AppIcon name="send" size={17} color="#FFFFFF" />
               )}
@@ -600,51 +695,53 @@ export default function ChatGlobalScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* ─── G. BOTTOM NAVIGATION (GLOBAL | CLAN | TEMAN) (PERSIS SCREENSHOT) ─── */}
-      <View style={[styles.bottomNavContainer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-        {/* Tab Global */}
-        <Pressable
-          accessibilityRole="tab"
-          onPress={() => handleBottomTabPress("global")}
-          style={styles.bottomNavItem}
-        >
-          {bottomNavTab === "global" && <View style={styles.activeTabIndicatorTop} />}
-          <Text
-            style={[
-              styles.bottomNavText,
-              bottomNavTab === "global" && styles.bottomNavTextActive,
-            ]}
+      {/* ─── G. BOTTOM NAVIGATION (GLOBAL | CLAN | TEMAN) (SEMBUNYIKAN KETIKA KEYBOARD AKTIF) ─── */}
+      {!keyboardVisible && (
+        <View style={[styles.bottomNavContainer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+          {/* Tab Global */}
+          <Pressable
+            accessibilityRole="tab"
+            onPress={() => handleBottomTabPress("global")}
+            style={styles.bottomNavItem}
           >
-            Global
-          </Text>
-        </Pressable>
+            {bottomNavTab === "global" && <View style={styles.activeTabIndicatorTop} />}
+            <Text
+              style={[
+                styles.bottomNavText,
+                bottomNavTab === "global" && styles.bottomNavTextActive,
+              ]}
+            >
+              Global
+            </Text>
+          </Pressable>
 
-        {/* Tab Clan */}
-        <Pressable
-          accessibilityRole="tab"
-          onPress={() => handleBottomTabPress("clan")}
-          style={styles.bottomNavItem}
-        >
-          {bottomNavTab === "clan" && <View style={styles.activeTabIndicatorTop} />}
-          <Text
-            style={[
-              styles.bottomNavText,
-              bottomNavTab === "clan" && styles.bottomNavTextActive,
-            ]}
+          {/* Tab Clan */}
+          <Pressable
+            accessibilityRole="tab"
+            onPress={() => handleBottomTabPress("clan")}
+            style={styles.bottomNavItem}
           >
-            Clan
-          </Text>
-        </Pressable>
+            {bottomNavTab === "clan" && <View style={styles.activeTabIndicatorTop} />}
+            <Text
+              style={[
+                styles.bottomNavText,
+                bottomNavTab === "clan" && styles.bottomNavTextActive,
+              ]}
+            >
+              Clan
+            </Text>
+          </Pressable>
 
-        {/* Tab Teman (Arahkan ke Fitur Pertemanan Nuenime /connections) */}
-        <Pressable
-          accessibilityRole="tab"
-          onPress={() => handleBottomTabPress("teman")}
-          style={styles.bottomNavItem}
-        >
-          <Text style={styles.bottomNavText}>Teman</Text>
-        </Pressable>
-      </View>
+          {/* Tab Teman (Arahkan ke Fitur Pertemanan Nuenime /connections) */}
+          <Pressable
+            accessibilityRole="tab"
+            onPress={() => handleBottomTabPress("teman")}
+            style={styles.bottomNavItem}
+          >
+            <Text style={styles.bottomNavText}>Teman</Text>
+          </Pressable>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -795,27 +892,29 @@ const styles = StyleSheet.create({
   messageListContent: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    gap: 14,
+    gap: 10,
   },
   messageRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
+    gap: 8,
+    paddingRight: 52, // Memberi jarak kosong di sebelah kanan agar bubble TIDAK MENTOK ke pojok layar
   },
   avatarWrap: {
     paddingTop: 2,
   },
   bubbleCol: {
     flex: 1,
-    maxWidth: "88%",
+    maxWidth: "78%", // Lebar proporsional (78%) agar pas & seragam tanpa memenuhi seluruh layar
   },
   messageCard: {
     backgroundColor: "#171B24",
     borderWidth: 1,
     borderColor: "#222A38",
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    width: "100%", // Panjang / lebar akhir rata dan seragam untuk semua pesan
   },
   messageCardPressed: {
     backgroundColor: "#1C212D",
@@ -825,16 +924,16 @@ const styles = StyleSheet.create({
   senderHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginBottom: 4,
+    gap: 5,
+    marginBottom: 2,
     flexWrap: "wrap",
   },
   senderNameText: {
-    fontSize: 13.5,
+    fontSize: 12,
     fontWeight: "700",
   },
   memberTagText: {
-    fontSize: 11,
+    fontSize: 10,
     color: "#64748B",
     fontWeight: "500",
   },
@@ -843,39 +942,39 @@ const styles = StyleSheet.create({
   badgesRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginBottom: 6,
+    gap: 4,
+    marginBottom: 4,
     flexWrap: "wrap",
   },
   rankTierPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
-    borderRadius: 7,
+    paddingHorizontal: 5.5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
   rankTierText: {
     fontFamily: "Nunito-Black",
-    fontSize: 10.5,
-    letterSpacing: 0.8,
+    fontSize: 9.5,
+    letterSpacing: 0.6,
     textTransform: "uppercase",
   },
   levelPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 3,
     backgroundColor: "#1E2636",
-    paddingHorizontal: 7,
-    paddingVertical: 2.5,
-    borderRadius: 7,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
   },
   tierPillIcon: {
-    width: 13,
-    height: 13,
+    width: 11,
+    height: 11,
   },
   levelPillText: {
-    fontSize: 10.5,
+    fontSize: 9.5,
     fontWeight: "700",
     color: "#38BDF8",
   },
@@ -885,13 +984,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     backgroundColor: "rgba(0, 0, 0, 0.25)",
     borderRadius: 6,
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    marginBottom: 6,
-    gap: 6,
+    paddingVertical: 3,
+    paddingHorizontal: 5,
+    marginBottom: 4,
+    gap: 5,
   },
   quoteAccentLine: {
-    width: 3,
+    width: 2.5,
     borderRadius: 2,
     backgroundColor: "#10B981",
   },
@@ -904,28 +1003,28 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   quoteSenderName: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: "700",
     color: "#A7F3D0",
   },
   quoteMemberNumber: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: "#64748B",
   },
   quoteText: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: "#94A3B8",
     marginTop: 1,
   },
 
   // ─── MESSAGE TEXT & TIMESTAMP ───
   messageText: {
-    fontSize: 13.5,
+    fontSize: 12.5,
     color: "#F1F5F9",
-    lineHeight: 19,
+    lineHeight: 17.5,
   },
   timestampText: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: "#64748B",
     alignSelf: "flex-end",
     marginTop: 2,
@@ -971,11 +1070,31 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 8,
   },
+  inputMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  cooldownBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(245, 158, 11, 0.14)",
+    borderColor: "rgba(245, 158, 11, 0.35)",
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  cooldownBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#F59E0B",
+  },
   charCounterText: {
-    alignSelf: "flex-end",
     fontSize: 10,
     color: "#64748B",
-    marginBottom: 4,
   },
   inputRow: {
     flexDirection: "row",
@@ -1005,6 +1124,17 @@ const styles = StyleSheet.create({
   sendBtnDisabled: {
     backgroundColor: "#1E293B",
     opacity: 0.6,
+  },
+  sendBtnCooldown: {
+    backgroundColor: "rgba(245, 158, 11, 0.22)",
+    borderColor: "rgba(245, 158, 11, 0.45)",
+    borderWidth: 1,
+    opacity: 1,
+  },
+  sendBtnCooldownText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#F59E0B",
   },
 
   // ─── BOTTOM NAVIGATION (GLOBAL | CLAN | TEMAN) (PERSIS SCREENSHOT) ───

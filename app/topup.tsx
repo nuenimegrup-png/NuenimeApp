@@ -35,6 +35,8 @@ import {
   fetchAdminWhatsAppNumber,
   getUserTransactions,
   fetchActivePendingTransaction,
+  setActivePendingTransaction,
+  clearActivePendingTransaction,
   checkTransactionStatusFromBackend,
   openWhatsAppConfirmation,
   updateTransactionStatus,
@@ -143,6 +145,13 @@ export default function TopUpScreen() {
     reloadData();
   }, [reloadData]);
 
+  // ─── PENGUNCIAN OTOMATIS TAHAP 3 JIKA ADA TRANSAKSI PENDING ───
+  useEffect(() => {
+    if (hasActivePendingTx && activeStep !== 3) {
+      setActiveStep(3);
+    }
+  }, [hasActivePendingTx, activeStep]);
+
   // ─── SINKRONISASI REAL-TIME DENGAN KEPUTUSAN ADMIN (SUPABASE REALTIME & FALLBACK) ───
   useEffect(() => {
     if (!currentTx?.id) return;
@@ -184,6 +193,7 @@ export default function TopUpScreen() {
             setUserTransactions(newTxs);
 
             if (updated.status === "berhasil") {
+              await clearActivePendingTransaction(userId);
               hapticSuccess();
               Alert.alert(
                 "Top Up Berhasil Disetujui! 🎉",
@@ -192,12 +202,14 @@ export default function TopUpScreen() {
                 )} Dylan Crystal telah ditambahkan ke akun Anda.`
               );
             } else if (updated.status === "ditolak") {
+              await clearActivePendingTransaction(userId);
               hapticWarning();
               Alert.alert(
                 "Transaksi Ditolak",
                 updated.status_note || "Pembayaran tidak valid atau bukti transfer tidak sesuai."
               );
             } else if (updated.status === "reversed") {
+              await clearActivePendingTransaction(userId);
               hapticWarning();
               Alert.alert(
                 "Crystal Ditarik Kembali (Reversed)",
@@ -224,6 +236,7 @@ export default function TopUpScreen() {
         setUserTransactions(newTxs);
 
         if (latest.status === "berhasil") {
+          await clearActivePendingTransaction(userId);
           hapticSuccess();
           Alert.alert(
             "Top Up Berhasil Disetujui! 🎉",
@@ -232,12 +245,14 @@ export default function TopUpScreen() {
             )} Dylan Crystal telah ditambahkan ke akun Anda.`
           );
         } else if (latest.status === "ditolak") {
+          await clearActivePendingTransaction(userId);
           hapticWarning();
           Alert.alert(
             "Transaksi Ditolak",
             latest.statusNote || "Pembayaran tidak valid atau bukti transfer tidak sesuai."
           );
         } else if (latest.status === "reversed") {
+          await clearActivePendingTransaction(userId);
           hapticWarning();
           Alert.alert(
             "Crystal Ditarik Kembali (Reversed)",
@@ -257,6 +272,14 @@ export default function TopUpScreen() {
 
   // ─── TAHAP 1: PILIH PAKET ───
   const handleSelectPackage = (pkg: CrystalPackage) => {
+    if (hasActivePendingTx) {
+      Alert.alert(
+        "Transaksi Sedang Diproses",
+        "Anda memiliki transaksi yang masih menunggu verifikasi admin. Pilihan paket baru dikunci hingga verifikasi selesai."
+      );
+      setActiveStep(3);
+      return;
+    }
     hapticLight();
     setSelectedPkg(pkg);
     // Hasilkan ID transaksi sementara untuk ringkasan Tahap 2 jika belum ada
@@ -317,6 +340,11 @@ export default function TopUpScreen() {
 
   // ─── TAHAP 2: PROSES KONFIRMASI & BUKA WHATSAPP ───
   const handleConfirmPayment = async () => {
+    if (hasActivePendingTx) {
+      setActiveStep(3);
+      return;
+    }
+
     if (!selectedPkg) {
       Alert.alert("Error", "Pilih paket terlebih dahulu.");
       return;
@@ -341,6 +369,7 @@ export default function TopUpScreen() {
         packageItem: selectedPkg,
         paymentMethod: selectedMethodId,
         additionalFee: 0,
+        initialStatus: "menunggu_verifikasi",
       });
 
       // 2. Set status transaksi menjadi menunggu_verifikasi
@@ -354,19 +383,21 @@ export default function TopUpScreen() {
       const savedTx = updatedRes.transaction || newTx;
       setCurrentTx(savedTx);
 
+      // 3. Kunci seketika di Tahap 3 secara persisten SEBELUM membuka WhatsApp
+      setActiveStep(3);
+      await setActivePendingTransaction(userId, savedTx);
+
       // Refresh riwayat
       const updatedList = await getUserTransactions(userId);
       setUserTransactions(updatedList);
 
-      // 3. Buka WhatsApp untuk konfirmasi
+      // 4. Buka WhatsApp untuk konfirmasi
       await openWhatsAppConfirmation(savedTx);
-
-      // 4. Beralih ke Tahap 3 — Status Transaksi
-      setActiveStep(3);
-    } catch {
+    } catch (err: any) {
+      console.error("[topup] handleConfirmPayment error:", err);
       Alert.alert(
-        "Gagal Memproses",
-        "Terjadi kendala saat menyimpan transaksi. Pastikan koneksi aman dan coba lagi."
+        "Gagal Memproses Transaksi",
+        err?.message || "Terjadi kendala saat menyimpan transaksi. Pastikan koneksi aman dan coba lagi."
       );
     } finally {
       setIsSubmitting(false);
@@ -431,8 +462,9 @@ export default function TopUpScreen() {
   };
 
   // ─── MEMULAI TOP UP BARU SETELAH TRANSAKSI FINAL ───
-  const handleResetAndStartNew = () => {
+  const handleResetAndStartNew = async () => {
     hapticLight();
+    await clearActivePendingTransaction(userId);
     setCurrentTx(null);
     setSelectedPkg(null);
     setTempTxId("");

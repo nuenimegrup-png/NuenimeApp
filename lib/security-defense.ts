@@ -7,7 +7,7 @@ const LAST_CHAT_TIME_KEY = "@nuenime_last_chat_timestamp_";
 const RECENT_MESSAGES_KEY = "@nuenime_recent_user_messages_";
 
 export const DISCUSSION_COOLDOWN_SECONDS = 60; // 1 menit jeda pesan diskusi
-export const CHAT_COOLDOWN_SECONDS = 2.5; // Jeda chat anti-flood
+export const CHAT_COOLDOWN_SECONDS = 30; // 30 detik jeda pesan chat anti-flood & anti-spam
 export const MAX_SAME_MESSAGE_LIMIT = 4; // 4x pesan sama = AUTO BAN
 
 /**
@@ -325,7 +325,7 @@ export function validateTopupPackageSecurity(pkg: { id?: string; amount?: number
   if (pkg.amount <= 0 || pkg.price <= 0) {
     return { valid: false, reason: "Jumlah Crystal dan harga nominal harus lebih besar dari 0." };
   }
-  if (pkg.amount > 1000000 || pkg.price > 10000000) {
+  if (pkg.amount > 50000000 || pkg.price > 100000000) {
     return { valid: false, reason: "Nominal transaksi melampaui batas wajar paket resmi Nuenime." };
   }
   return { valid: true };

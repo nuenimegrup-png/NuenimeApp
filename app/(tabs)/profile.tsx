@@ -922,16 +922,16 @@ export default function ProfileScreen() {
           </View>
 
 
-          {/* User Name, Tag & Verified Badge */}
+          {/* User Name, Verified Badge & Tag */}
           <View style={styles.nameBlock}>
             <View style={styles.nameRow}>
               <Text style={styles.displayNameText} numberOfLines={1}>
                 {displayName}
               </Text>
-              <Text style={styles.userTagText}>{userTag}</Text>
               <View style={styles.verifiedBadge}>
                 <UserVerificationBadge role={auth.profile?.role} isVip={auth.profile?.is_vip} size={17} />
               </View>
+              <Text style={styles.userTagText}>{userTag}</Text>
             </View>
 
             {/* Level Pill, Role Tag (Khusus), & Teman Pill */}

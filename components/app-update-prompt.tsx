@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -13,7 +14,6 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 
-import { nothing } from "@/components/nothing-ui";
 import { AppIcon } from "@/components/app-icon";
 import {
   checkForNuenimeUpdate,
@@ -41,9 +41,14 @@ function formatBytes(bytes: number): string {
   return mb < 100 ? `${mb.toFixed(1)} MB` : `${Math.round(mb)} MB`;
 }
 
-function formatChangelog(body?: string): string[] {
+interface ChangelogItem {
+  title?: string;
+  desc: string;
+}
+
+function parseChangelog(body?: string): ChangelogItem[] {
   if (!body) return [];
-  return body
+  const lines = body
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(
@@ -52,9 +57,27 @@ function formatChangelog(body?: string): string[] {
         !l.startsWith("#") &&
         !l.match(/^<!--/)
     )
-    .map((l) => l.replace(/^[-*]\s*/, "").trim())
-    .filter(Boolean)
-    .slice(0, 8);
+    .map((l) => l.replace(/^[-*•]\s*/, "").trim())
+    .filter(Boolean);
+
+  const items: ChangelogItem[] = [];
+
+  for (const line of lines) {
+    const match = line.match(/^\*\*(.*?)\*\*[:\s-]*(.*)$/);
+    if (match) {
+      items.push({
+        title: match[1].trim(),
+        desc: match[2].trim(),
+      });
+    } else {
+      const cleaned = line.replace(/\*\*/g, "").trim();
+      if (cleaned) {
+        items.push({ desc: cleaned });
+      }
+    }
+  }
+
+  return items.slice(0, 10);
 }
 
 // ── Download state ────────────────────────────────────────────────────────────
@@ -91,7 +114,6 @@ export function AppUpdatePrompt() {
     if (!release) return;
     const assets = release.assets;
     if (assets.length === 0) return;
-    // Prefer device ABI → universal → first
     const recommended =
       (deviceAbi ? assets.find((a) => a.abi === deviceAbi) : null) ??
       assets.find((a) => a.abi === "universal") ??
@@ -134,42 +156,58 @@ export function AppUpdatePrompt() {
     setShowAbiMenu(false);
   }, [release]);
 
-  const install = useCallback(async () => {
-    if (!release || !selectedAsset || busyRef.current) return;
-    busyRef.current = true;
-    setPhase("downloading");
-    setProgress(null);
-    setErrorMsg(null);
-    try {
-      await downloadAndInstallApk(selectedAsset, (p) => {
-        setProgress(p);
-      });
-      setPhase("installing");
-    } catch (e) {
-      setErrorMsg(
-        e instanceof Error ? e.message : "Terjadi kesalahan saat mengunduh."
-      );
-      setPhase("error");
-    } finally {
-      busyRef.current = false;
-    }
-  }, [release, selectedAsset]);
-
-  const changelog = useMemo(
-    () => formatChangelog(release?.body),
-    [release?.body]
-  );
-
   const isAndroid = Platform.OS === "android";
   const isDownloading = phase === "downloading";
   const isInstalling = phase === "installing";
   const isBusy = isDownloading || isInstalling;
 
+  const handleUpdate = useCallback(async () => {
+    if (!release || busyRef.current) return;
+
+    if (isAndroid) {
+      if (!selectedAsset) return;
+      busyRef.current = true;
+      setPhase("downloading");
+      setProgress(null);
+      setErrorMsg(null);
+      try {
+        await downloadAndInstallApk(selectedAsset, (p) => {
+          setProgress(p);
+        });
+        setPhase("installing");
+      } catch (e) {
+        setErrorMsg(
+          e instanceof Error ? e.message : "Terjadi kesalahan saat mengunduh."
+        );
+        setPhase("error");
+      } finally {
+        busyRef.current = false;
+      }
+      return;
+    }
+
+    // Web / other platforms: open download URL
+    const targetUrl =
+      selectedAsset?.downloadUrl ||
+      release.assets[0]?.downloadUrl ||
+      (release as any).html_url ||
+      (release as any).url;
+
+    if (targetUrl) {
+      void Linking.openURL(targetUrl);
+    }
+  }, [release, selectedAsset, isAndroid]);
+
+  const changelog = useMemo(
+    () => parseChangelog(release?.body),
+    [release?.body]
+  );
+
   const progressFraction = progress?.fraction ?? 0;
   const progressPct = Math.round(progressFraction * 100);
   const progressLabel =
     isInstalling
-      ? "Membuka installer..."
+      ? "Membuka paket instalasi..."
       : isDownloading && progress
       ? `Mengunduh... ${progressPct}%  (${formatBytes(progress.bytesWritten)} / ${formatBytes(progress.totalBytes)})`
       : null;
@@ -194,86 +232,116 @@ export function AppUpdatePrompt() {
       onRequestClose={() => { void dismiss(); }}
     >
       <View style={styles.backdrop}>
-        <View style={styles.sheet} accessibilityViewIsModal>
+        <View style={styles.dialog} accessibilityViewIsModal>
+          {/* Close Button Top-Right */}
+          {!isBusy && (
+            <Pressable
+              onPress={() => void dismiss()}
+              accessibilityRole="button"
+              accessibilityLabel="Tutup"
+              hitSlop={12}
+              style={({ pressed }) => [
+                styles.closeBtn,
+                pressed && styles.btnPressedSubtle,
+              ]}
+            >
+              <AppIcon name="close" size={15} color="#94A3B8" />
+            </Pressable>
+          )}
+
           {/* ── Header ── */}
           <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <View style={styles.updateBadge}>
-                <View style={styles.updateDot} />
-                <Text style={styles.updateBadgeText}>PEMBARUAN TERSEDIA</Text>
-              </View>
-              <Text style={styles.versionText}>Versi {release.version}</Text>
+            <View style={styles.updateBadge}>
+              <View style={styles.updateDot} />
+              <Text style={styles.updateBadgeText}>PEMBARUAN TERSEDIA</Text>
             </View>
-            {!isBusy && (
-              <Pressable
-                onPress={() => void dismiss()}
-                accessibilityRole="button"
-                accessibilityLabel="Tutup"
-                hitSlop={10}
-                style={({ pressed }) => [
-                  styles.closeBtn,
-                  pressed && nothing.pressed,
-                ]}
-              >
-                <AppIcon name="close" size={16} color={nothing.dim} />
-              </Pressable>
-            )}
+
+            <View style={styles.versionRow}>
+              <Text style={styles.versionText}>Versi {release.version}</Text>
+              <View style={styles.versionCompareBadge}>
+                <Text style={styles.versionCompareText}>
+                  v{installedVersion} ➔ v{release.version}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.subtitle}>
+              Versi terbaru Nuenime dengan fitur dan peningkatan performa siap digunakan.
+            </Text>
           </View>
 
-          <View style={styles.divider} />
-
-          {/* ── Changelog ── */}
+          {/* ── Changelog Card List ── */}
           {changelog.length > 0 && (
-            <ScrollView
-              style={styles.changelogScroll}
-              nestedScrollEnabled
-              showsVerticalScrollIndicator={false}
-            >
-              {changelog.map((line, i) => (
-                <View key={i} style={styles.changelogRow}>
-                  <View style={styles.changelogBullet} />
-                  <Text style={styles.changelogText}>{line}</Text>
-                </View>
-              ))}
-            </ScrollView>
+            <View style={styles.changelogSection}>
+              <View style={styles.sectionHeaderRow}>
+                <AppIcon name="format-list-bulleted" size={14} color="#38BDF8" />
+                <Text style={styles.sectionLabel}>CATATAN PEMBARUAN</Text>
+              </View>
+
+              <ScrollView
+                style={styles.changelogScroll}
+                contentContainerStyle={styles.changelogContentContainer}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={false}
+              >
+                {changelog.map((item, i) => (
+                  <View key={i} style={styles.changelogCard}>
+                    <View style={styles.changelogBullet} />
+                    <View style={styles.changelogTextWrap}>
+                      {item.title ? (
+                        <Text style={styles.changelogItemTitle}>{item.title}</Text>
+                      ) : null}
+                      <Text style={styles.changelogItemDesc}>{item.desc}</Text>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
           )}
 
           {/* ── Mandatory notice ── */}
           {release.mandatory && (
             <View style={styles.mandatoryRow}>
-              <AppIcon name="alert-circle-outline" size={13} color={nothing.red} />
-              <Text style={styles.mandatoryText}>Pembaruan ini wajib diinstal.</Text>
+              <AppIcon name="alert-circle-outline" size={15} color="#F43F5E" />
+              <Text style={styles.mandatoryText}>
+                Pembaruan ini wajib dipasang untuk menjaga kelancaran layanan.
+              </Text>
             </View>
           )}
 
-          {/* ── ABI Selector (Android only, multi-asset) ── */}
-          {isAndroid && sortedAssets.length > 1 && !isBusy && (
-            <View>
-              <Text style={styles.abiLabel}>Pilih Versi APK</Text>
+          {/* ── ABI Selector (Multi-asset) ── */}
+          {sortedAssets.length > 1 && !isBusy && (
+            <View style={styles.abiContainer}>
+              <Text style={styles.sectionLabel}>ARSITEKTUR PERANGKAT</Text>
               <Pressable
                 onPress={() => setShowAbiMenu((v) => !v)}
                 style={({ pressed }) => [
                   styles.abiSelector,
-                  pressed && nothing.pressedSubtle,
+                  pressed && styles.btnPressedSubtle,
                 ]}
                 accessibilityRole="button"
               >
                 <View style={styles.abiSelectorLeft}>
-                  <Text style={styles.abiSelectorValue}>
-                    {selectedAsset
-                      ? abiLabel(selectedAsset.abi)
-                      : "Pilih arsitektur"}
-                  </Text>
-                  {selectedAsset?.size ? (
-                    <Text style={styles.abiSelectorSize}>
-                      {formatBytes(selectedAsset.size)}
+                  <View style={styles.abiIconBadge}>
+                    <AppIcon name="android" size={15} color="#38BDF8" />
+                  </View>
+                  <View>
+                    <Text style={styles.abiSelectorValue}>
+                      {selectedAsset
+                        ? abiLabel(selectedAsset.abi)
+                        : "Pilih arsitektur"}
                     </Text>
-                  ) : null}
+                    {selectedAsset?.size ? (
+                      <Text style={styles.abiSelectorSize}>
+                        Ukuran: {formatBytes(selectedAsset.size)}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
                 <AppIcon
                   name={showAbiMenu ? "chevron-up" : "chevron-down"}
                   size={16}
-                  color={nothing.muted}
+                  color="#94A3B8"
                 />
               </Pressable>
 
@@ -295,7 +363,7 @@ export function AppUpdatePrompt() {
                         style={({ pressed }) => [
                           styles.abiMenuItem,
                           isSelected && styles.abiMenuItemSelected,
-                          pressed && nothing.pressedSubtle,
+                          pressed && styles.btnPressedSubtle,
                         ]}
                         accessibilityRole="menuitem"
                       >
@@ -324,7 +392,7 @@ export function AppUpdatePrompt() {
                             <AppIcon
                               name="check"
                               size={14}
-                              color={nothing.green}
+                              color="#10B981"
                             />
                           )}
                         </View>
@@ -346,7 +414,7 @@ export function AppUpdatePrompt() {
                     {
                       width: isInstalling
                         ? "100%"
-                        : `${Math.max(progressFraction * 100, 2)}%`,
+                        : `${Math.max(progressFraction * 100, 4)}%`,
                     },
                   ]}
                 />
@@ -360,44 +428,49 @@ export function AppUpdatePrompt() {
           {/* ── Error ── */}
           {phase === "error" && errorMsg && (
             <View style={styles.errorRow}>
-              <AppIcon name="alert-circle-outline" size={13} color={nothing.red} />
+              <AppIcon name="alert-circle-outline" size={15} color="#F43F5E" />
               <Text style={styles.errorText}>{errorMsg}</Text>
             </View>
           )}
 
           {/* ── Actions ── */}
           <View style={styles.actions}>
-            {isAndroid ? (
-              <Pressable
-                disabled={isBusy || !selectedAsset}
-                onPress={() => void install()}
-                style={({ pressed }) => [
-                  styles.installBtn,
-                  (isBusy || !selectedAsset) && styles.installBtnDisabled,
-                  pressed && !isBusy && nothing.pressedSubtle,
-                ]}
-                accessibilityRole="button"
-              >
-                {isBusy ? (
-                  <ActivityIndicator size="small" color={nothing.black} />
-                ) : (
-                  <Text style={styles.installBtnText}>
-                    {phase === "error" ? "COBA LAGI" : "UNDUH DAN INSTAL"}
+            <Pressable
+              disabled={isBusy}
+              onPress={() => void handleUpdate()}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                isBusy && styles.btnDisabled,
+                pressed && !isBusy && styles.btnPressed,
+              ]}
+              accessibilityRole="button"
+            >
+              {isBusy ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <View style={styles.btnRow}>
+                  <AppIcon name="download" size={17} color="#FFFFFF" />
+                  <Text style={styles.primaryBtnText}>
+                    {phase === "error"
+                      ? "Coba Lagi"
+                      : isAndroid
+                      ? "Unduh & Pasang Sekarang"
+                      : "Unduh File APK"}
                   </Text>
-                )}
-              </Pressable>
-            ) : null}
+                </View>
+              )}
+            </Pressable>
 
             {!isBusy && (
               <Pressable
                 onPress={() => void dismiss()}
                 style={({ pressed }) => [
                   styles.laterBtn,
-                  pressed && nothing.pressedSubtle,
+                  pressed && styles.btnPressedSubtle,
                 ]}
                 accessibilityRole="button"
               >
-                <Text style={styles.laterBtnText}>NANTI</Text>
+                <Text style={styles.laterBtnText}>Nanti</Text>
               </Pressable>
             )}
           </View>
@@ -412,265 +485,390 @@ export function AppUpdatePrompt() {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.78)",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.76)",
     padding: 16,
-    paddingBottom: 24,
   },
-  sheet: {
-    backgroundColor: nothing.surface,
-    borderRadius: 16,
+  dialog: {
+    width: "100%",
+    maxWidth: 420,
+    maxHeight: "88%",
+    backgroundColor: "#0F131C",
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: nothing.line,
-    borderBottomWidth: 3,
-    borderBottomColor: nothing.red,
+    borderColor: "rgba(255, 255, 255, 0.09)",
     padding: 20,
     gap: 14,
-    overflow: "hidden",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.55,
+    shadowRadius: 24,
+    elevation: 24,
+  },
+  closeBtn: {
+    position: "absolute",
+    top: 14,
+    right: 14,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+    ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
   },
 
   // Header
   header: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
+    gap: 5,
+    paddingRight: 28,
   },
-  headerLeft: { gap: 6, flex: 1 },
   updateBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     alignSelf: "flex-start",
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.28)",
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
   },
   updateDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: nothing.red,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#F43F5E",
   },
   updateBadgeText: {
-    fontFamily: nothing.mono,
-    fontSize: 9,
+    fontSize: 9.5,
     fontWeight: "800",
-    color: nothing.red,
-    letterSpacing: 1,
+    color: "#F43F5E",
+    letterSpacing: 0.8,
+  },
+  versionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 2,
   },
   versionText: {
-    fontFamily: nothing.fontBold,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "900",
-    color: nothing.white,
-    letterSpacing: -0.6,
+    color: "#FFFFFF",
+    letterSpacing: -0.5,
   },
-  closeBtn: {
-    width: 30,
-    height: 30,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 8,
-    backgroundColor: nothing.raised,
+  versionCompareBadge: {
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
     borderWidth: 1,
-    borderColor: nothing.line,
+    borderColor: "rgba(56, 189, 248, 0.25)",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+  },
+  versionCompareText: {
+    fontSize: 10.5,
+    fontWeight: "700",
+    color: "#38BDF8",
+  },
+  subtitle: {
+    fontSize: 12,
+    color: "#94A3B8",
+    lineHeight: 16,
+    marginTop: 1,
   },
 
-  divider: {
-    height: 1,
-    backgroundColor: nothing.line,
-    marginHorizontal: -20,
+  // Section
+  changelogSection: {
+    gap: 8,
   },
-
-  // Changelog
-  changelogScroll: { maxHeight: 140 },
-  changelogRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 3 },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#64748B",
+    letterSpacing: 0.8,
+  },
+  changelogScroll: {
+    maxHeight: 165,
+  },
+  changelogContentContainer: {
+    gap: 6,
+  },
+  changelogCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
   changelogBullet: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: nothing.dim,
-    marginTop: 6,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "#38BDF8",
+    marginTop: 5,
     flexShrink: 0,
   },
-  changelogText: {
-    fontFamily: nothing.font,
-    fontSize: 12.5,
-    color: nothing.muted,
-    lineHeight: 18,
+  changelogTextWrap: {
     flex: 1,
+    gap: 2,
+  },
+  changelogItemTitle: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#F1F5F9",
+    lineHeight: 17,
+  },
+  changelogItemDesc: {
+    fontSize: 11.5,
+    color: "#94A3B8",
+    lineHeight: 16,
   },
 
   // Mandatory
   mandatoryRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(255,77,77,0.08)",
+    gap: 8,
+    backgroundColor: "rgba(239, 68, 68, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(255,77,77,0.25)",
-    borderRadius: 8,
+    borderColor: "rgba(239, 68, 68, 0.22)",
+    borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 9,
   },
   mandatoryText: {
-    fontFamily: nothing.fontMedium,
     fontSize: 12,
-    color: nothing.red,
+    fontWeight: "600",
+    color: "#F43F5E",
+    flex: 1,
+    lineHeight: 16,
   },
 
   // ABI Selector
-  abiLabel: {
-    fontFamily: nothing.mono,
-    fontSize: 9,
-    fontWeight: "800",
-    color: nothing.dim,
-    letterSpacing: 0.8,
-    marginBottom: 6,
+  abiContainer: {
+    gap: 6,
   },
   abiSelector: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: nothing.raised,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
     borderWidth: 1,
-    borderColor: nothing.line,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    borderColor: "rgba(255, 255, 255, 0.07)",
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
   },
-  abiSelectorLeft: { gap: 2 },
+  abiSelectorLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  abiIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   abiSelectorValue: {
-    fontFamily: nothing.fontMedium,
-    fontSize: 13,
-    color: nothing.white,
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   abiSelectorSize: {
-    fontFamily: nothing.font,
     fontSize: 10.5,
-    color: nothing.dim,
+    color: "#64748B",
+    marginTop: 1,
   },
-
-  // ABI Dropdown menu
   abiMenu: {
     marginTop: 4,
-    backgroundColor: nothing.raised,
+    backgroundColor: "#141A26",
     borderWidth: 1,
-    borderColor: nothing.line,
-    borderRadius: 10,
+    borderColor: "rgba(255, 255, 255, 0.09)",
+    borderRadius: 12,
     overflow: "hidden",
   },
   abiMenuItem: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: nothing.line,
+    borderBottomColor: "rgba(255, 255, 255, 0.05)",
   },
-  abiMenuItemSelected: { backgroundColor: "rgba(246,246,242,0.06)" },
-  abiMenuItemLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
+  abiMenuItemSelected: {
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
+  },
+  abiMenuItemLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   abiMenuItemText: {
-    fontFamily: nothing.font,
-    fontSize: 13,
-    color: nothing.muted,
+    fontSize: 12.5,
+    color: "#94A3B8",
   },
   abiMenuItemTextSelected: {
-    fontFamily: nothing.fontMedium,
-    color: nothing.white,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
-  abiMenuItemRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  abiMenuItemRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   abiMenuItemSize: {
-    fontFamily: nothing.font,
     fontSize: 11,
-    color: nothing.dim,
+    color: "#64748B",
   },
   recommendedBadge: {
-    backgroundColor: "rgba(150,211,123,0.12)",
+    backgroundColor: "rgba(16, 185, 129, 0.14)",
     borderWidth: 1,
-    borderColor: "rgba(150,211,123,0.3)",
+    borderColor: "rgba(16, 185, 129, 0.3)",
     borderRadius: 5,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   recommendedText: {
-    fontFamily: nothing.mono,
-    fontSize: 8,
+    fontSize: 8.5,
     fontWeight: "800",
-    color: nothing.green,
+    color: "#34D399",
     letterSpacing: 0.5,
   },
 
   // Progress
-  progressSection: { gap: 8 },
+  progressSection: {
+    gap: 7,
+  },
   progressTrack: {
-    height: 3,
-    backgroundColor: nothing.line,
-    borderRadius: 2,
+    height: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderRadius: 3,
     overflow: "hidden",
   },
   progressFill: {
-    height: 3,
-    backgroundColor: nothing.white,
-    borderRadius: 2,
+    height: 6,
+    backgroundColor: "#E11D48",
+    borderRadius: 3,
   },
   progressLabel: {
-    fontFamily: nothing.font,
     fontSize: 11,
-    color: nothing.dim,
+    color: "#94A3B8",
     textAlign: "center",
-    letterSpacing: 0.2,
   },
 
   // Error
   errorRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 6,
-    backgroundColor: "rgba(255,77,77,0.07)",
+    gap: 8,
+    backgroundColor: "rgba(239, 68, 68, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(255,77,77,0.2)",
-    borderRadius: 8,
+    borderColor: "rgba(239, 68, 68, 0.22)",
+    borderRadius: 10,
     padding: 10,
   },
   errorText: {
-    fontFamily: nothing.font,
     fontSize: 11.5,
-    color: nothing.red,
+    color: "#F43F5E",
     flex: 1,
     lineHeight: 16,
   },
 
   // Actions
-  actions: { flexDirection: "row", gap: 10 },
-  installBtn: {
+  actions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 2,
+  },
+  btnRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  primaryBtn: {
     flex: 1,
     minHeight: 46,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: nothing.white,
-    borderRadius: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.25)",
+    borderRadius: 14,
+    elevation: 0,
+    shadowColor: "transparent",
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        cursor: "pointer",
+      } as any)
+      : {}),
   },
-  installBtnDisabled: { opacity: 0.45 },
-  installBtnText: {
-    fontFamily: nothing.fontBold,
-    fontSize: 12,
-    fontWeight: "900",
-    color: nothing.black,
-    letterSpacing: 0.5,
+  primaryBtnText: {
+    fontSize: 13.5,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: 0.2,
   },
   laterBtn: {
-    minWidth: 80,
+    minWidth: 85,
     minHeight: 46,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: nothing.line,
-    borderRadius: 10,
-    backgroundColor: nothing.raised,
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    elevation: 0,
+    shadowColor: "transparent",
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        cursor: "pointer",
+      } as any)
+      : {}),
   },
   laterBtnText: {
-    fontFamily: nothing.fontMedium,
-    fontSize: 12,
-    color: nothing.muted,
-    letterSpacing: 0.3,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#94A3B8",
+  },
+
+  btnDisabled: {
+    opacity: 0.5,
+  },
+  btnPressed: {
+    opacity: 0.8,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    transform: [{ scale: 0.98 }],
+  },
+  btnPressedSubtle: {
+    opacity: 0.7,
   },
 });

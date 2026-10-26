@@ -3,22 +3,19 @@ import { AppIcon } from "@/components/app-icon";
 
 export type VerificationStatus = "developer_admin" | "verified_member" | "none";
 
-/**
- * Aturan Otoritatif Centang Verifikasi Nuenime:
- * - Centang Merah ("developer_admin"): Developer, Super Admin, Admin, Moderator, dsb.
- * - Centang Biru ("verified_member"): Member VIP atau peran komunitas resmi terverifikasi.
- * - None ("none"): Member biasa (TIDAK MENDAPATKAN CENTANG APAPUN).
- */
 export function getVerificationStatus(
   role?: string | null,
   isVip?: boolean | null
 ): VerificationStatus {
-  if (!role && !isVip) return "none";
+  if (role === "guest") return "none";
 
   const cleanRole = (role || "").trim().toLowerCase();
+  if (cleanRole === "guest") return "none";
 
-  // 1. Centang Merah: Administrator & Developer
+  // 1. Centang Merah: Administrator & Developer / Owner
   const adminDeveloperRoles = [
+    "owner",
+    "ceo",
     "super admin",
     "superadmin",
     "admin",
@@ -29,6 +26,7 @@ export function getVerificationStatus(
     "pen tester",
     "database manager",
     "finance admin",
+    "finance",
     "moderator",
   ];
 
@@ -36,23 +34,8 @@ export function getVerificationStatus(
     return "developer_admin";
   }
 
-  // 2. Centang Biru: Member VIP atau terverifikasi resmi
-  const verifiedMemberRoles = [
-    "vip",
-    "verified",
-    "content manager",
-    "community manager",
-    "qa tester",
-    "auditor",
-    "support",
-  ];
-
-  if (Boolean(isVip) || verifiedMemberRoles.includes(cleanRole)) {
-    return "verified_member";
-  }
-
-  // 3. Pengguna biasa tidak memiliki centang
-  return "none";
+  // 2. Centang Biru: Seluruh Member resmi Nuenime, Member VIP, dan peran komunitas lainnya
+  return "verified_member";
 }
 
 export interface UserVerificationBadgeProps {
@@ -73,7 +56,7 @@ export function UserVerificationBadge({
   }
 
   if (status === "verified_member") {
-    return <AppIcon name="check-circle" size={size} color="#38BDF8" />;
+    return <AppIcon name="check-decagram" size={size} color="#38BDF8" />;
   }
 
   return null;
