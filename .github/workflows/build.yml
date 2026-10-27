@@ -9,7 +9,7 @@ on:
       tag:
         description: "Release tag to build (must match the version in app.config.ts)"
         required: false
-        default: "v0.0.5"
+        default: "v0.0.6"
 
 env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
@@ -153,7 +153,7 @@ jobs:
             echo "Verifying signature with apksigner:"
             "$APKSIGNER" verify --verbose --print-certs "$APK"
           fi
-          TARGET_APK="aniraku-${RELEASE_TAG}-${{ matrix.label }}.apk"
+          TARGET_APK="Nuenime-${RELEASE_TAG}-${{ matrix.label }}.apk"
           cp "$APK" "$TARGET_APK"
           echo "Built: $TARGET_APK"
           echo "================ APK CERTIFICATE FINGERPRINTS ================"
@@ -162,8 +162,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: aniraku-${{ matrix.label }}
-          path: aniraku-${{ env.RELEASE_TAG }}-${{ matrix.label }}.apk
+          name: Nuenime-${{ matrix.label }}
+          path: Nuenime-${{ env.RELEASE_TAG }}-${{ matrix.label }}.apk
 
   release:
     name: Create Release
