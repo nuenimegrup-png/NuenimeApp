@@ -68,6 +68,9 @@ async function fetchSenderProfile(userId: string) {
       .maybeSingle();
 
     if (!error && data) {
+      if (profileCache.size > 150) {
+        profileCache.clear();
+      }
       profileCache.set(userId, data);
       return data;
     }
@@ -76,10 +79,14 @@ async function fetchSenderProfile(userId: string) {
   return null;
 }
 
+let hasPurgedMockCache = false;
+
 /**
- * Membersihkan cache pesan dummy/mock yang mungkin tersimpan di versi sebelumnya
+ * Membersihkan cache pesan dummy/mock yang mungkin tersimpan di versi sebelumnya (cukup sekali saat awal)
  */
 export async function purgeGlobalChatMockCache(): Promise<void> {
+  if (hasPurgedMockCache) return;
+  hasPurgedMockCache = true;
   try {
     const rooms: GlobalRoom[] = ["ngobrol_1", "ngobrol_2", "rekrut_clan"];
     for (const r of rooms) {
@@ -136,6 +143,9 @@ export async function getGlobalMessages(room: GlobalRoom): Promise<GlobalChatMes
         .in("id", missingSenderIds);
 
       if (profiles) {
+        if (profileCache.size + profiles.length > 200) {
+          profileCache.clear();
+        }
         profiles.forEach((p) => profileCache.set(p.id, p));
       }
     }

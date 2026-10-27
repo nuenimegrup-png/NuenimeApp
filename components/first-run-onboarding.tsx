@@ -533,9 +533,9 @@ const styles = StyleSheet.create({
   },
   disclaimerGlassBadge: {
     alignSelf: "flex-start",
-    backgroundColor: "rgba(245, 197, 24, 0.12)",
+    backgroundColor: "rgba(226, 232, 240, 0.12)",
     borderWidth: 1,
-    borderColor: "rgba(245, 197, 24, 0.28)",
+    borderColor: "rgba(226, 232, 240, 0.28)",
     paddingHorizontal: 14,
     paddingVertical: 5,
     borderRadius: 14,
@@ -549,7 +549,7 @@ const styles = StyleSheet.create({
   },
   disclaimerBadgeText: {
     fontFamily: "Nunito-Bold",
-    color: "#F5C518",
+    color: "#CBD5E1",
     fontSize: 12,
     letterSpacing: 0.3,
   },
@@ -586,10 +586,10 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#F5C518",
+    backgroundColor: "#CBD5E1",
     marginTop: 7,
     marginRight: 12,
-    shadowColor: "#F5C518",
+    shadowColor: "#CBD5E1",
     shadowOpacity: 0.8,
     shadowRadius: 4,
   },
@@ -612,10 +612,13 @@ const styles = StyleSheet.create({
   // ─── SLIDE 2: READY TITLE ───
   readyTitle: {
     fontFamily: "Nunito-Black",
-    color: "#F5C518",
+    color: "#E2E8F0",
     fontSize: 35,
     letterSpacing: 0.5,
     textAlign: "center",
+    textShadowColor: "rgba(226, 232, 240, 0.25)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   readySubtitle: {
     fontFamily: "Nunito-SemiBold",
@@ -778,9 +781,9 @@ const styles = StyleSheet.create({
   },
   indicatorActive: {
     height: 26,
-    backgroundColor: "#F5C518",
-    shadowColor: "#F5C518",
-    shadowOpacity: 0.8,
+    backgroundColor: "#E2E8F0",
+    shadowColor: "#E2E8F0",
+    shadowOpacity: 0.9,
     shadowRadius: 6,
   },
   indicatorInactive: {

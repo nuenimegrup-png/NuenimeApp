@@ -2,13 +2,15 @@
 -- NUENIME - SISTEM KLAN LENGKAP: DATABASE, SQL, ATURAN KEANGGOTAAN & TRANSAKSI
 -- File: 20261105000000_clan_system_upgrade.sql
 -- ==============================================================================
--- Menjamin:
--- 1. Satu pengguna hanya boleh menjadi anggota aktif dari satu klan (Enforced by partial unique index).
--- 2. Sistem Permintaan Bergabung (pending, approved, rejected, cancelled) dengan konfirmasi Pemimpin.
--- 3. Fitur Keluar Klan aman tanpa menghapus akun/EXP/Crystal.
--- 4. Fitur Pembubaran / Hapus Klan aman yang otomatis mengakhiri keanggotaan semua anggota.
--- 5. Fitur Transfer Kepemimpinan klan.
--- 6. Kompatibilitas 100% dengan data lama (tanpa DROP TABLE atau penghapusan data pengguna).
+-- Keamanan & Stabilitas:
+-- 1. Aman dijalankan berulang kali (100% IDEMPOTENT).
+-- 2. TANPA DROP TABLE / TIDAK AKAN MERUSAK DATA YANG SUDAH ADA.
+-- 3. Satu pengguna HANYA boleh memiliki satu keanggotaan aktif (Enforced by partial unique index).
+-- 4. Status Permintaan Bergabung (pending, approved, rejected, cancelled) 100% permanen.
+-- 5. Fitur Keluar Klan aman tanpa menghapus akun/EXP/Crystal.
+-- 6. Fitur Pembubaran / Hapus Klan aman yang otomatis mengakhiri keanggotaan semua anggota.
+-- 7. Fitur Transfer Kepemimpinan klan.
+-- 8. Hak akses RLS & GRANT otomatis untuk anon, authenticated, & service_role.
 -- ==============================================================================
 
 -- ------------------------------------------------------------------------------
@@ -16,6 +18,10 @@
 -- ------------------------------------------------------------------------------
 ALTER TABLE public.rpg_clans
   ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'active' NOT NULL,
+  ADD COLUMN IF NOT EXISTS member_count INT DEFAULT 1 NOT NULL,
+  ADD COLUMN IF NOT EXISTS max_members INT DEFAULT 100 NOT NULL,
+  ADD COLUMN IF NOT EXISTS total_exp BIGINT DEFAULT 0 NOT NULL,
+  ADD COLUMN IF NOT EXISTS coins BIGINT DEFAULT 1000 NOT NULL,
   ADD COLUMN IF NOT EXISTS disbanded_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS disbanded_by TEXT;
 
@@ -26,6 +32,15 @@ CREATE INDEX IF NOT EXISTS idx_rpg_clans_status ON public.rpg_clans(status);
 -- ------------------------------------------------------------------------------
 ALTER TABLE public.rpg_clan_members
   ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'active' NOT NULL,
+  ADD COLUMN IF NOT EXISTS display_name TEXT,
+  ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+  ADD COLUMN IF NOT EXISTS border_url TEXT,
+  ADD COLUMN IF NOT EXISTS role VARCHAR(64) DEFAULT 'Anggota',
+  ADD COLUMN IF NOT EXISTS level INT DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS exp BIGINT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS contribution_score BIGINT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ DEFAULT NOW(),
   ADD COLUMN IF NOT EXISTS left_at TIMESTAMPTZ;
 
 -- Rekonsiliasi Data Lama: Pastikan seluruh baris yang ada berstatus 'active' jika belum diset
@@ -34,8 +49,6 @@ SET status = 'active'
 WHERE status IS NULL OR status = '';
 
 -- Tangani jika ada anomali user_id yang terdaftar aktif di lebih dari satu klan (data testing lama)
--- Mempertahankan baris dengan contribution_score tertinggi atau joined_at terbaru sebagai 'active',
--- dan menandai duplikat lainnya sebagai 'left' agar tidak melanggar unique constraint.
 WITH ranked_members AS (
   SELECT id, user_id,
          ROW_NUMBER() OVER (
@@ -60,17 +73,32 @@ CREATE UNIQUE INDEX uq_rpg_clan_members_single_active_user
 CREATE INDEX IF NOT EXISTS idx_rpg_clan_members_clan_status
   ON public.rpg_clan_members (clan_id, status);
 
+-- Pastikan unique constraint (clan_id, user_id) tersedia untuk kompatibilitas ON CONFLICT / PostgREST
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint 
+    WHERE conname = 'uq_clan_member' OR conrelid = 'public.rpg_clan_members'::regclass AND contype = 'u'
+  ) THEN
+    ALTER TABLE public.rpg_clan_members ADD CONSTRAINT uq_clan_member UNIQUE (clan_id, user_id);
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
+
 -- ------------------------------------------------------------------------------
--- 3. TABEL BARU: rpg_clan_join_requests (Sistem Permintaan Bergabung)
+-- 3. TABEL: rpg_clan_join_requests (Sistem Permintaan Bergabung)
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.rpg_clan_join_requests (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  clan_id VARCHAR(64) NOT NULL REFERENCES public.rpg_clans(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  clan_id VARCHAR(64) NOT NULL,
   user_id TEXT NOT NULL,
   display_name TEXT NOT NULL,
   avatar_url TEXT,
   border_url TEXT,
   level INTEGER DEFAULT 1 NOT NULL,
+  exp BIGINT DEFAULT 0 NOT NULL,
+  rank TEXT DEFAULT 'STONE' NOT NULL,
   status VARCHAR(32) DEFAULT 'pending' NOT NULL,
   reviewed_by TEXT,
   reviewed_at TIMESTAMPTZ,
@@ -79,6 +107,12 @@ CREATE TABLE IF NOT EXISTS public.rpg_clan_join_requests (
   CONSTRAINT chk_rpg_clan_join_request_status 
     CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled'))
 );
+
+-- Kolom tambahan jika tabel sudah pernah dibuat sebelumnya
+ALTER TABLE public.rpg_clan_join_requests
+  ADD COLUMN IF NOT EXISTS exp BIGINT DEFAULT 0 NOT NULL,
+  ADD COLUMN IF NOT EXISTS rank TEXT DEFAULT 'STONE' NOT NULL,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL;
 
 -- Indeks Performa & Cegah Permintaan Ganda (Hanya 1 permintaan pending per user per klan)
 DROP INDEX IF EXISTS public.uq_rpg_clan_join_requests_user_clan_pending;
@@ -112,7 +146,7 @@ CREATE POLICY "Users can delete or cancel join requests"
   ON public.rpg_clan_join_requests FOR DELETE USING (true);
 
 -- ------------------------------------------------------------------------------
--- 4. UPDATE TRIGGER REKONSILIASI JUMLAH ANGGOTA (Hanya Anggota 'active')
+-- 4. TRIGGER SINKRONISASI JUMLAH ANGGOTA (Hanya Anggota 'active')
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.fn_sync_clan_stats_from_members()
 RETURNS TRIGGER AS $$
@@ -156,13 +190,18 @@ EXECUTE FUNCTION public.fn_sync_clan_stats_from_members();
 -- ------------------------------------------------------------------------------
 -- 5. RPC 1: rpc_request_join_clan (Pengajuan Permintaan Bergabung)
 -- ------------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.rpc_request_join_clan(VARCHAR, TEXT, TEXT, TEXT, TEXT, INTEGER);
+DROP FUNCTION IF EXISTS public.rpc_request_join_clan(VARCHAR, TEXT, TEXT, TEXT, TEXT, INTEGER, BIGINT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.rpc_request_join_clan(
   p_clan_id VARCHAR(64),
   p_user_id TEXT,
   p_display_name TEXT,
   p_avatar_url TEXT DEFAULT NULL,
   p_border_url TEXT DEFAULT NULL,
-  p_level INTEGER DEFAULT 1
+  p_level INTEGER DEFAULT 1,
+  p_exp BIGINT DEFAULT 0,
+  p_rank TEXT DEFAULT 'STONE'
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -172,16 +211,16 @@ DECLARE
   v_clan RECORD;
   v_active_membership RECORD;
   v_pending_request RECORD;
-  v_new_req_id UUID;
+  v_new_req_id TEXT;
 BEGIN
-  -- 1. Validasi keberadaan klan tujuan
+  -- 1. Validasi klan tujuan
   SELECT id, name, status, member_count, max_members
   INTO v_clan
   FROM public.rpg_clans
   WHERE id = p_clan_id;
 
   IF NOT FOUND THEN
-    RETURN jsonb_build_object('ok', false, 'message', 'Klan tujuan tidak ditemukan.');
+    RETURN jsonb_build_object('ok', false, 'message', 'Klan tujuan tidak ditemukan di Dunia Nuenime.');
   END IF;
 
   IF v_clan.status = 'disbanded' THEN
@@ -203,7 +242,7 @@ BEGIN
 
   IF FOUND THEN
     IF v_active_membership.clan_id = p_clan_id THEN
-      RETURN jsonb_build_object('ok', false, 'message', 'Anda sudah menjadi anggota aktif di klan ini.');
+      RETURN jsonb_build_object('ok', true, 'message', 'Anda sudah menjadi anggota aktif di klan ini.');
     ELSE
       RETURN jsonb_build_object(
         'ok', false, 
@@ -233,28 +272,38 @@ BEGIN
 
   -- 4. Buat permintaan bergabung baru (Pending)
   INSERT INTO public.rpg_clan_join_requests (
+    id,
     clan_id,
     user_id,
     display_name,
     avatar_url,
     border_url,
     level,
-    status
+    exp,
+    rank,
+    status,
+    created_at,
+    updated_at
   ) VALUES (
+    gen_random_uuid()::text,
     p_clan_id,
     p_user_id,
     COALESCE(NULLIF(p_display_name, ''), 'Petualang'),
     p_avatar_url,
     p_border_url,
     GREATEST(1, COALESCE(p_level, 1)),
-    'pending'
+    GREATEST(0, COALESCE(p_exp, 0)),
+    COALESCE(NULLIF(p_rank, ''), 'STONE'),
+    'pending',
+    NOW(),
+    NOW()
   )
   RETURNING id INTO v_new_req_id;
 
   RETURN jsonb_build_object(
     'ok', true,
     'request_id', v_new_req_id,
-    'message', format('Permintaan bergabung ke klan %s berhasil diajukan. Menunggu konfirmasi pemimpin klan.', v_clan.name)
+    'message', format('Permintaan bergabung ke klan %s berhasil diajukan. Menunggu konfirmasi Pemimpin.', v_clan.name)
   );
 END;
 $$;
@@ -262,10 +311,13 @@ $$;
 -- ------------------------------------------------------------------------------
 -- 6. RPC 2: rpc_respond_clan_join_request (Pemimpin Terima / Tolak Permintaan)
 -- ------------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.rpc_respond_clan_join_request(UUID, TEXT, TEXT);
+DROP FUNCTION IF EXISTS public.rpc_respond_clan_join_request(TEXT, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.rpc_respond_clan_join_request(
-  p_request_id UUID,
-  p_action TEXT, -- 'approve' | 'reject'
-  p_actor_user_id TEXT
+  p_request_id TEXT,
+  p_actor_user_id TEXT,
+  p_action TEXT -- 'approve' | 'reject'
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -387,11 +439,13 @@ BEGIN
       left_at = NULL,
       last_active_at = v_now;
 
-    -- Update status profil pengguna
-    UPDATE public.rpg_user_profiles
-    SET clan_id = v_req.clan_id,
-        updated_at = v_now
-    WHERE user_id = v_req.user_id;
+    -- Update profil RPG pengguna jika tabelnya ada
+    IF to_regclass('public.rpg_user_profiles') IS NOT NULL THEN
+      UPDATE public.rpg_user_profiles
+      SET clan_id = v_req.clan_id,
+          updated_at = v_now
+      WHERE user_id = v_req.user_id;
+    END IF;
 
     -- Tandai request ini sebagai 'approved'
     UPDATE public.rpg_clan_join_requests
@@ -420,7 +474,34 @@ END;
 $$;
 
 -- ------------------------------------------------------------------------------
--- 7. RPC 3: rpc_leave_clan (Anggota Keluar dari Klan)
+-- 7. RPC 3: rpc_cancel_clan_join_request (Pengguna Membatalkan Permintaan Sendiri)
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.rpc_cancel_clan_join_request(
+  p_clan_id VARCHAR(64),
+  p_user_id TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  UPDATE public.rpg_clan_join_requests
+  SET status = 'cancelled',
+      updated_at = NOW()
+  WHERE clan_id = p_clan_id
+    AND user_id = p_user_id
+    AND status = 'pending';
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'message', 'Tidak ada permintaan pending yang dapat dibatalkan.');
+  END IF;
+
+  RETURN jsonb_build_object('ok', true, 'message', 'Permintaan bergabung berhasil dibatalkan.');
+END;
+$$;
+
+-- ------------------------------------------------------------------------------
+-- 8. RPC 4: rpc_leave_clan (Anggota Keluar dari Klan)
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.rpc_leave_clan(
   p_clan_id VARCHAR(64),
@@ -484,10 +565,12 @@ BEGIN
           left_at = v_now
       WHERE id = v_member.id;
 
-      UPDATE public.rpg_user_profiles
-      SET clan_id = NULL,
-          updated_at = v_now
-      WHERE user_id = p_user_id;
+      IF to_regclass('public.rpg_user_profiles') IS NOT NULL THEN
+        UPDATE public.rpg_user_profiles
+        SET clan_id = NULL,
+            updated_at = v_now
+        WHERE user_id = p_user_id;
+      END IF;
 
       -- Batalkan seluruh request pending untuk klan ini
       UPDATE public.rpg_clan_join_requests
@@ -508,10 +591,12 @@ BEGIN
       left_at = v_now
   WHERE id = v_member.id;
 
-  UPDATE public.rpg_user_profiles
-  SET clan_id = NULL,
-      updated_at = v_now
-  WHERE user_id = p_user_id;
+  IF to_regclass('public.rpg_user_profiles') IS NOT NULL THEN
+    UPDATE public.rpg_user_profiles
+    SET clan_id = NULL,
+        updated_at = v_now
+    WHERE user_id = p_user_id;
+  END IF;
 
   RETURN jsonb_build_object(
     'ok', true,
@@ -521,7 +606,7 @@ END;
 $$;
 
 -- ------------------------------------------------------------------------------
--- 8. RPC 4: rpc_disband_clan (Pembubaran / Penghapusan Klan oleh Pemimpin)
+-- 9. RPC 5: rpc_disband_clan (Pembubaran / Penghapusan Klan oleh Pemimpin)
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.rpc_disband_clan(
   p_clan_id VARCHAR(64),
@@ -566,10 +651,12 @@ BEGIN
   SELECT COUNT(*) INTO v_affected_members FROM updated;
 
   -- 3. Lepaskan asosiasi klan di profil pengguna
-  UPDATE public.rpg_user_profiles
-  SET clan_id = NULL,
-      updated_at = v_now
-  WHERE clan_id = p_clan_id;
+  IF to_regclass('public.rpg_user_profiles') IS NOT NULL THEN
+    UPDATE public.rpg_user_profiles
+    SET clan_id = NULL,
+        updated_at = v_now
+    WHERE clan_id = p_clan_id;
+  END IF;
 
   -- 4. Batalkan semua permintaan bergabung yang masih pending
   UPDATE public.rpg_clan_join_requests
@@ -598,7 +685,7 @@ END;
 $$;
 
 -- ------------------------------------------------------------------------------
--- 9. RPC 5: rpc_transfer_clan_leadership (Alihkan Kepemimpinan Klan)
+-- 10. RPC 6: rpc_transfer_clan_leadership (Alihkan Kepemimpinan Klan)
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.rpc_transfer_clan_leadership(
   p_clan_id VARCHAR(64),
@@ -676,28 +763,15 @@ END;
 $$;
 
 -- ------------------------------------------------------------------------------
--- 10. RPC 6: rpc_cancel_clan_join_request (Pengguna Membatalkan Permintaan Sendiri)
+-- 11. HAK AKSES LENGKAP (GRANT PERMISSIONS)
 -- ------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.rpc_cancel_clan_join_request(
-  p_clan_id VARCHAR(64),
-  p_user_id TEXT
-)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-  UPDATE public.rpg_clan_join_requests
-  SET status = 'cancelled',
-      updated_at = NOW()
-  WHERE clan_id = p_clan_id
-    AND user_id = p_user_id
-    AND status = 'pending';
+GRANT EXECUTE ON FUNCTION public.rpc_request_join_clan TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.rpc_respond_clan_join_request TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.rpc_cancel_clan_join_request TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.rpc_leave_clan TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.rpc_disband_clan TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.rpc_transfer_clan_leadership TO anon, authenticated, service_role;
 
-  IF NOT FOUND THEN
-    RETURN jsonb_build_object('ok', false, 'message', 'Tidak ada permintaan pending yang dapat dibatalkan.');
-  END IF;
-
-  RETURN jsonb_build_object('ok', true, 'message', 'Permintaan bergabung berhasil dibatalkan.');
-END;
-$$;
+GRANT ALL ON public.rpg_clan_join_requests TO anon, authenticated, service_role;
+GRANT ALL ON public.rpg_clan_members TO anon, authenticated, service_role;
+GRANT ALL ON public.rpg_clans TO anon, authenticated, service_role;

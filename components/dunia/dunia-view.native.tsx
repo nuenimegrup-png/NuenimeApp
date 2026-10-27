@@ -26,11 +26,16 @@ export function DuniaView({
         javaScriptEnabled={true}
         domStorageEnabled={true}
         startInLoadingState={false}
-        scalesPageToFit={true}
+        scalesPageToFit={false}
         allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
         cacheEnabled={true}
         cacheMode="LOAD_DEFAULT"
+        androidLayerType="hardware"
+        mixedContentMode="always"
+        overScrollMode="never"
+        renderToHardwareTextureAndroid={true}
+        nestedScrollEnabled={false}
         onLoadProgress={({ nativeEvent }) => {
           onLoadProgress?.(nativeEvent.progress);
         }}

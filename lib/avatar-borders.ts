@@ -100,6 +100,31 @@ export const BORDER_RARITY_PRICES: Record<BorderRarity, number> = {
   Mythic: 5000,
 };
 
+export function getSafeRarityTheme(rarity?: string | null) {
+  if (!rarity) return RARITY_THEME.Normal;
+  const clean = String(rarity).trim();
+  const normalized = (clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase()) as BorderRarity;
+  return (
+    RARITY_THEME[normalized] ||
+    RARITY_THEME[clean as BorderRarity] ||
+    (clean.toLowerCase().includes("legend") ? RARITY_THEME.Legends : RARITY_THEME.Normal)
+  );
+}
+
+export function getSafeBorderPrice(border?: AvatarBorder | null): number {
+  if (!border) return 2000;
+  if (border.priceCrystal && border.priceCrystal > 0) {
+    return border.priceCrystal;
+  }
+  const clean = String(border.rarity || "Normal").trim();
+  const normalized = (clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase()) as BorderRarity;
+  return (
+    BORDER_RARITY_PRICES[normalized] ||
+    BORDER_RARITY_PRICES[clean as BorderRarity] ||
+    (clean.toLowerCase().includes("legend") ? BORDER_RARITY_PRICES.Legends : 2000)
+  );
+}
+
 /**
  * Dynamic Border Catalog
  * All borders are sourced dynamically from Supabase (public.avatar_borders_config).
@@ -155,17 +180,27 @@ export async function getBorderByIdAsync(id: string | null | undefined): Promise
       .maybeSingle();
 
     if (data) {
+      const rawRarity = String(data.rarity || "Normal").trim();
+      const normRarity = (rawRarity.charAt(0).toUpperCase() + rawRarity.slice(1).toLowerCase()) as BorderRarity;
+      const safeRarity = BORDER_RARITIES.includes(normRarity)
+        ? normRarity
+        : BORDER_RARITIES.includes(rawRarity as BorderRarity)
+        ? (rawRarity as BorderRarity)
+        : rawRarity.toLowerCase().includes("legend")
+        ? "Legends"
+        : "Normal";
+
       const border: AvatarBorder = {
         id: data.id,
-        name: data.name,
-        rarity: (data.rarity as BorderRarity) || "Normal",
+        name: data.name || "Border Avatar",
+        rarity: safeRarity,
         assetUrl: data.asset_url ?? null,
-        innerRatio: data.inner_ratio ? Number(data.inner_ratio) : 0.74,
-        offsetX: data.offset_x ? Number(data.offset_x) : 0.0,
-        offsetY: data.offset_y ? Number(data.offset_y) : 0.0,
-        scale: data.scale ? Number(data.scale) : 1.0,
+        innerRatio: Number(data.inner_ratio) > 0 ? Number(data.inner_ratio) : 0.74,
+        offsetX: Number(data.offset_x) || 0.0,
+        offsetY: Number(data.offset_y) || 0.0,
+        scale: Number(data.scale) > 0 ? Number(data.scale) : 1.0,
         isReleased: data.is_released ?? true,
-        description: data.description,
+        description: data.description || `Border avatar tingkat ${safeRarity}`,
         priceCrystal: data.price_crystal ? Number(data.price_crystal) : null,
         isActive: data.is_active ?? true,
       };
@@ -219,17 +254,28 @@ export async function fetchLiveBorderCatalog(): Promise<AvatarBorder[]> {
       for (const row of data) {
         if (!row || !row.id || seen.has(row.id)) continue;
         seen.add(row.id);
+
+        const rawRarity = String(row.rarity || "Normal").trim();
+        const normRarity = (rawRarity.charAt(0).toUpperCase() + rawRarity.slice(1).toLowerCase()) as BorderRarity;
+        const safeRarity = BORDER_RARITIES.includes(normRarity)
+          ? normRarity
+          : BORDER_RARITIES.includes(rawRarity as BorderRarity)
+          ? (rawRarity as BorderRarity)
+          : rawRarity.toLowerCase().includes("legend")
+          ? "Legends"
+          : "Normal";
+
         fullCatalog.push({
           id: row.id,
-          name: row.name,
-          rarity: (row.rarity as BorderRarity) || "Normal",
+          name: row.name || "Border Avatar",
+          rarity: safeRarity,
           assetUrl: row.asset_url ?? null,
-          innerRatio: row.inner_ratio ? Number(row.inner_ratio) : 0.74,
-          offsetX: row.offset_x ? Number(row.offset_x) : 0.0,
-          offsetY: row.offset_y ? Number(row.offset_y) : 0.0,
-          scale: row.scale ? Number(row.scale) : 1.0,
+          innerRatio: Number(row.inner_ratio) > 0 ? Number(row.inner_ratio) : 0.74,
+          offsetX: Number(row.offset_x) || 0.0,
+          offsetY: Number(row.offset_y) || 0.0,
+          scale: Number(row.scale) > 0 ? Number(row.scale) : 1.0,
           isReleased: row.is_released ?? false,
-          description: row.description,
+          description: row.description || `Border avatar tingkat ${safeRarity}`,
           priceCrystal: row.price_crystal ? Number(row.price_crystal) : null,
           isActive: row.is_active ?? true,
         });

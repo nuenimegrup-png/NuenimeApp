@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -20,15 +20,18 @@ import { getTierForLevel } from "@/components/level-progress-modal";
 import { DuniaView } from "@/components/dunia/dunia-view";
 import { getCrystalBalance, deductCrystalBalance } from "@/lib/topup-service";
 import { getBorderByIdAsync } from "@/lib/avatar-borders";
+import { supabase } from "@/lib/supabase";
 
 const DUNIA_EMBLEM_IMG = require("@/assets/images/dunia-nuenime-emblem.png");
 
-// Default URL deploy Vercel atau local dev server
+// Default URL deploy Vercel resmi Dunia Nuenime
+const RAW_DUNIA_URL = process.env.EXPO_PUBLIC_DUNIA_NUENIME_URL;
 const DEFAULT_DUNIA_URL =
-  process.env.EXPO_PUBLIC_DUNIA_NUENIME_URL ||
-  (Platform.OS === "web" && typeof window !== "undefined" && window.location.hostname === "localhost"
-    ? "http://localhost:3001"
-    : "https://dunia-nuenime.vercel.app");
+  RAW_DUNIA_URL &&
+  !RAW_DUNIA_URL.includes("192.168.") &&
+  !RAW_DUNIA_URL.includes("localhost")
+    ? RAW_DUNIA_URL
+    : "https://dunia-nuenime.vercel.app";
 
 const LOADING_STEPS = [
   "Menghubungkan ke server Dunia Nuenime...",
@@ -70,19 +73,15 @@ export default function DuniaNuenimeScreen() {
     return () => pulse.stop();
   }, [pulseAnim]);
 
-  // Simulasi preloader aset game (0% -> 100%)
+  // Progress tracker responsif (cepat dan tidak mengunci layar)
   useEffect(() => {
-    let current = 0.1;
+    let current = 0.25;
     const interval = setInterval(() => {
-      current += 0.18;
-      if (current >= 1) {
-        current = 1;
-        setLoadProgress(1);
-        setCurrentStepIdx(LOADING_STEPS.length - 1);
+      current += 0.25;
+      if (current >= 0.9) {
+        current = 0.9;
+        setLoadProgress(0.9);
         clearInterval(interval);
-        setTimeout(() => {
-          setIsReady(true);
-        }, 500);
       } else {
         setLoadProgress(current);
         const step = Math.min(
@@ -91,7 +90,7 @@ export default function DuniaNuenimeScreen() {
         );
         setCurrentStepIdx(step);
       }
-    }, 450);
+    }, 100);
 
     return () => clearInterval(interval);
   }, []);
@@ -99,37 +98,71 @@ export default function DuniaNuenimeScreen() {
   // Saldo Crystal Nuenime untuk Pembuatan Klan (2.000 Crystal)
   const [userCrystals, setUserCrystals] = useState<number>(0);
 
+  // Ambil saldo crystal awal dan sinkronkan real-time dari Supabase
   useEffect(() => {
     let mounted = true;
-    getCrystalBalance(auth.user?.id)
-      .then((bal) => {
-        if (mounted) setUserCrystals(bal);
-      })
-      .catch(() => {});
+    if (auth.user?.id) {
+      getCrystalBalance(auth.user.id)
+        .then((bal) => {
+          if (mounted) setUserCrystals(bal);
+        })
+        .catch(() => {});
+    }
+
+    if (!auth.user?.id) return;
+
+    // Real-time listener: jika ada topup, hadiah, atau pemotongan crystal
+    const channelName = `dunia_crystals_${auth.user.id}_${Date.now()}`;
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "user_balances",
+          filter: `user_id=eq.${auth.user.id}`,
+        },
+        (payload: any) => {
+          const newBal = payload.new?.crystal_balance;
+          if (typeof newBal === "number" && mounted) {
+            setUserCrystals(newBal);
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       mounted = false;
+      supabase.removeChannel(channel).catch(() => {});
     };
   }, [auth.user?.id]);
 
-  // Handle postMessage dari Dunia Nuenime webview/iframe untuk potong saldo crystal
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof window === "undefined") return;
-
-    const handleWebMessage = async (event: MessageEvent) => {
+  // Handler pesan lintas WebView/Iframe dari Dunia Nuenime
+  const handleDuniaMessage = useCallback(
+    async (data: any) => {
+      if (!data) return;
       try {
-        const data = event.data;
-        if (data && data.type === "DEDUCT_CRYSTALS") {
-          const amount = Number(data.amount) || 2000;
-          await deductCrystalBalance(auth.user?.id, amount);
-          const newBal = await getCrystalBalance(auth.user?.id);
-          setUserCrystals(newBal);
+        const payload = typeof data === "string" ? JSON.parse(data) : data;
+        if (payload.type === "DEDUCT_CRYSTALS") {
+          const amount = Number(payload.amount) || 2000;
+          if (amount > 0 && auth.user?.id) {
+            await deductCrystalBalance(auth.user.id, amount);
+            const newBal = await getCrystalBalance(auth.user.id);
+            setUserCrystals(newBal);
+          }
+        } else if (payload.type === "GET_CRYSTALS" || payload.type === "REFRESH_CRYSTALS") {
+          if (auth.user?.id) {
+            const bal = await getCrystalBalance(auth.user.id);
+            setUserCrystals(bal);
+          }
         }
-      } catch {}
-    };
-
-    window.addEventListener("message", handleWebMessage);
-    return () => window.removeEventListener("message", handleWebMessage);
-  }, [auth.user?.id]);
+      } catch (err) {
+        console.warn("[Dunia] message handler warning:", err);
+      }
+    },
+    [auth.user?.id]
+  );
 
   // Susun URL dengan identitas akun Nuenime terintegrasi
   const userLevel = Number(auth.profile?.level) || 1;
@@ -168,15 +201,9 @@ export default function DuniaNuenimeScreen() {
     };
   }, [auth.profile?.equipped_border]);
 
-  const initialCrystalsRef = React.useRef<number | null>(null);
-  if (initialCrystalsRef.current === null && userCrystals > 0) {
-    initialCrystalsRef.current = userCrystals;
-  }
-
   const targetUrl = React.useMemo(() => {
     const baseUrl = DEFAULT_DUNIA_URL.replace(/\/$/, "");
     const userExp = Number(auth.profile?.exp) || 0;
-    const initialCrystals = initialCrystalsRef.current ?? userCrystals;
     const params = new URLSearchParams({
       uid: userId,
       name: displayName,
@@ -186,11 +213,11 @@ export default function DuniaNuenimeScreen() {
       avatar: avatarUrl,
       border: resolvedBorderUrl || equippedBorder,
       vip: isVip ? "1" : "0",
-      crystals: String(initialCrystals || 0),
+      crystals: String(userCrystals || 0),
       ...(initialTab ? { tab: initialTab } : {}),
     });
     return `${baseUrl}/?${params.toString()}`;
-  }, [userId, displayName, userLevel, rankName, avatarUrl, resolvedBorderUrl, equippedBorder, isVip, initialTab]);
+  }, [userId, displayName, userLevel, rankName, avatarUrl, resolvedBorderUrl, equippedBorder, isVip, userCrystals, initialTab]);
 
   const handleBack = () => {
     hapticLight();
@@ -317,6 +344,7 @@ export default function DuniaNuenimeScreen() {
           url={targetUrl}
           onError={() => setHasError(true)}
           onLoadEnd={() => setIsReady(true)}
+          onMessage={handleDuniaMessage}
         />
       </View>
     </SafeAreaView>

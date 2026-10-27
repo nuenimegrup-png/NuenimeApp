@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -29,6 +31,8 @@ import {
   recordBorderPurchaseToSupabase,
   setEquippedBorderId,
   setOwnedBorderIds,
+  getSafeRarityTheme,
+  getSafeBorderPrice,
 } from "@/lib/avatar-borders";
 import { BorderAvatar } from "@/components/border-avatar";
 import {
@@ -216,20 +220,23 @@ export default function AvatarDecorationsScreen() {
 
   // Filter border list
   const filteredBorders = useMemo(() => {
-    return liveBorders.filter((item) => {
+    return (liveBorders || []).filter((item: AvatarBorder) => {
+      if (!item || !item.id) return false;
       // Tab filter
       if (activeTab === "collection" && !ownedBorderIds.includes(item.id)) {
         return false;
       }
       // Category filter
-      if (selectedCategory !== "Semua" && item.rarity !== selectedCategory) {
-        return false;
+      if (selectedCategory !== "Semua") {
+        const itemRarityLower = (item.rarity || "").toLowerCase();
+        const selLower = selectedCategory.toLowerCase();
+        if (itemRarityLower !== selLower) return false;
       }
       // Search query filter
       if (searchQuery.trim().length > 0) {
         const query = searchQuery.toLowerCase().trim();
-        const matchName = item.name.toLowerCase().includes(query);
-        const matchCat = item.rarity.toLowerCase().includes(query);
+        const matchName = (item.name || "").toLowerCase().includes(query);
+        const matchCat = (item.rarity || "").toLowerCase().includes(query);
         if (!matchName && !matchCat) return false;
       }
       return true;
@@ -270,16 +277,14 @@ export default function AvatarDecorationsScreen() {
       return;
     }
 
-    const price = (item.priceCrystal && item.priceCrystal > 0)
-      ? item.priceCrystal
-      : (BORDER_RARITY_PRICES[item.rarity] || 2000);
+    const price = getSafeBorderPrice(item);
 
     // Guard KETAT: Jika saldo Crystal habis (0) atau tidak cukup untuk harga border
     if (crystalBalance < price || crystalBalance <= 0) {
       hapticWarning();
       Alert.alert(
         "Saldo Crystal Tidak Cukup",
-        `Crystal Anda tidak mencukupi untuk membeli border "${item.name}".\n\n• Dibutuhkan: ${price.toLocaleString()} Crystal\n• Saldo Anda: ${crystalBalance.toLocaleString()} Crystal\n• Kekurangan: ${(price - crystalBalance).toLocaleString()} Crystal\n\nSilakan lakukan top up Crystal terlebih dahulu.`,
+        `Crystal Anda tidak mencukupi untuk membeli border "${item.name}".\n\n• Dibutuhkan: ${(price || 0).toLocaleString("id-ID")} Crystal\n• Saldo Anda: ${(crystalBalance || 0).toLocaleString("id-ID")} Crystal\n• Kekurangan: ${Math.max(0, price - crystalBalance).toLocaleString("id-ID")} Crystal\n\nSilakan lakukan top up Crystal terlebih dahulu.`,
         [
           { text: "Batal", style: "cancel" },
           {
@@ -303,16 +308,14 @@ export default function AvatarDecorationsScreen() {
   // Konfirmasi pembayaran di Mode Checkout (CO): Langsung aktif tanpa verifikasi admin
   const handleConfirmPurchase = async () => {
     if (!checkoutBorder || !userId || isPurchasing) return;
-    const price = (checkoutBorder.priceCrystal && checkoutBorder.priceCrystal > 0)
-      ? checkoutBorder.priceCrystal
-      : (BORDER_RARITY_PRICES[checkoutBorder.rarity] || 2000);
+    const price = getSafeBorderPrice(checkoutBorder);
 
     // VALIDASI KETAT 1: Periksa state lokal komponen sebelum proses
     if (crystalBalance < price || crystalBalance <= 0) {
       hapticWarning();
       setCheckoutState("error");
       setCheckoutError(
-        `Saldo Crystal habis atau tidak mencukupi (${crystalBalance.toLocaleString()} Crystal). Anda membutuhkan ${price.toLocaleString()} Crystal.`
+        `Saldo Crystal habis atau tidak mencukupi (${(crystalBalance || 0).toLocaleString("id-ID")} Crystal). Anda membutuhkan ${(price || 0).toLocaleString("id-ID")} Crystal.`
       );
       return;
     }
@@ -338,15 +341,13 @@ export default function AvatarDecorationsScreen() {
         setCrystalBalance(latestBalance);
         setCheckoutState("error");
         setCheckoutError(
-          `Saldo Crystal tidak cukup. Anda membutuhkan ${price.toLocaleString()} Crystal, saldo saat ini ${latestBalance.toLocaleString()} Crystal. Pembelian dibatalkan.`
+          `Saldo Crystal tidak cukup. Anda membutuhkan ${(price || 0).toLocaleString("id-ID")} Crystal, saldo saat ini ${(latestBalance || 0).toLocaleString("id-ID")} Crystal. Pembelian dibatalkan.`
         );
         return;
       }
 
-      // 3. Kurangi saldo Crystal secara atomik (dengan penjaga saldo anti-negatif)
-      const newBalance = await deductCrystalBalance(userId, price);
-
-      // 4. Catat pembelian ke Supabase (tabel user_border_purchases)
+      // 3. Catat pembelian ke Supabase (tabel user_border_purchases)
+      // RPC execute_border_purchase secara atomik memvalidasi & memotong saldo di database
       const result = await recordBorderPurchaseToSupabase(
         userId,
         { id: checkoutBorder.id, name: checkoutBorder.name, rarity: checkoutBorder.rarity },
@@ -354,26 +355,28 @@ export default function AvatarDecorationsScreen() {
       );
 
       if (!result.success) {
-        // Rollback saldo jika gagal catat di database
-        await addCrystalBalance(userId, price);
-        const rollbackBalance = await getCrystalBalance(userId);
-        setCrystalBalance(rollbackBalance);
         setCheckoutState("error");
-        setCheckoutError("Gagal mencatat transaksi pembelian border ke server. Saldo Anda aman dan telah dikembalikan.");
+        setCheckoutError(result.error || "Gagal memproses transaksi pembelian border ke server. Saldo Anda aman.");
         return;
       }
 
-      // 5. Update state lokal & pasang langsung ke avatar (INSTANT AKTIF)
+      // Ambil saldo baru setelah pemotongan atomik server
+      let newBalance = result.newBalance;
+      if (typeof newBalance !== "number") {
+        newBalance = await deductCrystalBalance(userId, price);
+      }
+      setCrystalBalance(newBalance);
+
+      // 4. Update state lokal & pasang langsung ke avatar (INSTANT AKTIF)
       const nextOwned = [...latestOwned, checkoutBorder.id];
       setOwnedBorderIdsState(nextOwned);
       setEquippedBorderIdState(checkoutBorder.id);
-      setCrystalBalance(newBalance);
 
-      // 6. Simpan ke cache lokal
+      // 5. Simpan ke cache lokal
       await setOwnedBorderIds(userId, nextOwned);
       await setEquippedBorderId(userId, checkoutBorder.id);
 
-      // 7. Berikan EXP reward pembelian border sesuai ketentuan rarity
+      // 6. Berikan EXP reward pembelian border sesuai ketentuan rarity
       const borderXpMap: Record<BorderRarity, number> = {
         Mythic: 200,
         Legends: 120,
@@ -381,7 +384,8 @@ export default function AvatarDecorationsScreen() {
         Rare: 40,
         Normal: 20,
       };
-      const borderXp = borderXpMap[checkoutBorder.rarity] || 20;
+      const borderRarityKey = checkoutBorder.rarity as BorderRarity;
+      const borderXp = borderXpMap[borderRarityKey] || 20;
       try {
         const xpRes = await awardDirectUserXp(
           userId,
@@ -420,14 +424,12 @@ export default function AvatarDecorationsScreen() {
   };
 
   // Find equipped border data for header preview
-  const equippedItem = liveBorders.find((b) => b.id === equippedBorderIdState) || getBorderById(equippedBorderIdState);
+  const equippedItem = liveBorders.find((b: AvatarBorder) => b.id === equippedBorderIdState) || getBorderById(equippedBorderIdState);
 
   // ─── TAMPILAN MODE CHECKOUT (CO) — ALUR PEMBELIAN LANGSUNG SEPERTI TOPUP ───
   if (checkoutBorder) {
-    const price = (checkoutBorder.priceCrystal && checkoutBorder.priceCrystal > 0)
-      ? checkoutBorder.priceCrystal
-      : (BORDER_RARITY_PRICES[checkoutBorder.rarity] || 2000);
-    const theme = RARITY_THEME[checkoutBorder.rarity];
+    const price = getSafeBorderPrice(checkoutBorder);
+    const theme = getSafeRarityTheme(checkoutBorder.rarity);
     const hasEnough = crystalBalance >= price && crystalBalance > 0;
     const remainingBalance = crystalBalance - price;
     const deficit = Math.max(0, price - crystalBalance);
@@ -751,6 +753,308 @@ export default function AvatarDecorationsScreen() {
     );
   }
 
+  const renderHeader = () => (
+    <View style={{ gap: 16, marginBottom: 16 }}>
+      {/* ─── 2. CARD INFORMASI AVATAR (UNDER HEADER) ─── */}
+      <View style={styles.avatarProfileCard}>
+        {/* BorderAvatar component with exact layering */}
+        <BorderAvatar
+          avatarUrl={userAvatar}
+          fallbackText={initialLetter}
+          borderId={equippedBorderIdState}
+          avatarSize={48}
+        />
+
+        {/* Right info: Title, Status, and Crystal Balance */}
+        <View style={styles.profileInfoRight}>
+          <View style={styles.profileTitleRow}>
+            <Text style={styles.profileCardTitle}>Border Avatar</Text>
+            <View
+              style={[
+                styles.statusBadgePill,
+                equippedItem ? styles.statusBadgeActive : styles.statusBadgeInactive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statusBadgeText,
+                  equippedItem ? styles.statusBadgeTextActive : styles.statusBadgeTextInactive,
+                ]}
+                numberOfLines={1}
+              >
+                {equippedItem ? equippedItem.name : "Tanpa Border"}
+              </Text>
+            </View>
+          </View>
+
+          {/* Saldo crystal button */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Top Up Crystal"
+            onPress={() => {
+              hapticLight();
+              router.push("/topup" as never);
+            }}
+            style={({ pressed }) => [styles.crystalBalanceBtn, pressed && styles.btnPressed]}
+          >
+            <View style={styles.crystalBalanceLeft}>
+              <Image source={TOPUP_CRYSTAL_ICON} style={styles.crystalIconSmall} contentFit="contain" />
+              <Text style={styles.crystalBalanceText}>
+                {(crystalBalance || 0).toLocaleString("id-ID")} <Text style={styles.crystalUnitText}>Crystal</Text>
+              </Text>
+            </View>
+            <View style={styles.crystalPlusPill}>
+              <AppIcon name="plus" size={12} color="#38BDF8" />
+            </View>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* ─── 3. TAB NAVIGASI (SHOP & KOLEKSI) ─── */}
+      <View style={styles.tabsCard}>
+        <Pressable
+          accessibilityRole="tab"
+          onPress={() => {
+            hapticLight();
+            setActiveTab("shop");
+          }}
+          style={[styles.tabButton, activeTab === "shop" && styles.tabButtonActive]}
+        >
+          <AppIcon
+            name="storefront-outline"
+            size={16}
+            color={activeTab === "shop" ? "#FFFFFF" : "#94A3B8"}
+          />
+          <Text style={[styles.tabText, activeTab === "shop" && styles.tabTextActive]}>
+            Shop ({liveBorders.length})
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="tab"
+          onPress={() => {
+            hapticLight();
+            setActiveTab("collection");
+          }}
+          style={[styles.tabButton, activeTab === "collection" && styles.tabButtonActive]}
+        >
+          <AppIcon
+            name="image-multiple-outline"
+            size={16}
+            color={activeTab === "collection" ? "#FFFFFF" : "#94A3B8"}
+          />
+          <Text style={[styles.tabText, activeTab === "collection" && styles.tabTextActive]}>
+            Koleksi ({ownedBorderIds.length})
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* ─── 4. SEARCH BAR & FILTER 5 KATEGORI RARITY ─── */}
+      <View style={styles.filterSection}>
+        {/* Search bar */}
+        <View style={styles.searchBar}>
+          <AppIcon name="magnify" size={19} color="#64748B" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Cari nama border..."
+            placeholderTextColor="#64748B"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <Pressable
+              onPress={() => setSearchQuery("")}
+              hitSlop={8}
+              style={styles.clearSearchBtn}
+            >
+              <AppIcon name="close-circle" size={16} color="#64748B" />
+            </Pressable>
+          )}
+        </View>
+
+        {/* Category Filter Chips */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryChipsRow}
+        >
+          {(["Semua", "Mythic", "Legends", "Epic", "Rare", "Normal"] as BorderFilterCategory[]).map((cat) => {
+            const isSelected = selectedCategory === cat;
+            const count =
+              cat === "Semua"
+                ? liveBorders.length
+                : liveBorders.filter((b: AvatarBorder) => (b.rarity || "").toLowerCase() === cat.toLowerCase()).length;
+
+            return (
+              <Pressable
+                key={cat}
+                onPress={() => {
+                  hapticLight();
+                  setSelectedCategory(cat);
+                }}
+                style={[
+                  styles.chipBtn,
+                  isSelected ? styles.chipBtnActive : styles.chipBtnInactive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    isSelected ? styles.chipTextActive : styles.chipTextInactive,
+                  ]}
+                >
+                  {cat} ({count})
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+    </View>
+  );
+
+  const renderBorderCard = ({ item: border }: { item: AvatarBorder }) => {
+    const isOwned = ownedBorderIds.includes(border.id);
+    const isEquipped = equippedBorderIdState === border.id;
+    const theme = getSafeRarityTheme(border.rarity);
+    const price = getSafeBorderPrice(border);
+    const rarityLabel = (border.rarity || "Normal").toUpperCase();
+    const canAfford = crystalBalance >= price && crystalBalance > 0;
+
+    return (
+      <View
+        style={[
+          styles.borderCard,
+          { width: cardWidth, marginBottom: 14 },
+          isEquipped && styles.borderCardEquipped,
+        ]}
+      >
+        {/* Category Badge di sudut kiri atas preview */}
+        <View style={styles.previewContainer}>
+          <View
+            style={[
+              styles.categoryBadge,
+              {
+                backgroundColor: theme.bgBadge,
+                borderColor: theme.borderBadge,
+              },
+            ]}
+          >
+            <Text style={[styles.categoryBadgeText, { color: theme.color }]}>
+              {rarityLabel}
+            </Text>
+          </View>
+
+          {/* Status Badge di kanan atas: Khusus jika Rilis */}
+          {border.assetUrl && border.isReleased !== false && (
+            <View style={[styles.cardStatusBadge, styles.cardStatusReleased]}>
+              <AppIcon name="check-circle" size={8.5} color="#10B981" />
+              <Text style={[styles.cardStatusText, styles.cardStatusTextReleased]}>
+                Rilis
+              </Text>
+            </View>
+          )}
+
+          {/* Preview avatar presisi menggunakan BorderAvatar */}
+          <BorderAvatar
+            avatarUrl={userAvatar}
+            fallbackText={initialLetter}
+            border={border}
+            avatarSize={58}
+          />
+        </View>
+
+        {/* Info Nama Border */}
+        <View style={styles.cardInfoWrap}>
+          {(!border.assetUrl || border.isReleased === false) && (
+            <View style={styles.comingSoonPillWrap}>
+              <View style={styles.comingSoonPill}>
+                <AppIcon name="clock-outline" size={9.5} color="#F59E0B" />
+                <Text style={styles.comingSoonPillText}>Segera Hadir</Text>
+              </View>
+            </View>
+          )}
+
+          <Text style={styles.borderNameText} numberOfLines={1}>
+            {border.name}
+          </Text>
+          <Text style={styles.borderDescText} numberOfLines={1}>
+            {border.description || `Kategori ${border.rarity}`}
+          </Text>
+        </View>
+
+        {/* Tombol Aksi */}
+        <View style={styles.cardActionWrap}>
+          {activeTab === "shop" && border.isReleased !== false && border.assetUrl && (
+            <View style={styles.shopPriceRow}>
+              <Image source={TOPUP_CRYSTAL_ICON} style={styles.priceCrystalIcon} contentFit="contain" />
+              <Text
+                style={[
+                  styles.shopPriceText,
+                  isOwned && styles.shopPriceTextOwned,
+                ]}
+              >
+                {(price || 0).toLocaleString("id-ID")}
+              </Text>
+              {isOwned && (
+                <View style={styles.ownedBadgeInline}>
+                  <AppIcon name="check" size={9} color="#10B981" />
+                  <Text style={styles.ownedBadgeText}>Dimiliki</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {isOwned ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => handleToggleEquip(border.id)}
+              style={({ pressed }) => [
+                styles.actionBtnOwned,
+                isEquipped ? styles.actionBtnEquipped : styles.actionBtnUnequipped,
+                pressed && styles.btnPressed,
+              ]}
+            >
+              {isEquipped ? (
+                <>
+                  <AppIcon name="check-circle" size={14} color="#10B981" />
+                  <Text style={styles.actionTextEquipped}>Sedang Dipakai</Text>
+                </>
+              ) : (
+                <Text style={styles.actionTextUnequipped}>Pakai</Text>
+              )}
+            </Pressable>
+          ) : border.isReleased === false || !border.assetUrl ? (
+            <View style={styles.actionBtnLocked}>
+              <AppIcon name="lock-outline" size={12} color="#64748B" />
+              <Text style={styles.actionTextLocked}>Segera Hadir</Text>
+            </View>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => handleBuyPress(border)}
+              style={({ pressed }) => [
+                styles.actionBtnBuy,
+                !canAfford && styles.actionBtnBuyInsufficient,
+                pressed && styles.btnPressed,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.actionTextBuy,
+                  !canAfford && styles.actionTextBuyInsufficient,
+                ]}
+              >
+                Beli
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.safeContainer}>
       {/* ─── 1. HEADER UTAMA ─── */}
@@ -771,169 +1075,19 @@ export default function AvatarDecorationsScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView
+      <FlatList
+        data={filteredBorders}
+        keyExtractor={(item) => item.id}
+        numColumns={2}
+        columnWrapperStyle={{ justifyContent: "space-between" }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-      >
-        {/* ─── 2. CARD INFORMASI AVATAR (UNDER HEADER) ─── */}
-        <View style={styles.avatarProfileCard}>
-          {/* BorderAvatar component with exact layering */}
-          <BorderAvatar
-            avatarUrl={userAvatar}
-            fallbackText={initialLetter}
-            borderId={equippedBorderIdState}
-            avatarSize={48}
-          />
-
-          {/* Right info: Title, Status, and Crystal Balance */}
-          <View style={styles.profileInfoRight}>
-            <View style={styles.profileTitleRow}>
-              <Text style={styles.profileCardTitle}>Border Avatar</Text>
-              <View
-                style={[
-                  styles.statusBadgePill,
-                  equippedItem ? styles.statusBadgeActive : styles.statusBadgeInactive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.statusBadgeText,
-                    equippedItem ? styles.statusBadgeTextActive : styles.statusBadgeTextInactive,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {equippedItem ? equippedItem.name : "Tanpa Border"}
-                </Text>
-              </View>
-            </View>
-
-            {/* Saldo crystal button */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Top Up Crystal"
-              onPress={() => {
-                hapticLight();
-                router.push("/topup" as never);
-              }}
-              style={({ pressed }) => [styles.crystalBalanceBtn, pressed && styles.btnPressed]}
-            >
-              <View style={styles.crystalBalanceLeft}>
-                <Image source={TOPUP_CRYSTAL_ICON} style={styles.crystalIconSmall} contentFit="contain" />
-                <Text style={styles.crystalBalanceText}>
-                  {crystalBalance.toLocaleString()} <Text style={styles.crystalUnitText}>Crystal</Text>
-                </Text>
-              </View>
-              <View style={styles.crystalPlusPill}>
-                <AppIcon name="plus" size={12} color="#38BDF8" />
-              </View>
-            </Pressable>
-          </View>
-        </View>
-
-        {/* ─── 3. TAB NAVIGASI (SHOP & KOLEKSI) ─── */}
-        <View style={styles.tabsCard}>
-          <Pressable
-            accessibilityRole="tab"
-            onPress={() => {
-              hapticLight();
-              setActiveTab("shop");
-            }}
-            style={[styles.tabButton, activeTab === "shop" && styles.tabButtonActive]}
-          >
-            <AppIcon
-              name="storefront-outline"
-              size={16}
-              color={activeTab === "shop" ? "#FFFFFF" : "#94A3B8"}
-            />
-            <Text style={[styles.tabText, activeTab === "shop" && styles.tabTextActive]}>
-              Shop ({liveBorders.length})
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="tab"
-            onPress={() => {
-              hapticLight();
-              setActiveTab("collection");
-            }}
-            style={[styles.tabButton, activeTab === "collection" && styles.tabButtonActive]}
-          >
-            <AppIcon
-              name="image-multiple-outline"
-              size={16}
-              color={activeTab === "collection" ? "#FFFFFF" : "#94A3B8"}
-            />
-            <Text style={[styles.tabText, activeTab === "collection" && styles.tabTextActive]}>
-              Koleksi ({ownedBorderIds.length})
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* ─── 4. SEARCH BAR & FILTER 5 KATEGORI RARITY ─── */}
-        <View style={styles.filterSection}>
-          {/* Search bar */}
-          <View style={styles.searchBar}>
-            <AppIcon name="magnify" size={19} color="#64748B" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Cari nama border..."
-              placeholderTextColor="#64748B"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              returnKeyType="search"
-            />
-            {searchQuery.length > 0 && (
-              <Pressable
-                onPress={() => setSearchQuery("")}
-                hitSlop={8}
-                style={styles.clearSearchBtn}
-              >
-                <AppIcon name="close-circle" size={16} color="#64748B" />
-              </Pressable>
-            )}
-          </View>
-
-          {/* Category Filter Chips (Mythic, Legends, Epic, Rare, Normal) */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryChipsRow}
-          >
-            {(["Semua", "Mythic", "Legends", "Epic", "Rare", "Normal"] as BorderFilterCategory[]).map((cat) => {
-              const isSelected = selectedCategory === cat;
-              const count =
-                cat === "Semua"
-                  ? liveBorders.length
-                  : liveBorders.filter((b) => b.rarity === cat).length;
-
-              return (
-                <Pressable
-                  key={cat}
-                  onPress={() => {
-                    hapticLight();
-                    setSelectedCategory(cat);
-                  }}
-                  style={[
-                    styles.chipBtn,
-                    isSelected ? styles.chipBtnActive : styles.chipBtnInactive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      isSelected ? styles.chipTextActive : styles.chipTextInactive,
-                    ]}
-                  >
-                    {cat} ({count})
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {/* ─── 5. GRID KARTU BORDER (2 KOLOM PER BARIS) ─── */}
-        {filteredBorders.length === 0 ? (
+        initialNumToRender={8}
+        maxToRenderPerBatch={6}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === "android"}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <AppIcon name="palette-swatch-outline" size={48} color="#475569" />
             <Text style={styles.emptyTitle}>Tidak ada border ditemukan</Text>
@@ -943,164 +1097,9 @@ export default function AvatarDecorationsScreen() {
                 : "Coba ubah kata kunci pencarian atau ganti filter kategori."}
             </Text>
           </View>
-        ) : (
-          <View style={styles.bordersGrid}>
-            {filteredBorders.map((border) => {
-              const isOwned = ownedBorderIds.includes(border.id);
-              const isEquipped = equippedBorderIdState === border.id;
-              const theme = RARITY_THEME[border.rarity];
-              const price = (border.priceCrystal && border.priceCrystal > 0)
-                ? border.priceCrystal
-                : BORDER_RARITY_PRICES[border.rarity];
-
-              return (
-                <View
-                  key={border.id}
-                  style={[
-                    styles.borderCard,
-                    { width: cardWidth },
-                    isEquipped && styles.borderCardEquipped,
-                  ]}
-                >
-                  {/* Category Badge di sudut kiri atas preview */}
-                  <View style={styles.previewContainer}>
-                    <View
-                      style={[
-                        styles.categoryBadge,
-                        {
-                          backgroundColor: theme.bgBadge,
-                          borderColor: theme.borderBadge,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.categoryBadgeText, { color: theme.color }]}>
-                        {border.rarity.toUpperCase()}
-                      </Text>
-                    </View>
-
-                    {/* Status Badge di kanan atas: Khusus jika Rilis */}
-                    {border.assetUrl && border.isReleased !== false && (
-                      <View style={[styles.cardStatusBadge, styles.cardStatusReleased]}>
-                        <AppIcon name="check-circle" size={8.5} color="#10B981" />
-                        <Text style={[styles.cardStatusText, styles.cardStatusTextReleased]}>
-                          Rilis
-                        </Text>
-                      </View>
-                    )}
-
-                    {/* Preview avatar presisi menggunakan BorderAvatar */}
-                    <BorderAvatar
-                      avatarUrl={userAvatar}
-                      fallbackText={initialLetter}
-                      border={border}
-                      avatarSize={58}
-                    />
-                  </View>
-
-                  {/* Info Nama Border */}
-                  <View style={styles.cardInfoWrap}>
-                    {/* Jika Segera Hadir: posisikan di atas nama, tepat di bawah border */}
-                    {(!border.assetUrl || border.isReleased === false) && (
-                      <View style={styles.comingSoonPillWrap}>
-                        <View style={styles.comingSoonPill}>
-                          <AppIcon name="clock-outline" size={9.5} color="#F59E0B" />
-                          <Text style={styles.comingSoonPillText}>Segera Hadir</Text>
-                        </View>
-                      </View>
-                    )}
-
-                    <Text style={styles.borderNameText} numberOfLines={1}>
-                      {border.name}
-                    </Text>
-                    <Text style={styles.borderDescText} numberOfLines={1}>
-                      {border.description || `Kategori ${border.rarity}`}
-                    </Text>
-                  </View>
-
-                  {/* Tombol Aksi */}
-                  <View style={styles.cardActionWrap}>
-                    {/* Di tab Shop: tampilkan harga hanya jika border sudah rilis */}
-                    {activeTab === "shop" && (border.isReleased !== false && border.assetUrl) && (
-                      <View style={styles.shopPriceRow}>
-                        <Image source={TOPUP_CRYSTAL_ICON} style={styles.priceCrystalIcon} contentFit="contain" />
-                        <Text style={[
-                          styles.shopPriceText,
-                          isOwned && styles.shopPriceTextOwned,
-                        ]}>
-                          {price.toLocaleString()}
-                        </Text>
-                        {isOwned && (
-                          <View style={styles.ownedBadgeInline}>
-                            <AppIcon name="check" size={9} color="#10B981" />
-                            <Text style={styles.ownedBadgeText}>Dimiliki</Text>
-                          </View>
-                        )}
-                      </View>
-                    )}
-
-                    {isOwned ? (
-                      // Sudah dimiliki: tombol Pakai/Sedang Dipakai
-                      <Pressable
-                        accessibilityRole="button"
-                        onPress={() => handleToggleEquip(border.id)}
-                        style={({ pressed }) => [
-                          styles.actionBtnOwned,
-                          isEquipped ? styles.actionBtnEquipped : styles.actionBtnUnequipped,
-                          pressed && styles.btnPressed,
-                        ]}
-                      >
-                        {isEquipped ? (
-                          <>
-                            <AppIcon name="check-circle" size={14} color="#10B981" />
-                            <Text style={styles.actionTextEquipped}>Sedang Dipakai</Text>
-                          </>
-                        ) : (
-                          <Text style={styles.actionTextUnequipped}>Pakai</Text>
-                        )}
-                      </Pressable>
-                    ) : (border.isReleased === false || !border.assetUrl) ? (
-                      // Belum rilis: tombol dikunci, tidak bisa ditekan
-                      <View style={styles.actionBtnLocked}>
-                        <AppIcon name="lock-outline" size={12} color="#64748B" />
-                        <Text style={styles.actionTextLocked}>Segera Hadir</Text>
-                      </View>
-                    ) : (
-                      // Sudah rilis, belum dimiliki: tombol Beli
-                      (() => {
-                        const borderPrice = (border.priceCrystal && border.priceCrystal > 0)
-                          ? border.priceCrystal
-                          : (BORDER_RARITY_PRICES[border.rarity] || 2000);
-                        const canAfford = crystalBalance >= borderPrice && crystalBalance > 0;
-
-                        return (
-                          <Pressable
-                            accessibilityRole="button"
-                            onPress={() => handleBuyPress(border)}
-                            style={({ pressed }) => [
-                              styles.actionBtnBuy,
-                              !canAfford && styles.actionBtnBuyInsufficient,
-                              pressed && styles.btnPressed,
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.actionTextBuy,
-                                !canAfford && styles.actionTextBuyInsufficient,
-                              ]}
-                            >
-                              Beli
-                            </Text>
-                          </Pressable>
-                        );
-                      })()
-                    )}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        )}
-      </ScrollView>
+        }
+        renderItem={renderBorderCard}
+      />
     </SafeAreaView>
   );
 }

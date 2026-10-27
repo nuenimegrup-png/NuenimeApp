@@ -1722,8 +1722,13 @@ export default function WatchScreen() {
   const lastTapRef = useRef<{ time: number; x: number } | null>(null);
   const singleTapTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const currentBrightnessVal = useRef(0.5);
-  const currentVolumeVal = useRef(1.0);
+  const brightnessRef = useRef(brightness);
+  const volumeRef = useRef(volume);
+  useEffect(() => { brightnessRef.current = brightness; }, [brightness]);
+  useEffect(() => { volumeRef.current = volume; }, [volume]);
+  const swipeAnchorY = useRef(0);
+  const swipeStartVal = useRef(0.5);
+  const lastBrightnessSysCallTime = useRef(0);
 
   const zoneForX = (x: number): GestureZone => {
     const w = Dimensions.get("window").width || 1;
@@ -1818,8 +1823,8 @@ export default function WatchScreen() {
           gestureStartY.current = gesture.y0;
           gestureStartTime.current = now;
           gestureZoneRef.current = zoneForX(gesture.x0);
-          currentBrightnessVal.current = brightness;
-          currentVolumeVal.current = volume;
+          swipeAnchorY.current = gesture.y0;
+          swipeStartVal.current = gestureZoneRef.current === "left" ? brightnessRef.current : volumeRef.current;
           doubleTapTouch.current = false;
           cancelLongPress();
           // Stale multi-tap state from a previous gesture must never leak in.
@@ -1959,6 +1964,8 @@ export default function WatchScreen() {
             if (startZone === "center") return;
             if (!gesturesEnabled) return;
             gestureModeRef.current = "swiping";
+            swipeAnchorY.current = gesture.moveY;
+            swipeStartVal.current = startZone === "left" ? brightnessRef.current : volumeRef.current;
             cancelLongPress();
             cancelHoldSeek();
             stopHoldSpeed();
@@ -1972,20 +1979,26 @@ export default function WatchScreen() {
             }
             const startZone = gestureZoneRef.current;
             if (startZone === "center") return;
-            const effectiveDy = gesture.dy - Math.sign(gesture.dy) * SWIPE_ACTIVATE_PX;
-            const delta = -effectiveDy / 250;
-            const snapToStep = (value: number) => Math.max(0, Math.min(1, Math.round(value * 20) / 20));
+
+            // Dragging UP (moveY < anchor) increases, Dragging DOWN (moveY > anchor) decreases
+            const dyFromAnchor = swipeAnchorY.current - gesture.moveY;
+            const totalTravelPx = 220; // 220px vertical travel for full 0% to 100% range
+            const delta = dyFromAnchor / totalTravelPx;
+            const rawVal = swipeStartVal.current + delta;
+            const clamped = Math.max(0, Math.min(1, Math.round(rawVal * 100) / 100));
+
             if (startZone === "left") {
-              const newBrightness = snapToStep(currentBrightnessVal.current + delta);
-              if (newBrightness !== brightness) {
-                setBrightness(newBrightness);
-                if (Platform.OS !== "web") Brightness.setBrightnessAsync(newBrightness).catch(() => {});
+              setBrightnessHud(Math.round(clamped * 100));
+              brightnessRef.current = clamped;
+              const now = Date.now();
+              if (now - lastBrightnessSysCallTime.current > 80) {
+                lastBrightnessSysCallTime.current = now;
+                if (Platform.OS !== "web") Brightness.setBrightnessAsync(clamped).catch(() => {});
               }
-              setBrightnessHud(Math.round(newBrightness * 100));
             } else {
-              const newVol = snapToStep(currentVolumeVal.current + delta);
-              if (newVol !== volume) setVolume(newVol);
-              setVolumeHud(Math.round(newVol * 100));
+              setVolumeHud(Math.round(clamped * 100));
+              volumeRef.current = clamped;
+              setVolume(clamped);
             }
           }
         },
@@ -2004,6 +2017,10 @@ export default function WatchScreen() {
           if (mode === "swiping") {
             stopHoldSpeed();
             clearSkipHold();
+            if (gestureZoneRef.current === "left") {
+              setBrightness(brightnessRef.current);
+              if (Platform.OS !== "web") Brightness.setBrightnessAsync(brightnessRef.current).catch(() => {});
+            }
             setTimeout(() => { setVolumeHud(null); setBrightnessHud(null); }, 800);
             return;
           }
@@ -2078,7 +2095,7 @@ export default function WatchScreen() {
           pendingMultiSeekRef.current = null;
         },
       }),
-    [armSkipHold, brightness, clearSkipHold, playerLocked, volume, beginHoldSpeed, stopHoldSpeed, triggerDoubleTapAnimation, gesturesEnabled],
+    [armSkipHold, clearSkipHold, playerLocked, beginHoldSpeed, stopHoldSpeed, triggerDoubleTapAnimation, gesturesEnabled],
   );
 
   const skip = (kind: SkipKind) => {

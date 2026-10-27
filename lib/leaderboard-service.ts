@@ -91,7 +91,8 @@ export async function getLeaderboard(
     .from("user_xp_transactions")
     .select("user_id, total_xp")
     .gte("created_at", periodStart.toISOString())
-    .lte("created_at", now.toISOString());
+    .lte("created_at", now.toISOString())
+    .limit(1000);
 
   if (txError) {
     console.warn("[Leaderboard] tx error:", txError.message);

@@ -14,7 +14,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
 
 import { AppIcon } from "@/components/app-icon";
@@ -150,10 +150,23 @@ export default function ChatGlobalScreen() {
   const [bottomNavTab, setBottomNavTab] = useState<"global" | "clan" | "teman">("global");
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
+  const [showNewMessageBadge, setShowNewMessageBadge] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const cooldownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isNearBottomRef = useRef(true);
+  const isInitialLoadRef = useRef(true);
+  const isUserInteractingRef = useRef(false);
+  const userHasScrolledUpRef = useRef(false);
+
+  const jumpToLatestMessages = useCallback(() => {
+    hapticLight();
+    setShowNewMessageBadge(false);
+    userHasScrolledUpRef.current = false;
+    isNearBottomRef.current = true;
+    flatListRef.current?.scrollToEnd({ animated: false });
+  }, []);
 
   const startCooldownTimer = useCallback((seconds: number) => {
     if (seconds <= 0) return;
@@ -177,9 +190,11 @@ export default function ChatGlobalScreen() {
 
     const showSub = Keyboard.addListener(showEvent, () => {
       setKeyboardVisible(true);
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 60);
+      if (isNearBottomRef.current) {
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: false });
+        }, 40);
+      }
     });
     const hideSub = Keyboard.addListener(hideEvent, () => {
       setKeyboardVisible(false);
@@ -202,14 +217,30 @@ export default function ChatGlobalScreen() {
     });
   }, [currentUserId, startCooldownTimer]);
 
+  const messagesLengthRef = useRef(messages.length);
+  messagesLengthRef.current = messages.length;
+
   // ─── 1. LOAD PESAN ───
   const loadMessages = useCallback(async (isRefresh = false) => {
-    if (!isRefresh) setLoading(true);
-    else setRefreshing(true);
+    if (!isRefresh && messagesLengthRef.current === 0) setLoading(true);
+    else if (isRefresh) setRefreshing(true);
 
     try {
       const data = await getGlobalMessages(activeRoom);
       setMessages(data);
+      // Posisikan seketika ke pesan paling baru saat data selesai dimuat
+      if (isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+        setTimeout(() => {
+          if (isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+            flatListRef.current?.scrollToEnd({ animated: false });
+          }
+        }, 20);
+        setTimeout(() => {
+          if (isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+            flatListRef.current?.scrollToEnd({ animated: false });
+          }
+        }, 80);
+      }
     } catch (err) {
       console.warn("[chat-global] load error:", err);
     } finally {
@@ -218,11 +249,38 @@ export default function ChatGlobalScreen() {
     }
   }, [activeRoom]);
 
-  useEffect(() => {
-    // Bersihkan cache pesan tiruan sebelumnya
-    void purgeGlobalChatMockCache();
-    void loadMessages();
-  }, [loadMessages]);
+  // Saat pertama kali buka layar ATAU saat masuk kembali setelah keluar room / diskusi
+  useFocusEffect(
+    useCallback(() => {
+      userHasScrolledUpRef.current = false;
+      isInitialLoadRef.current = true;
+      isNearBottomRef.current = true;
+      isUserInteractingRef.current = false;
+      setShowNewMessageBadge(false);
+      void purgeGlobalChatMockCache();
+      void loadMessages();
+
+      const scrollIfInitial = () => {
+        if (isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+          flatListRef.current?.scrollToEnd({ animated: false });
+        }
+      };
+
+      const t1 = setTimeout(scrollIfInitial, 50);
+      const t2 = setTimeout(scrollIfInitial, 150);
+      const t3 = setTimeout(scrollIfInitial, 350);
+      const tClose = setTimeout(() => {
+        isInitialLoadRef.current = false;
+      }, 1000);
+
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+        clearTimeout(tClose);
+      };
+    }, [loadMessages])
+  );
 
   // ─── 2. REALTIME SUBSCRIPTION ───
   useEffect(() => {
@@ -230,36 +288,32 @@ export default function ChatGlobalScreen() {
       setMessages((prev) => {
         // Hindari duplikasi pesan jika sudah masuk
         if (prev.some((m) => m.id === newMsg.id)) return prev;
-        return [...prev, newMsg];
+        const updated = [...prev, newMsg];
+        // JAGA MEMORI: Batasi riwayat pesan aktif di RAM maksimal 100 agar ringan di HP RAM kecil
+        if (updated.length > 100) {
+          return updated.slice(updated.length - 100);
+        }
+        return updated;
       });
 
-      // Otomatis langsung scroll ke pesan terbaru seketika
-      flatListRef.current?.scrollToEnd({ animated: true });
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 60);
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 150);
+      // Kalo ada pesan baru masuk:
+      // Pengguna berada tepat di paling bawah atau pesan sendiri -> scroll instan tanpa animasi
+      // Pengguna sedang membaca pesan lama / tidak di paling bawah -> munculkan tombol '↓ Pesan Baru'
+      const isMyMessage = newMsg.senderId === currentUserId;
+      if (isMyMessage || (isNearBottomRef.current && !userHasScrolledUpRef.current)) {
+        setShowNewMessageBadge(false);
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: false });
+        }, 10);
+      } else {
+        setShowNewMessageBadge(true);
+      }
     });
 
     return () => {
       unsubscribe();
     };
-  }, [activeRoom]);
-
-  // Scroll to bottom on initial load
-  useEffect(() => {
-    if (!loading && messages.length > 0) {
-      flatListRef.current?.scrollToEnd({ animated: false });
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: false });
-      }, 50);
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: false });
-      }, 150);
-    }
-  }, [loading, activeRoom]);
+  }, [activeRoom, currentUserId]);
 
   // ─── 3. SEND MESSAGE ───
   const handleSendMessage = async () => {
@@ -291,13 +345,13 @@ export default function ChatGlobalScreen() {
       message: textToSend,
       replyTo: replyingTo
         ? {
-            id: replyingTo.id,
-            senderName: replyingTo.senderName,
-            text: replyingTo.message,
-            memberNumber: replyingTo.senderMemberNumber,
-            role: replyingTo.senderRole,
-            isVip: replyingTo.senderIsVip,
-          }
+          id: replyingTo.id,
+          senderName: replyingTo.senderName,
+          text: replyingTo.message,
+          memberNumber: replyingTo.senderMemberNumber,
+          role: replyingTo.senderRole,
+          isVip: replyingTo.senderIsVip,
+        }
         : null,
     });
 
@@ -330,9 +384,13 @@ export default function ChatGlobalScreen() {
         return [...prev, res.data!];
       });
 
+      setShowNewMessageBadge(false);
+      userHasScrolledUpRef.current = false;
+      isNearBottomRef.current = true;
+      isInitialLoadRef.current = false;
       setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 80);
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 10);
     } else if (!res.success && res.error) {
       hapticWarning();
       // Jika error terkait jeda waktu, ekstrak detiknya dan mulai timer
@@ -345,11 +403,11 @@ export default function ChatGlobalScreen() {
   };
 
   // ─── 4. REPLY MESSAGE ───
-  const handleReplyMessage = (msg: GlobalChatMessage) => {
+  const handleReplyMessage = useCallback((msg: GlobalChatMessage) => {
     hapticLight();
     setReplyingTo(msg);
     inputRef.current?.focus();
-  };
+  }, []);
 
   // ─── 5. BOTTOM NAVIGATION HANDLER ───
   const handleBottomTabPress = (tab: "global" | "clan" | "teman") => {
@@ -370,6 +428,138 @@ export default function ChatGlobalScreen() {
     setActiveRoom("ngobrol_1");
   };
 
+  const renderMessageItem = useCallback(({ item }: { item: GlobalChatMessage }) => {
+    const tierInfo = getTierForLevel(item.senderLevel || 1);
+    const activeTier = tierInfo?.currentTier;
+    const nameColor = getUsernameColor(item.senderName);
+    const tierPillColors = getTierPillColors(activeTier?.name || "Stone");
+
+    return (
+      <View style={styles.messageRow}>
+        {/* Left Avatar with live border (diperkecil agar proporsional & rapi) */}
+        <Pressable
+          onPress={() => {
+            hapticLight();
+            router.push(`/user/${item.senderId}` as never);
+          }}
+          style={styles.avatarWrap}
+        >
+          <BorderAvatar
+            size={32}
+            borderId={item.senderBorder}
+            avatarUrl={item.senderAvatar || "https://images.alphacoders.com/132/1328004.png"}
+          />
+        </Pressable>
+
+        {/* Right Bubble Content */}
+        <View style={styles.bubbleCol}>
+          <Pressable
+            onLongPress={() => handleReplyMessage(item)}
+            delayLongPress={250}
+            style={({ pressed }) => [
+              styles.messageCard,
+              pressed && styles.messageCardPressed,
+            ]}
+          >
+            {/* 1. Header: Display Name + Verification Checkmark + Member Tag */}
+            <View style={styles.senderHeaderRow}>
+              <Pressable
+                onPress={() => {
+                  hapticLight();
+                  router.push(`/user/${item.senderId}` as never);
+                }}
+              >
+                <Text style={[styles.senderNameText, { color: nameColor }]} numberOfLines={1}>
+                  {item.senderName}
+                </Text>
+              </Pressable>
+
+              {/* Otoritatif Checkmark */}
+              <UserVerificationBadge
+                role={item.senderRole}
+                isVip={item.senderIsVip}
+                size={13}
+              />
+
+              {/* Member Tag Number */}
+              <Text style={styles.memberTagText}>{item.senderMemberNumber}</Text>
+            </View>
+
+            {/* 2. Badges Row: Rank Tier Pill (e.g. ETERNAL, GOLD) + Level Pill (Persis Screenshot 2) */}
+            <View style={styles.badgesRow}>
+              {activeTier ? (
+                <View
+                  style={[
+                    styles.rankTierPill,
+                    {
+                      backgroundColor: tierPillColors.bg,
+                      borderColor: tierPillColors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.rankTierText,
+                      { color: tierPillColors.text },
+                    ]}
+                  >
+                    {activeTier.name.toUpperCase()}
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* Level Badge Pill */}
+              <View style={styles.levelPill}>
+                {activeTier?.imageUrl && (
+                  <Image
+                    source={{ uri: activeTier.imageUrl }}
+                    style={styles.tierPillIcon}
+                    contentFit="contain"
+                    cachePolicy="memory-disk"
+                  />
+                )}
+                <Text style={styles.levelPillText}>
+                  Lvl {Number(item.senderLevel || 1).toLocaleString("id-ID")}
+                </Text>
+              </View>
+            </View>
+
+            {/* 3. Reply Quote Box (jika membalas pesan lain) */}
+            {item.replyTo && (
+              <View style={styles.quoteBox}>
+                <View style={styles.quoteAccentLine} />
+                <View style={styles.quoteContent}>
+                  <View style={styles.quoteHeaderRow}>
+                    <Text style={styles.quoteSenderName} numberOfLines={1}>
+                      {item.replyTo.senderName}
+                    </Text>
+                    {item.replyTo.memberNumber ? (
+                      <Text style={styles.quoteMemberNumber}>{item.replyTo.memberNumber}</Text>
+                    ) : null}
+                    <UserVerificationBadge
+                      role={item.replyTo.role}
+                      isVip={item.replyTo.isVip}
+                      size={11}
+                    />
+                  </View>
+                  <Text style={styles.quoteText} numberOfLines={1}>
+                    {item.replyTo.text}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* 4. Isi Pesan */}
+            <Text style={styles.messageText}>{item.message}</Text>
+          </Pressable>
+
+          {/* Timestamp di kanan bawah bubble */}
+          <Text style={styles.timestampText}>{formatChatTime(item.createdAt)}</Text>
+        </View>
+      </View>
+    );
+  }, [handleReplyMessage]);
+
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
       {/* ─── A. TOP HEADER ─── */}
@@ -387,12 +577,12 @@ export default function ChatGlobalScreen() {
         <View style={styles.headerRightSpacer} />
       </View>
 
-      {/* ─── B. WARNING BANNER (PERSIS SCREENSHOT) ─── */}
+      {/* ─── B. WARNING BANNER ─── */}
       <View style={styles.warningBannerContainer}>
         <View style={styles.warningBanner}>
           <AppIcon name="alert" size={16} color="#F59E0B" />
           <Text style={styles.warningBannerText}>
-            Dilarang berjualan premium dan harus sopan
+            Dilarang toksik atau spam, akan otomatis terblokir
           </Text>
         </View>
       </View>
@@ -415,6 +605,11 @@ export default function ChatGlobalScreen() {
                   );
                   return;
                 }
+                userHasScrolledUpRef.current = false;
+                isInitialLoadRef.current = true;
+                isNearBottomRef.current = true;
+                isUserInteractingRef.current = false;
+                setShowNewMessageBadge(false);
                 setActiveRoom(r.id);
                 setBottomNavTab("global");
               }}
@@ -436,7 +631,7 @@ export default function ChatGlobalScreen() {
       {/* ─── D. CHAT MESSAGES FEED ─── */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
       >
         {loading ? (
@@ -451,12 +646,55 @@ export default function ChatGlobalScreen() {
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.messageListContent}
             showsVerticalScrollIndicator={false}
-            onContentSizeChange={() => {
-              flatListRef.current?.scrollToEnd({ animated: true });
-            }}
+            initialNumToRender={messages.length > 0 ? messages.length : 35}
+            maxToRenderPerBatch={15}
+            windowSize={9}
+            updateCellsBatchingPeriod={50}
+            removeClippedSubviews={Platform.OS !== "web"}
             onLayout={() => {
-              flatListRef.current?.scrollToEnd({ animated: false });
+              if (isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+                flatListRef.current?.scrollToEnd({ animated: false });
+              }
             }}
+            onContentSizeChange={(_w, h) => {
+              // Posisikan ke bawah seketika saat pertama kali layar dibuka (sebelum user scroll manual)
+              if (h > 0 && isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+                flatListRef.current?.scrollToEnd({ animated: false });
+              }
+            }}
+            onScrollBeginDrag={() => {
+              isUserInteractingRef.current = true;
+              userHasScrolledUpRef.current = true;
+              isNearBottomRef.current = false;
+              isInitialLoadRef.current = false;
+            }}
+            onScrollEndDrag={() => {
+              isUserInteractingRef.current = false;
+            }}
+            onMomentumScrollBegin={() => {
+              isUserInteractingRef.current = true;
+              isInitialLoadRef.current = false;
+            }}
+            onMomentumScrollEnd={() => {
+              isUserInteractingRef.current = false;
+            }}
+            onScroll={(e) => {
+              const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+              if (contentSize.height <= 0) return;
+              const distanceFromBottom = contentSize.height - (layoutMeasurement.height + contentOffset.y);
+              // Toleransi presisi 10 piksel untuk mendeteksi posisi paling bawah
+              const isAtBottom = distanceFromBottom <= 10;
+              isNearBottomRef.current = isAtBottom;
+
+              if (isAtBottom) {
+                userHasScrolledUpRef.current = false;
+                setShowNewMessageBadge(false);
+              } else {
+                userHasScrolledUpRef.current = true;
+                isInitialLoadRef.current = false;
+              }
+            }}
+            scrollEventThrottle={16}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -475,138 +713,26 @@ export default function ChatGlobalScreen() {
                 </Text>
               </View>
             }
-            renderItem={({ item }) => {
-              const tierInfo = getTierForLevel(item.senderLevel || 1);
-              const activeTier = tierInfo?.currentTier;
-              const nameColor = getUsernameColor(item.senderName);
-              const tierPillColors = getTierPillColors(activeTier?.name || "Stone");
-
-              return (
-                <View style={styles.messageRow}>
-                  {/* Left Avatar with live border (diperkecil agar proporsional & rapi) */}
-                  <Pressable
-                    onPress={() => {
-                      hapticLight();
-                      router.push(`/user/${item.senderId}` as never);
-                    }}
-                    style={styles.avatarWrap}
-                  >
-                    <BorderAvatar
-                      size={32}
-                      borderId={item.senderBorder}
-                      avatarUrl={item.senderAvatar || "https://images.alphacoders.com/132/1328004.png"}
-                    />
-                  </Pressable>
-
-                  {/* Right Bubble Content */}
-                  <View style={styles.bubbleCol}>
-                    <Pressable
-                      onLongPress={() => handleReplyMessage(item)}
-                      delayLongPress={250}
-                      style={({ pressed }) => [
-                        styles.messageCard,
-                        pressed && styles.messageCardPressed,
-                      ]}
-                    >
-                      {/* 1. Header: Display Name + Verification Checkmark + Member Tag */}
-                      <View style={styles.senderHeaderRow}>
-                        <Pressable
-                          onPress={() => {
-                            hapticLight();
-                            router.push(`/user/${item.senderId}` as never);
-                          }}
-                        >
-                          <Text style={[styles.senderNameText, { color: nameColor }]} numberOfLines={1}>
-                            {item.senderName}
-                          </Text>
-                        </Pressable>
-
-                        {/* Otoritatif Checkmark */}
-                        <UserVerificationBadge
-                          role={item.senderRole}
-                          isVip={item.senderIsVip}
-                          size={13}
-                        />
-
-                        {/* Member Tag Number */}
-                        <Text style={styles.memberTagText}>{item.senderMemberNumber}</Text>
-                      </View>
-
-                      {/* 2. Badges Row: Rank Tier Pill (e.g. ETERNAL, GOLD) + Level Pill (Persis Screenshot 2) */}
-                      <View style={styles.badgesRow}>
-                        {activeTier ? (
-                          <View
-                            style={[
-                              styles.rankTierPill,
-                              {
-                                backgroundColor: tierPillColors.bg,
-                                borderColor: tierPillColors.border,
-                              },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.rankTierText,
-                                { color: tierPillColors.text },
-                              ]}
-                            >
-                              {activeTier.name.toUpperCase()}
-                            </Text>
-                          </View>
-                        ) : null}
-
-                        {/* Level Badge Pill */}
-                        <View style={styles.levelPill}>
-                          {activeTier?.imageUrl && (
-                            <Image
-                              source={{ uri: activeTier.imageUrl }}
-                              style={styles.tierPillIcon}
-                              contentFit="contain"
-                              cachePolicy="memory-disk"
-                            />
-                          )}
-                          <Text style={styles.levelPillText}>
-                            Lvl {item.senderLevel.toLocaleString("id-ID")}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* 3. Reply Quote Box (jika membalas pesan lain) */}
-                      {item.replyTo && (
-                        <View style={styles.quoteBox}>
-                          <View style={styles.quoteAccentLine} />
-                          <View style={styles.quoteContent}>
-                            <View style={styles.quoteHeaderRow}>
-                              <Text style={styles.quoteSenderName} numberOfLines={1}>
-                                {item.replyTo.senderName}
-                              </Text>
-                              {item.replyTo.memberNumber ? (
-                                <Text style={styles.quoteMemberNumber}>{item.replyTo.memberNumber}</Text>
-                              ) : null}
-                              <UserVerificationBadge
-                                role={item.replyTo.role}
-                                isVip={item.replyTo.isVip}
-                                size={11}
-                              />
-                            </View>
-                            <Text style={styles.quoteText} numberOfLines={1}>
-                              {item.replyTo.text}
-                            </Text>
-                          </View>
-                        </View>
-                      )}
-
-                      {/* 4. Isi Pesan */}
-                      <Text style={styles.messageText}>{item.message}</Text>
-                    </Pressable>
-
-                    {/* Timestamp di kanan bawah bubble */}
-                    <Text style={styles.timestampText}>{formatChatTime(item.createdAt)}</Text>
-                  </View>
-                </View>
-              );
-            }}
+            renderItem={renderMessageItem}
           />
+        )}
+
+        {/* ─── FLOATING NEW MESSAGE INDICATOR ─── */}
+        {showNewMessageBadge && (
+          <View style={styles.floatingNewMsgWrap} pointerEvents="box-none">
+            <Pressable
+              style={({ pressed }) => [
+                styles.floatingNewMsgBtn,
+                pressed && styles.floatingNewMsgBtnPressed,
+              ]}
+              onPress={jumpToLatestMessages}
+              accessibilityRole="button"
+              accessibilityLabel="Lompat ke pesan terbaru"
+            >
+              <AppIcon name="arrow-down" size={13} color="#FFFFFF" />
+              <Text style={styles.floatingNewMsgText}>Pesan Baru</Text>
+            </Pressable>
+          </View>
         )}
 
         {/* ─── E. REPLYING PREVIEW BAR ─── */}
@@ -1170,5 +1296,37 @@ const styles = StyleSheet.create({
   bottomNavTextActive: {
     color: "#FFFFFF",
     fontWeight: "700",
+  },
+
+  // ─── FLOATING NEW MESSAGE BUTTON ───
+  floatingNewMsgWrap: {
+    position: "absolute",
+    bottom: 84,
+    alignSelf: "center",
+    zIndex: 999,
+  },
+  floatingNewMsgBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#0284C7",
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    gap: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  floatingNewMsgBtnPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.96 }],
+  },
+  floatingNewMsgText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
 });

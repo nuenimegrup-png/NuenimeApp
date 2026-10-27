@@ -14,6 +14,15 @@ export function DuniaView({
   onError?: (err: any) => void;
   onMessage?: (data: any) => void;
 }) {
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !onMessage) return;
+    const handleMsg = (e: MessageEvent) => {
+      onMessage(e.data);
+    };
+    window.addEventListener("message", handleMsg);
+    return () => window.removeEventListener("message", handleMsg);
+  }, [onMessage]);
+
   return (
     <View style={styles.container}>
       <iframe
@@ -24,9 +33,13 @@ export function DuniaView({
           border: "none",
           backgroundColor: "#0F1115",
         } as any}
+        title="Dunia Nuenime RPG"
         onLoad={() => {
           onLoadProgress?.(1);
           onLoadEnd?.();
+        }}
+        onError={(e) => {
+          onError?.(e);
         }}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen

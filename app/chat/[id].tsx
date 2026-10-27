@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useLocalSearchParams, router } from "expo-router";
+import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
 import { AppIcon } from "@/components/app-icon";
 import { BorderAvatar } from "@/components/border-avatar";
 import { useAnirakuAuth } from "@/providers/auth-provider";
@@ -54,9 +54,13 @@ export default function PrivateChatRoomScreen() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
-  const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
 
   const flatListRef = useRef<FlatList>(null);
+  const isNearBottomRef = useRef(true);
+  const isInitialLoadRef = useRef(true);
+  const isUserInteractingRef = useRef(false);
+  const userHasScrolledUpRef = useRef(false);
   const cooldownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startCooldownTimer = useCallback((seconds: number) => {
@@ -91,9 +95,11 @@ export default function PrivateChatRoomScreen() {
 
     const showSub = Keyboard.addListener(showEvent, () => {
       setKeyboardOpen(true);
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 80);
+      if (isNearBottomRef.current) {
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 80);
+      }
     });
     const hideSub = Keyboard.addListener(hideEvent, () => {
       setKeyboardOpen(false);
@@ -106,7 +112,7 @@ export default function PrivateChatRoomScreen() {
     };
   }, []);
 
-  // Cek sisa jeda waktu chat aktif saat ruang chat dibuka
+  // Cek sisa cooldown saat layar chat dibuka
   useEffect(() => {
     if (!currentUserId || currentUserId === "guest") return;
     void checkChatCooldown(currentUserId).then((res) => {
@@ -138,18 +144,41 @@ export default function PrivateChatRoomScreen() {
       console.warn("[private-chat-screen] loadChat error:", err);
     } finally {
       setLoading(false);
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: false });
-      }, 50);
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: false });
-      }, 150);
     }
   }, [id, currentUserId]);
 
-  useEffect(() => {
-    loadChat();
-  }, [loadChat]);
+  // Saat pertama kali buka layar ATAU saat masuk kembali setelah keluar chat
+  useFocusEffect(
+    useCallback(() => {
+      userHasScrolledUpRef.current = false;
+      isInitialLoadRef.current = true;
+      isNearBottomRef.current = true;
+      isUserInteractingRef.current = false;
+      void loadChat();
+
+      const t1 = setTimeout(() => {
+        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+          flatListRef.current?.scrollToEnd({ animated: false });
+        }
+      }, 60);
+      const t2 = setTimeout(() => {
+        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+          flatListRef.current?.scrollToEnd({ animated: false });
+        }
+      }, 180);
+      const t3 = setTimeout(() => {
+        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+          flatListRef.current?.scrollToEnd({ animated: false });
+        }
+      }, 350);
+
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
+    }, [loadChat])
+  );
 
   // Realtime subscription for incoming messages
   useEffect(() => {
@@ -162,7 +191,7 @@ export default function PrivateChatRoomScreen() {
 
         // Jika pesan ini dikirim oleh user sendiri dan ada optimistic message sementara (temp_*)
         if (newMsg.senderId === currentUserId) {
-          const tempIdx = prev.findIndex((m) => m.id.startsWith("temp_"));
+          const tempIdx = prev.findIndex((m) => m.id.startsWith("temp_") && m.message === newMsg.message);
           if (tempIdx !== -1) {
             const copy = [...prev];
             copy[tempIdx] = newMsg;
@@ -170,17 +199,18 @@ export default function PrivateChatRoomScreen() {
           }
         }
 
-        return [...prev, newMsg];
+        const updated = [...prev, newMsg];
+        // JAGA MEMORI: Batasi riwayat pesan aktif di RAM maksimal 100 agar hemat memori
+        if (updated.length > 100) {
+          return updated.slice(updated.length - 100);
+        }
+        return updated;
       });
 
-      // Otomatis langsung scroll ke pesan baru seketika
-      flatListRef.current?.scrollToEnd({ animated: true });
+      // Kalo ada pesan baru masuk, otomatis scroll ke paling bawah!
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 60);
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 150);
     });
 
     return () => {
@@ -211,6 +241,9 @@ export default function PrivateChatRoomScreen() {
       createdAt: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, optimisticMsg]);
+    userHasScrolledUpRef.current = false;
+    isNearBottomRef.current = true;
+    isInitialLoadRef.current = false;
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 50);
@@ -230,7 +263,7 @@ export default function PrivateChatRoomScreen() {
       await auth.refreshProfile();
       Alert.alert(
         "AKUN DIBLOKIR",
-        res.error || "Akun Anda telah DIBLOKIR permanen karena melakukan spam pesan berulang 4 kali!"
+        res.error || "Akun Anda telah DIBLOKIR permanen!"
       );
       return;
     }
@@ -263,6 +296,49 @@ export default function PrivateChatRoomScreen() {
       Alert.alert("Pesan Gagal Terkirim", res.error);
     }
   };
+
+  const renderMessageItem = useCallback(({ item }: { item: PrivateMessage }) => {
+    const isMine = item.senderId === currentUserId;
+    const isCensored = item.message.includes("[Pesan mengandung kata terlarang]");
+
+    return (
+      <View
+        style={[
+          styles.messageRow,
+          isMine ? styles.messageRowMine : styles.messageRowOther,
+        ]}
+      >
+        <View
+          style={[
+            styles.messageBubble,
+            isMine ? styles.bubbleMine : styles.bubbleOther,
+            isCensored && {
+              backgroundColor: isMine ? "rgba(239, 68, 68, 0.18)" : "rgba(239, 68, 68, 0.14)",
+              borderColor: "rgba(239, 68, 68, 0.35)",
+              borderWidth: 1,
+            },
+          ]}
+        >
+          {isCensored ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+              <AppIcon name="shield-alert-outline" size={13} color="#F87171" />
+              <Text
+                style={[
+                  styles.messageText,
+                  { color: "#FCA5A5", fontStyle: "italic", fontSize: 12.5 },
+                ]}
+              >
+                {item.message}
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.messageText}>{item.message}</Text>
+          )}
+          <Text style={styles.messageTimeText}>{formatChatTime(item.createdAt)}</Text>
+        </View>
+      </View>
+    );
+  }, [currentUserId]);
 
   return (
     <SafeAreaView edges={["top"]} style={styles.container}>
@@ -312,7 +388,7 @@ export default function PrivateChatRoomScreen() {
       {/* ─── 2. CHAT MESSAGES BODY ─── */}
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
       >
         {loading ? (
@@ -333,58 +409,54 @@ export default function PrivateChatRoomScreen() {
             data={messages}
             keyExtractor={(item, index) => `${item.id}_${index}`}
             contentContainerStyle={styles.messageList}
+            showsVerticalScrollIndicator={false}
+            initialNumToRender={25}
+            maxToRenderPerBatch={15}
+            windowSize={7}
+            removeClippedSubviews={Platform.OS !== "web"}
             onContentSizeChange={() => {
-              flatListRef.current?.scrollToEnd({ animated: true });
+              // Hanya posisikan ke bawah saat pertama masuk (sebelum user scroll manual)
+              if (isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+                flatListRef.current?.scrollToEnd({ animated: false });
+                isInitialLoadRef.current = false;
+              }
             }}
-            onLayout={() => {
-              flatListRef.current?.scrollToEnd({ animated: false });
+            onScrollBeginDrag={() => {
+              isUserInteractingRef.current = true;
+              userHasScrolledUpRef.current = true;
             }}
-            renderItem={({ item }) => {
-              const isMine = item.senderId === currentUserId;
-              const isCensored = item.message.includes("[Pesan mengandung kata terlarang]");
+            onScrollEndDrag={() => {
+              isUserInteractingRef.current = false;
+            }}
+            onMomentumScrollBegin={() => {
+              isUserInteractingRef.current = true;
+              userHasScrolledUpRef.current = true;
+            }}
+            onMomentumScrollEnd={() => {
+              isUserInteractingRef.current = false;
+            }}
+            onScroll={(e) => {
+              const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+              const distanceFromBottom = contentSize.height - (layoutMeasurement.height + contentOffset.y);
+              const isAtBottom = distanceFromBottom <= 40;
+              isNearBottomRef.current = isAtBottom;
 
-              return (
-                <View
-                  style={[
-                    styles.messageRow,
-                    isMine ? styles.messageRowMine : styles.messageRowOther,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.messageBubble,
-                      isMine ? styles.bubbleMine : styles.bubbleOther,
-                      isCensored && {
-                        backgroundColor: isMine ? "rgba(239, 68, 68, 0.18)" : "rgba(239, 68, 68, 0.14)",
-                        borderColor: "rgba(239, 68, 68, 0.35)",
-                        borderWidth: 1,
-                      },
-                    ]}
-                  >
-                    {isCensored ? (
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                        <AppIcon name="shield-alert-outline" size={13} color="#F87171" />
-                        <Text
-                          style={[
-                            styles.messageText,
-                            { color: "#FCA5A5", fontStyle: "italic", fontSize: 12.5 },
-                          ]}
-                        >
-                          {item.message}
-                        </Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.messageText}>{item.message}</Text>
-                    )}
-                    <Text style={styles.messageTimeText}>{formatChatTime(item.createdAt)}</Text>
-                  </View>
-                </View>
-              );
+              // Jika menjauh dari dasar bawah, pastikan status terkunci
+              if (distanceFromBottom > 40) {
+                userHasScrolledUpRef.current = true;
+              }
+
+              // Hanya buka kembali auto-scroll jika user sengaja scroll kembali sampai menyentuh dasar paling bawah
+              if (isAtBottom && isUserInteractingRef.current) {
+                userHasScrolledUpRef.current = false;
+              }
             }}
+            scrollEventThrottle={16}
+            renderItem={renderMessageItem}
           />
         )}
 
-        {/* ─── 3. BOTTOM INPUT BAR (DILENGKAPI DETIK JEDA COOLDOWN) ─── */}
+        {/* ─── 3. BOTTOM INPUT BAR ─── */}
         <View
           style={[
             styles.bottomBar,

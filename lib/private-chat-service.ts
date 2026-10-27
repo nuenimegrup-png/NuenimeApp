@@ -46,7 +46,7 @@ export async function getPrivateMessages(
     ).catch(() => {});
 
     // 2. Ambil pesan aktif (usia <= 7 hari)
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("private_messages")
       .select("id, sender_id, receiver_id, message, created_at")
       .or(
@@ -54,7 +54,21 @@ export async function getPrivateMessages(
       )
       .gte("created_at", sevenDaysAgo)
       .order("created_at", { ascending: true })
-      .limit(100);
+      .limit(150);
+
+    // Fallback jika PostgREST query .or(...) error
+    if (error) {
+      const fallback = await supabase
+        .from("private_messages")
+        .select("id, sender_id, receiver_id, message, created_at")
+        .in("sender_id", [userA, userB])
+        .in("receiver_id", [userA, userB])
+        .gte("created_at", sevenDaysAgo)
+        .order("created_at", { ascending: true })
+        .limit(150);
+      data = fallback.data;
+      error = fallback.error;
+    }
 
     if (error || !data) {
       // Fallback ke cache lokal jika offline

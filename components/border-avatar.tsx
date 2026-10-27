@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import {
   ImageStyle,
   Platform,
+  Pressable,
   StyleProp,
   StyleSheet,
   Text,
@@ -37,10 +38,11 @@ export interface BorderAvatarProps {
   avatarStyle?: StyleProp<ImageStyle>;
   onPress?: () => void;
   disabled?: boolean;
+  accessibilityLabel?: string;
   children?: React.ReactNode;
 }
 
-export const BorderAvatar: React.FC<BorderAvatarProps> = ({
+export const BorderAvatar: React.FC<BorderAvatarProps> = React.memo(({
   avatarUrl,
   fallbackText = "N",
   borderId,
@@ -51,6 +53,7 @@ export const BorderAvatar: React.FC<BorderAvatarProps> = ({
   avatarStyle,
   onPress,
   disabled = !onPress,
+  accessibilityLabel,
   children,
 }) => {
   const [avatarError, setAvatarError] = useState(false);
@@ -102,15 +105,15 @@ export const BorderAvatar: React.FC<BorderAvatarProps> = ({
 
   // 2. BORDER MENYESUAIKAN UKURAN AVATAR (BUKAN SEBALIKNYA)
   // Rasio diameter lubang tengah terhadap ukuran aset border (standar seragam 0.74)
-  const innerRatio = borderData?.innerRatio ?? 0.74;
+  const innerRatio = Math.max(0.1, Number(borderData?.innerRatio) || 0.74);
 
   // Ukuran border dihitung dari avatarSize dibagi rasio lubang,
   // sehingga lubang tengah border tepat pas membungkus avatar tanpa celah.
   const borderSize = hasActiveBorder ? Math.round(avatarSize / innerRatio) : avatarSize;
 
   // Offset per-aset proporsional terhadap ukuran border
-  const offsetX = borderData?.offsetX ? Math.round(borderSize * borderData.offsetX) : 0;
-  const offsetY = borderData?.offsetY ? Math.round(borderSize * borderData.offsetY) : 0;
+  const offsetX = borderData?.offsetX ? Math.round(borderSize * Number(borderData.offsetX)) : 0;
+  const offsetY = borderData?.offsetY ? Math.round(borderSize * Number(borderData.offsetY)) : 0;
 
   // Penjajaran border: diposisikan di tengah avatar + offset
   const borderLeft = Math.round((avatarSize - borderSize) / 2) + offsetX;
@@ -180,29 +183,25 @@ export const BorderAvatar: React.FC<BorderAvatarProps> = ({
 
   if (onPress && !disabled) {
     return (
-      <View
-        accessible={Platform.OS !== "web"}
-        {...(Platform.OS !== "web" ? { accessibilityRole: "button" as const } : {})}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel || "Avatar Pengguna"}
         hitSlop={6}
-        onTouchEnd={(e) => {
-          e.stopPropagation();
-          onPress();
-        }}
-        // @ts-ignore
-        onClick={(e: any) => {
-          onPress();
-        }}
-        // Web: render sebagai <div> dengan cursor pointer, BUKAN <button>,
-        // agar tidak terjadi nested <button> ketika children memiliki tombol aksi (cth: tombol edit foto).
-        style={{ cursor: "pointer" } as any}
+        onPress={onPress}
+        style={[
+          styles.container,
+          { width: avatarSize, height: avatarSize },
+          Platform.OS === "web" && ({ cursor: "pointer" } as any),
+          style,
+        ]}
       >
         {renderContent()}
-      </View>
+      </Pressable>
     );
   }
 
   return renderContent();
-};
+});
 
 const styles = StyleSheet.create({
   container: {

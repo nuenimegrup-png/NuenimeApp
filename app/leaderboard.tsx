@@ -70,7 +70,7 @@ interface PodiumCardProps {
   onPress?: () => void;
 }
 
-function PodiumCard({
+const PodiumCard = React.memo(function PodiumCard({
   entry,
   localMyBorderId,
   currentUserId,
@@ -186,7 +186,7 @@ function PodiumCard({
       </View>
     </Pressable>
   );
-}
+});
 
 // ── Row item (#4+) ──────────────────────────────────────────────────────────
 interface LeaderRowProps {
@@ -197,7 +197,7 @@ interface LeaderRowProps {
   onPress?: () => void;
 }
 
-function LeaderRow({
+const LeaderRow = React.memo(function LeaderRow({
   entry,
   localMyBorderId,
   currentUserId,
@@ -288,7 +288,11 @@ function LeaderRow({
       </View>
     </Pressable>
   );
-}
+});
+
+const ListSeparator = React.memo(function ListSeparator() {
+  return <View style={styles.separator} />;
+});
 
 // ── Main Leaderboard Screen ─────────────────────────────────────────────────
 const PERIODS: { key: LeaderboardPeriod; label: string }[] = [
@@ -310,21 +314,24 @@ export default function LeaderboardScreen() {
   const [actionLoading, setActionLoading] = useState(false);
 
   // Handler buka modal profile saat card diklik
-  const handleSelectEntry = async (entry: LeaderboardEntry) => {
-    hapticLight();
-    setSelectedEntry(entry);
-    setShowUserModal(true);
-    if (user?.id && entry.userId && user.id !== entry.userId) {
-      try {
-        const st = await getFriendshipStatus(user.id, entry.userId);
-        setFriendStatus(st);
-      } catch {
+  const handleSelectEntry = useCallback(
+    async (entry: LeaderboardEntry) => {
+      hapticLight();
+      setSelectedEntry(entry);
+      setShowUserModal(true);
+      if (user?.id && entry.userId && user.id !== entry.userId) {
+        try {
+          const st = await getFriendshipStatus(user.id, entry.userId);
+          setFriendStatus(st);
+        } catch {
+          setFriendStatus("none");
+        }
+      } else {
         setFriendStatus("none");
       }
-    } else {
-      setFriendStatus("none");
-    }
-  };
+    },
+    [user?.id]
+  );
 
   // Handler aksi pertemanan di modal
   const handleFriendAction = async () => {
@@ -405,8 +412,8 @@ export default function LeaderboardScreen() {
         if (isMounted && border) {
           setLocalMyBorderId(border);
 
-          // AUTO-SYNC: jika user login dan punya border di HP, simpan ke database Supabase
-          if (user?.id) {
+          // AUTO-SYNC: simpan ke database hanya jika di database belum ada atau berbeda
+          if (user?.id && profile?.equipped_border !== border) {
             await supabase
               .from("profiles")
               .update({ equipped_border: border })
@@ -422,7 +429,7 @@ export default function LeaderboardScreen() {
     return () => {
       isMounted = false;
     };
-  }, [user?.id]);
+  }, [user?.id, profile?.equipped_border]);
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["leaderboard", period],
@@ -454,6 +461,19 @@ export default function LeaderboardScreen() {
       .catch(() => {});
     await refetch();
   }, [refetch, user?.id]);
+
+  const renderLeaderRow = useCallback(
+    ({ item }: { item: LeaderboardEntry }) => (
+      <LeaderRow
+        entry={item}
+        localMyBorderId={localMyBorderId}
+        currentUserId={user?.id}
+        currentUsername={profile?.username}
+        onPress={() => handleSelectEntry(item)}
+      />
+    ),
+    [localMyBorderId, user?.id, profile?.username, handleSelectEntry]
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
@@ -533,6 +553,10 @@ export default function LeaderboardScreen() {
           data={rest}
           keyExtractor={(item) => item.userId}
           showsVerticalScrollIndicator={false}
+          initialNumToRender={12}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          removeClippedSubviews={Platform.OS !== "web"}
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
@@ -570,16 +594,8 @@ export default function LeaderboardScreen() {
               )}
             </>
           }
-          renderItem={({ item }) => (
-            <LeaderRow
-              entry={item}
-              localMyBorderId={localMyBorderId}
-              currentUserId={user?.id}
-              currentUsername={profile?.username}
-              onPress={() => handleSelectEntry(item)}
-            />
-          )}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          renderItem={renderLeaderRow}
+          ItemSeparatorComponent={ListSeparator}
           contentContainerStyle={{ paddingBottom: 40 }}
         />
       )}

@@ -2,11 +2,14 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -33,6 +36,11 @@ import { hapticLight, hapticSuccess } from "@/lib/haptics";
 import { isSpecialRole } from "@/lib/admin-service";
 import { UserVerificationBadge } from "@/components/user-verification-badge";
 import { ProfileCityPlaque } from "@/components/profile-city-plaque";
+import { useQuery } from "@tanstack/react-query";
+import { getAnimeByIds } from "@/lib/anilist";
+import { animeTitle } from "@/lib/types";
+import { avatarUrl } from "@/lib/aniraku-avatars";
+import { getEquippedBorderId } from "@/lib/avatar-borders";
 
 const DEFAULT_BANNER =
   "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1200";
@@ -161,6 +169,250 @@ export default function PublicUserProfileScreen() {
       0
     );
   }, [userHistory]);
+  // Query anime metadata (judul & poster/banner) untuk komentar pengguna ini
+  const commentAnimeIds = useMemo(() => {
+    const set = new Set<number>();
+    for (const c of userComments) {
+      const aId = Number(c.anime_id);
+      if (aId && Number.isInteger(aId) && aId > 0) {
+        set.add(aId);
+      }
+    }
+    return Array.from(set);
+  }, [userComments]);
+
+  const commentAnimeQuery = useQuery({
+    queryKey: ["user-profile-comment-anime-info", id, commentAnimeIds.sort().join(",")],
+    enabled: commentAnimeIds.length > 0,
+    staleTime: 30 * 60 * 1000,
+    queryFn: async () => {
+      if (commentAnimeIds.length === 0) return [];
+      try {
+        const list = await getAnimeByIds(commentAnimeIds);
+        return list;
+      } catch (err) {
+        console.warn("[user-profile] failed to fetch anime for comments:", err);
+        return [];
+      }
+    },
+  });
+
+  const animePosterMap = useMemo(() => {
+    const map = new Map<number, { title: string; image: string; banner?: string | null }>();
+    for (const a of commentAnimeQuery.data ?? []) {
+      const aId = Number(a?.id);
+      if (aId) {
+        map.set(aId, {
+          title: animeTitle(a) || "Anime",
+          image: a.coverImage?.large || a.coverImage?.extraLarge || a.bannerImage || "",
+          banner: a.bannerImage || null,
+        });
+      }
+    }
+    for (const b of userBookmarks) {
+      const aId = Number(b?.anime_id);
+      if (aId && !map.has(aId)) {
+        map.set(aId, {
+          title: String(b.title || "Anime"),
+          image: String(b.image || ""),
+        });
+      }
+    }
+    for (const row of userHistory) {
+      const aId = Number(row?.anime_id);
+      if (aId && !map.has(aId)) {
+        map.set(aId, {
+          title: String(row.anime_title || "Anime"),
+          image: String(row.episode_thumbnail || row.anime_image || ""),
+        });
+      }
+    }
+    return map;
+  }, [commentAnimeQuery.data, userBookmarks, userHistory]);
+
+  // Hitung jumlah balasan per komentar
+  const commentIds = useMemo(() => {
+    return userComments.map((c) => c.id).filter(Boolean);
+  }, [userComments]);
+
+  const replyCountsQuery = useQuery({
+    queryKey: ["user-profile-reply-counts", id, commentIds.join(",")],
+    enabled: commentIds.length > 0,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      if (commentIds.length === 0) return {};
+      const { data, error } = await supabase
+        .from("comments")
+        .select("parent_id")
+        .in("parent_id", commentIds);
+      if (error) {
+        console.warn("Failed to fetch reply counts:", error);
+        return {};
+      }
+      const counts: Record<string, number> = {};
+      for (const row of data ?? []) {
+        if (row.parent_id) {
+          counts[row.parent_id] = (counts[row.parent_id] || 0) + 1;
+        }
+      }
+      return counts;
+    },
+  });
+
+  // State untuk Bottom Sheet Balasan Komentar
+  const [myEquippedBorder, setMyEquippedBorder] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (auth.user?.id) {
+      getEquippedBorderId(auth.user.id).then(setMyEquippedBorder).catch(() => {});
+    }
+  }, [auth.user?.id]);
+
+  const [activeReplyComment, setActiveReplyComment] = useState<{
+    id: string;
+    anime_id: number;
+    episode_number?: number | null;
+    content: string;
+    created_at: string;
+    animeTitle?: string;
+  } | null>(null);
+
+  const [repliesList, setRepliesList] = useState<Array<{
+    id: string;
+    user_id: string;
+    content: string;
+    created_at: string;
+    author: {
+      username?: string | null;
+      display_name?: string | null;
+      avatar_url?: string | null;
+      role?: string | null;
+      is_vip?: boolean | null;
+      equipped_border?: string | null;
+    } | null;
+  }>>([]);
+
+  const [loadingReplies, setLoadingReplies] = useState(false);
+  const [newReplyText, setNewReplyText] = useState("");
+  const [submittingReply, setSubmittingReply] = useState(false);
+
+  const handleOpenReplies = async (
+    comment: { id: string; anime_id: number; episode_number?: number | null; content: string; created_at: string },
+    animeTitle?: string
+  ) => {
+    hapticLight();
+    setActiveReplyComment({
+      ...comment,
+      animeTitle: animeTitle || `Anime #${comment.anime_id}`,
+    });
+    setLoadingReplies(true);
+    setRepliesList([]);
+    setNewReplyText("");
+
+    try {
+      const { data, error } = await supabase
+        .from("comments")
+        .select("id, user_id, anime_id, content, created_at, likes, is_spoiler, parent_id")
+        .eq("parent_id", comment.id)
+        .order("created_at", { ascending: true })
+        .limit(100);
+
+      if (error) throw error;
+      const rows = data ?? [];
+
+      const authorIds = [...new Set(rows.map((r) => r.user_id).filter(Boolean))];
+      let profileMap = new Map<string, any>();
+
+      if (authorIds.length > 0) {
+        const { data: profiles, error: pError } = await supabase
+          .from("profiles")
+          .select("id, username, display_name, avatar_url, role, is_vip, equipped_border")
+          .in("id", authorIds);
+
+        if (!pError && profiles) {
+          profileMap = new Map(profiles.map((p) => [p.id, p]));
+        }
+      }
+
+      setRepliesList(
+        rows.map((r) => ({
+          id: r.id,
+          user_id: r.user_id,
+          content: r.content,
+          created_at: r.created_at,
+          author: profileMap.get(r.user_id) ?? null,
+        }))
+      );
+    } catch (err) {
+      console.warn("Gagal memuat balasan:", err);
+    } finally {
+      setLoadingReplies(false);
+    }
+  };
+
+  const handleSendReply = async () => {
+    if (!activeReplyComment || !newReplyText.trim() || submittingReply) return;
+    if (!auth.user?.id) {
+      Alert.alert("Perhatian", "Silakan login untuk membalas komentar.");
+      return;
+    }
+
+    const trimmed = newReplyText.trim();
+    setSubmittingReply(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("comments")
+        .insert({
+          user_id: auth.user.id,
+          anime_id: Number(activeReplyComment.anime_id),
+          episode_number: activeReplyComment.episode_number ? Number(activeReplyComment.episode_number) : null,
+          parent_id: activeReplyComment.id,
+          content: trimmed,
+          is_spoiler: false,
+        })
+        .select("id, user_id, content, created_at")
+        .single();
+
+      if (error) throw error;
+
+      hapticSuccess();
+      setNewReplyText("");
+      showToast("Balasan berhasil dikirim!");
+
+      const myName =
+        auth.profile?.display_name ||
+        auth.user?.user_metadata?.full_name ||
+        auth.user?.user_metadata?.name ||
+        auth.profile?.username ||
+        "Pengguna";
+
+      const myAv = auth.profile?.avatar_url || auth.user?.user_metadata?.avatar_url || null;
+
+      const newReplyItem = {
+        id: data.id,
+        user_id: auth.user.id,
+        content: trimmed,
+        created_at: data.created_at || new Date().toISOString(),
+        author: {
+          username: auth.profile?.username || null,
+          display_name: myName,
+          avatar_url: myAv,
+          role: auth.profile?.role || "Member",
+          is_vip: auth.profile?.is_vip || false,
+          equipped_border: myEquippedBorder,
+        },
+      };
+
+      setRepliesList((prev) => [...prev, newReplyItem]);
+      replyCountsQuery.refetch().catch(() => {});
+    } catch (err: any) {
+      hapticLight();
+      Alert.alert("Gagal Mengirim", err?.message || "Tidak dapat mengirim balasan saat ini.");
+    } finally {
+      setSubmittingReply(false);
+    }
+  };
 
   // Handle Send Friend Request
   const handleSendFriendRequest = async () => {
@@ -570,18 +822,20 @@ export default function PublicUserProfileScreen() {
                 </Pressable>
               )}
 
-              {/* Tombol Bulat Chat Private */}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Chat Private"
-                onPress={() => {
-                  hapticLight();
-                  router.push(`/chat/${targetUser.id}` as never);
-                }}
-                style={({ pressed }) => [styles.chatCircleBtn, pressed && styles.btnPressed]}
-              >
-                <AppIcon name="comment-text" size={20} color="#FFFFFF" />
-              </Pressable>
+              {/* Tombol Bulat Chat Private (Hanya muncul jika sudah berteman) */}
+              {friendStatus === "accepted" && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Chat Private"
+                  onPress={() => {
+                    hapticLight();
+                    router.push(`/chat/${targetUser.id}` as never);
+                  }}
+                  style={({ pressed }) => [styles.chatCircleBtn, pressed && styles.btnPressed]}
+                >
+                  <AppIcon name="comment-text" size={20} color="#FFFFFF" />
+                </Pressable>
+              )}
             </View>
           )}
 
@@ -696,25 +950,110 @@ export default function PublicUserProfileScreen() {
                   </Text>
                 </View>
               ) : (
-                userComments.map((comment) => (
-                  <View key={comment.id} style={styles.commentCard}>
-                    <View style={styles.commentHeaderRow}>
-                      <Text style={styles.commentEpisodeText}>
-                        {comment.episode_number ? `Episode ${comment.episode_number}` : "Diskusi Anime"}
-                      </Text>
-                      <Text style={styles.commentTimeText}>
-                        {formatRelativeTimeId(comment.created_at)}
-                      </Text>
-                    </View>
-                    <Text style={styles.commentBodyText}>{comment.content}</Text>
-                    <View style={styles.commentFooterRow}>
-                      <View style={styles.commentLikesBadge}>
-                        <AppIcon name="heart-outline" size={13} color="#94A3B8" />
-                        <Text style={styles.commentLikesText}>{(comment.likes || 0).toString()}</Text>
+                userComments.map((comment) => {
+                  const animeInfo = animePosterMap.get(comment.anime_id);
+                  const replyCount = replyCountsQuery.data?.[comment.id] ?? 0;
+                  const initialLetter = (targetUser?.displayName || targetUser?.username || "U").trim().charAt(0).toUpperCase() || "U";
+                  return (
+                    <View key={comment.id} style={styles.commentCard}>
+                      {/* Author Bar */}
+                      <View style={styles.commentAuthorRow}>
+                        <BorderAvatar
+                          avatarUrl={targetUser?.avatarUrl}
+                          fallbackText={initialLetter}
+                          borderId={targetUser?.equippedBorder}
+                          avatarSize={26}
+                        />
+                        <Text style={styles.commentAuthorName} numberOfLines={1}>
+                          {targetUser?.displayName || targetUser?.username || "Pengguna"}
+                        </Text>
+                        <UserVerificationBadge
+                          role={targetUser?.role}
+                          isVip={targetUser?.isVip}
+                          size={14}
+                        />
+                        <Text style={styles.commentTimeDot}>•</Text>
+                        <Text style={styles.commentTimeText}>
+                          {formatRelativeTimeId(comment.created_at)}
+                        </Text>
+                      </View>
+
+                      {/* Anime Context Box */}
+                      <Pressable
+                        onPress={() => router.push(`/anime/${comment.anime_id}` as never)}
+                        style={({ pressed }) => [
+                          styles.commentAnimeRow,
+                          pressed && styles.btnPressed,
+                        ]}
+                      >
+                        {animeInfo?.banner ? (
+                          <Image
+                            source={{ uri: animeInfo.banner }}
+                            style={StyleSheet.absoluteFillObject}
+                            contentFit="cover"
+                            cachePolicy="memory-disk"
+                          />
+                        ) : null}
+                        {animeInfo?.banner ? (
+                          <LinearGradient
+                            colors={["rgba(11, 15, 23, 0.78)", "rgba(11, 15, 23, 0.94)"]}
+                            style={StyleSheet.absoluteFillObject}
+                          />
+                        ) : null}
+                        {animeInfo?.image ? (
+                          <Image
+                            source={{ uri: animeInfo.image }}
+                            style={styles.commentAnimeThumb}
+                            contentFit="cover"
+                            transition={150}
+                            cachePolicy="memory-disk"
+                          />
+                        ) : (
+                          <View style={styles.commentAnimeThumbFallback}>
+                            <AppIcon name="movie-open-outline" size={16} color="#64748B" />
+                          </View>
+                        )}
+                        <View style={styles.commentAnimeInfo}>
+                          <Text style={styles.commentAnimeTitle} numberOfLines={1}>
+                            {animeInfo?.title || `Anime #${comment.anime_id}`}
+                          </Text>
+                          <Text style={styles.commentEpisodeText}>
+                            {comment.episode_number
+                              ? `Episode ${comment.episode_number}`
+                              : "Diskusi Umum"}
+                          </Text>
+                        </View>
+                      </Pressable>
+
+                      {/* Comment Body */}
+                      <Text style={styles.commentBodyText}>{comment.content}</Text>
+
+                      {/* Comment Footer */}
+                      <View style={styles.commentFooterRow}>
+                        <Pressable
+                          onPress={() => handleOpenReplies(comment, animeInfo?.title)}
+                          style={({ pressed }) => [
+                            styles.commentRepliesBadge,
+                            pressed && styles.btnPressed,
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel="Lihat balasan komentar"
+                        >
+                          <AppIcon name="reply-outline" size={13} color="#94A3B8" />
+                          <Text style={styles.commentRepliesText}>
+                            Balasan {replyCount > 0 ? `(${replyCount})` : ""}
+                          </Text>
+                        </Pressable>
+                        <View style={styles.commentLikesBadge}>
+                          <AppIcon name="heart-outline" size={13} color="#94A3B8" />
+                          <Text style={styles.commentLikesText}>
+                            {(comment.likes || 0).toString()}
+                          </Text>
+                        </View>
                       </View>
                     </View>
-                  </View>
-                ))
+                  );
+                })
               )}
             </View>
           )}
@@ -803,6 +1142,185 @@ export default function PublicUserProfileScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* ─── BOTTOM SHEET: BALASAN KOMENTAR (SLIDE UP) ─── */}
+      <Modal
+        visible={Boolean(activeReplyComment)}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setActiveReplyComment(null)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.replySheetBackdrop}
+        >
+          <Pressable
+            style={styles.replySheetOverlay}
+            onPress={() => setActiveReplyComment(null)}
+          />
+          <View style={styles.replySheetContent}>
+            {/* Top Handle Pill */}
+            <View style={styles.replySheetHandle} />
+
+            {/* Sheet Header */}
+            <View style={styles.replySheetHeader}>
+              <View style={styles.replySheetTitleRow}>
+                <AppIcon name="chat" size={19} color="#38BDF8" />
+                <Text style={styles.replySheetTitle}>Balasan Komentar</Text>
+                <View style={styles.replyCountBadge}>
+                  <Text style={styles.replyCountBadgeText}>{repliesList.length}</Text>
+                </View>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Tutup lembar balasan"
+                onPress={() => setActiveReplyComment(null)}
+                style={({ pressed }) => [styles.replyCloseBtn, pressed && styles.btnPressed]}
+                hitSlop={10}
+              >
+                <AppIcon name="close" size={18} color="#94A3B8" />
+              </Pressable>
+            </View>
+
+            {/* Pinned Parent Comment (Komentar Pengguna) */}
+            {activeReplyComment ? (
+              <View style={styles.replyPinnedBox}>
+                <View style={styles.replyPinnedHeader}>
+                  <BorderAvatar
+                    avatarUrl={targetUser?.avatarUrl}
+                    fallbackText={(targetUser?.displayName || targetUser?.username || "U").trim().charAt(0).toUpperCase()}
+                    borderId={targetUser?.equippedBorder}
+                    avatarSize={24}
+                  />
+                  <Text style={styles.replyPinnedName} numberOfLines={1}>
+                    {targetUser?.displayName || targetUser?.username || "Pengguna"}
+                  </Text>
+                  <UserVerificationBadge
+                    role={targetUser?.role}
+                    isVip={targetUser?.isVip}
+                    size={13}
+                  />
+                  <Text style={styles.replyPinnedDot}>•</Text>
+                  <Text style={styles.replyPinnedTime}>
+                    {formatRelativeTimeId(activeReplyComment.created_at)}
+                  </Text>
+                </View>
+                <Text style={styles.replyPinnedText} numberOfLines={3}>
+                  {activeReplyComment.content}
+                </Text>
+                <View style={styles.replyPinnedMeta}>
+                  <AppIcon name="movie-open-outline" size={12} color="#64748B" />
+                  <Text style={styles.replyPinnedAnime} numberOfLines={1}>
+                    {activeReplyComment.animeTitle}{" "}
+                    {activeReplyComment.episode_number
+                      ? `· Episode ${activeReplyComment.episode_number}`
+                      : "· Diskusi Umum"}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
+            {/* Divider / Subheader */}
+            <View style={styles.replySectionDivider}>
+              <Text style={styles.replySectionTitle}>
+                {repliesList.length > 0 ? "Semua Balasan" : "Belum Ada Balasan"}
+              </Text>
+            </View>
+
+            {/* List of Replies */}
+            <ScrollView
+              style={styles.replyListScroll}
+              contentContainerStyle={styles.replyListContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {loadingReplies ? (
+                <View style={styles.replyLoadingBox}>
+                  <ActivityIndicator size="small" color="#38BDF8" />
+                  <Text style={styles.replyLoadingText}>Memuat balasan komunitas...</Text>
+                </View>
+              ) : repliesList.length === 0 ? (
+                <View style={styles.replyEmptyBox}>
+                  <View style={styles.replyEmptyIconCircle}>
+                    <AppIcon name="chat" size={24} color="#64748B" />
+                  </View>
+                  <Text style={styles.replyEmptyTitle}>Belum Ada Balasan</Text>
+                  <Text style={styles.replyEmptySubtitle}>
+                    Komentar ini belum dibalas oleh pengguna lain. Jadilah yang pertama membalas di bawah!
+                  </Text>
+                </View>
+              ) : (
+                repliesList.map((item) => {
+                  const authorName = item.author?.display_name || item.author?.username || "Pengguna";
+                  const authorInitial = authorName.trim().charAt(0).toUpperCase() || "N";
+                  const authorAvatar = item.author?.avatar_url ? avatarUrl(item.author.avatar_url) : null;
+                  return (
+                    <View key={item.id} style={styles.replyCard}>
+                      <View style={styles.replyCardHeader}>
+                        <BorderAvatar
+                          avatarUrl={authorAvatar}
+                          fallbackText={authorInitial}
+                          borderId={item.author?.equipped_border}
+                          avatarSize={26}
+                        />
+                        <Text style={styles.replyCardName} numberOfLines={1}>
+                          {authorName}
+                        </Text>
+                        <UserVerificationBadge
+                          role={item.author?.role}
+                          isVip={item.author?.is_vip}
+                          size={13}
+                        />
+                        <Text style={styles.replyCardDot}>•</Text>
+                        <Text style={styles.replyCardTime}>
+                          {formatRelativeTimeId(item.created_at)}
+                        </Text>
+                      </View>
+                      <Text style={styles.replyCardBody}>{item.content}</Text>
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            {/* Quick Reply Input Bar */}
+            <View style={styles.replyInputBar}>
+              <BorderAvatar
+                avatarUrl={auth.profile?.avatar_url}
+                fallbackText={(auth.profile?.display_name || "N").charAt(0).toUpperCase()}
+                borderId={myEquippedBorder}
+                avatarSize={28}
+              />
+              <TextInput
+                value={newReplyText}
+                onChangeText={setNewReplyText}
+                placeholder="Tulis balasan balik..."
+                placeholderTextColor="#64748B"
+                style={styles.replyInput}
+                maxLength={500}
+                multiline={false}
+                returnKeyType="send"
+                onSubmitEditing={handleSendReply}
+              />
+              <Pressable
+                onPress={handleSendReply}
+                disabled={!newReplyText.trim() || submittingReply}
+                style={({ pressed }) => [
+                  styles.replySendBtn,
+                  (!newReplyText.trim() || submittingReply) && styles.replySendBtnDisabled,
+                  pressed && styles.btnPressed,
+                ]}
+              >
+                {submittingReply ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <AppIcon name="send" size={15} color="#FFFFFF" />
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1267,37 +1785,94 @@ const styles = StyleSheet.create({
 
   // Comment Card
   commentCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.035)",
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.06)",
-    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 2,
+    gap: 10,
   },
-  commentHeaderRow: {
+  commentAuthorRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 6,
   },
-  commentEpisodeText: {
+  commentAuthorName: {
     fontFamily: "Nunito-Bold",
+    fontSize: 13,
+    color: "#FFFFFF",
+    maxWidth: 140,
+  },
+  commentTimeDot: {
+    color: "#64748B",
     fontSize: 12,
-    color: "#38BDF8",
   },
   commentTimeText: {
     fontFamily: "Nunito-Regular",
-    fontSize: 11,
+    fontSize: 11.5,
     color: "#64748B",
+  },
+  commentAnimeRow: {
+    position: "relative",
+    overflow: "hidden",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    padding: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+  },
+  commentAnimeThumb: {
+    width: 36,
+    height: 48,
+    borderRadius: 6,
+  },
+  commentAnimeThumbFallback: {
+    width: 36,
+    height: 48,
+    borderRadius: 6,
+    backgroundColor: "#161B26",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  commentAnimeInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  commentAnimeTitle: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 13,
+    color: "#FFFFFF",
+  },
+  commentEpisodeText: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 11,
+    color: "#94A3B8",
   },
   commentBodyText: {
     fontFamily: "Nunito-Regular",
-    fontSize: 13,
+    fontSize: 13.5,
     color: "#E2E8F0",
-    lineHeight: 18,
+    lineHeight: 19,
   },
   commentFooterRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 14,
+    paddingTop: 4,
+  },
+  commentRepliesBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  commentRepliesText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
+    color: "#94A3B8",
   },
   commentLikesBadge: {
     flexDirection: "row",
@@ -1306,8 +1881,251 @@ const styles = StyleSheet.create({
   },
   commentLikesText: {
     fontFamily: "Nunito-Bold",
-    fontSize: 11,
+    fontSize: 11.5,
     color: "#94A3B8",
+  },
+
+  // ─── BOTTOM SHEET BALASAN KOMENTAR ───
+  replySheetBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+  },
+  replySheetOverlay: {
+    flex: 1,
+  },
+  replySheetContent: {
+    maxHeight: "82%",
+    backgroundColor: "#0D111A",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.1)",
+    paddingTop: 10,
+    paddingBottom: Platform.OS === "ios" ? 28 : 16,
+  },
+  replySheetHandle: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignSelf: "center",
+    marginBottom: 10,
+  },
+  replySheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.06)",
+  },
+  replySheetTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  replySheetTitle: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 16,
+    color: "#FFFFFF",
+  },
+  replyCountBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    backgroundColor: "rgba(56, 189, 248, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.3)",
+  },
+  replyCountBadgeText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
+    color: "#38BDF8",
+  },
+  replyCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  replyPinnedBox: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: "rgba(56, 189, 248, 0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.15)",
+    gap: 6,
+  },
+  replyPinnedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  replyPinnedName: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 13,
+    color: "#FFFFFF",
+    maxWidth: 130,
+  },
+  replyPinnedDot: {
+    color: "#64748B",
+    fontSize: 11,
+  },
+  replyPinnedTime: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 11,
+    color: "#64748B",
+  },
+  replyPinnedText: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 13,
+    color: "#CBD5E1",
+    lineHeight: 18,
+  },
+  replyPinnedMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingTop: 4,
+  },
+  replyPinnedAnime: {
+    fontFamily: "Nunito-SemiBold",
+    fontSize: 11,
+    color: "#38BDF8",
+    flex: 1,
+  },
+  replySectionDivider: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 6,
+  },
+  replySectionTitle: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12.5,
+    color: "#94A3B8",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  replyListScroll: {
+    maxHeight: 280,
+    paddingHorizontal: 16,
+  },
+  replyListContent: {
+    paddingVertical: 6,
+    gap: 12,
+  },
+  replyLoadingBox: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 32,
+    gap: 8,
+  },
+  replyLoadingText: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 12,
+    color: "#94A3B8",
+  },
+  replyEmptyBox: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 28,
+    gap: 8,
+  },
+  replyEmptyIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  replyEmptyTitle: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 14,
+    color: "#FFFFFF",
+  },
+  replyEmptySubtitle: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 12,
+    color: "#64748B",
+    textAlign: "center",
+    paddingHorizontal: 20,
+    lineHeight: 16,
+  },
+  replyCard: {
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+    gap: 6,
+  },
+  replyCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  replyCardName: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12.5,
+    color: "#FFFFFF",
+    maxWidth: 120,
+  },
+  replyCardDot: {
+    color: "#64748B",
+    fontSize: 11,
+  },
+  replyCardTime: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 11,
+    color: "#64748B",
+  },
+  replyCardBody: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 13,
+    color: "#E2E8F0",
+    lineHeight: 18,
+    paddingLeft: 32,
+  },
+  replyInputBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.06)",
+  },
+  replyInput: {
+    flex: 1,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    paddingHorizontal: 14,
+    fontFamily: "Nunito-Regular",
+    fontSize: 13,
+    color: "#FFFFFF",
+  },
+  replySendBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  replySendBtnDisabled: {
+    opacity: 0.4,
+    backgroundColor: "#334155",
   },
 
   // Bookmarks Grid

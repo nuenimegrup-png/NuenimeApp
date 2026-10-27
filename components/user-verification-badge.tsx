@@ -1,5 +1,6 @@
 import React from "react";
 import { AppIcon } from "@/components/app-icon";
+import { isSpecialRole } from "@/lib/admin-service";
 
 export type VerificationStatus = "developer_admin" | "verified_member" | "none";
 
@@ -7,34 +8,17 @@ export function getVerificationStatus(
   role?: string | null,
   isVip?: boolean | null
 ): VerificationStatus {
-  if (role === "guest") return "none";
+  if (!role || role === "guest") return "none";
 
   const cleanRole = (role || "").trim().toLowerCase();
-  if (cleanRole === "guest") return "none";
+  if (cleanRole === "guest" || cleanRole === "none") return "none";
 
-  // 1. Centang Merah: Administrator & Developer / Owner
-  const adminDeveloperRoles = [
-    "owner",
-    "ceo",
-    "super admin",
-    "superadmin",
-    "admin",
-    "developer",
-    "dev",
-    "devops engineer",
-    "security analyst",
-    "pen tester",
-    "database manager",
-    "finance admin",
-    "finance",
-    "moderator",
-  ];
-
-  if (adminDeveloperRoles.includes(cleanRole)) {
+  // 1. Centang Merah: Semua pengguna dengan Role Khusus (Admin, Developer, Owner, Support, Moderator, dll)
+  if (isSpecialRole(cleanRole)) {
     return "developer_admin";
   }
 
-  // 2. Centang Biru: Seluruh Member resmi Nuenime, Member VIP, dan peran komunitas lainnya
+  // 2. Centang Biru: Seluruh Member biasa / Member VIP
   return "verified_member";
 }
 

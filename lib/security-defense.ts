@@ -6,9 +6,9 @@ const LAST_DISCUSSION_TIME_KEY = "@nuenime_last_discussion_timestamp_";
 const LAST_CHAT_TIME_KEY = "@nuenime_last_chat_timestamp_";
 const RECENT_MESSAGES_KEY = "@nuenime_recent_user_messages_";
 
-export const DISCUSSION_COOLDOWN_SECONDS = 60; // 1 menit jeda pesan diskusi
+export const DISCUSSION_COOLDOWN_SECONDS = 60; // 1 menit jeda pesan diskusi anti-spam
 export const CHAT_COOLDOWN_SECONDS = 30; // 30 detik jeda pesan chat anti-flood & anti-spam
-export const MAX_SAME_MESSAGE_LIMIT = 4; // 4x pesan sama = AUTO BAN
+export const MAX_SAME_MESSAGE_LIMIT = 4; // 4x pesan spam panjang yang sama = AUTO BAN
 
 /**
  * 1. SANITASI PESAN (ANTI-INJEKSI XSS & SQL & ZERO-WIDTH EVASION)
@@ -160,9 +160,12 @@ export async function checkDuplicateSpamAndAutoBan(
   }
 
   const normalized = normalizeForSpamCheck(rawMessage);
-  // Jika pesan terlalu pendek (misal hanya 1 karakter), lewati normalisasi ketat tapi tetap catat
-  const compareText = normalized.length >= 2 ? normalized : rawMessage.trim().toLowerCase();
+  // Jangan deteksi spam untuk kata-kata pendek umum seperti "p", "halo", "ok", "wkwk", "tes", dll
+  if (normalized.length < 6 || ["halo", "wkwk", "haha", "tes", "siap", "info", "iya", "oke", "done"].includes(normalized)) {
+    return { isAllowed: true, isBanned: false, consecutiveCount: 0 };
+  }
 
+  const compareText = normalized;
   const key = `${RECENT_MESSAGES_KEY}${channel}_${userId}`;
 
   try {

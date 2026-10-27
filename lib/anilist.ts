@@ -155,7 +155,7 @@ const scheduleMediaFields = `
  * descriptions per row.
  */
 const slimAnimeFields = `
-  id type title { romaji english native } coverImage { large extraLarge } format status episodes
+  id type title { romaji english native } coverImage { large extraLarge } bannerImage format status episodes
   nextAiringEpisode { episode airingAt }
 `;
 
