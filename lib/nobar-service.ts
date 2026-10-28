@@ -1,6 +1,15 @@
+import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabase";
-import { getServers, getStream, playableSources, anirakuProxyUrl, nativePlaybackHeaders } from "./aniraku-api";
+import {
+  getServers,
+  getStream,
+  playableSources,
+  anirakuProxyUrl,
+  isAnirakuProxyUrl,
+  nativePlaybackHeaders,
+  CHROME_ANDROID_UA,
+} from "./aniraku-api";
 import { filterAndCensorMessage } from "./word-filter";
 import { sanitizeMessage } from "./security-defense";
 
@@ -355,12 +364,18 @@ export async function sendNobarMessage(params: {
 }
 
 /**
- * Resolusi link stream anime untuk player nobar
+ * Resolusi link stream anime untuk player nobar (multi-server fallback & ExoPlayer-ready)
  */
 export async function resolveNobarStream(
   animeId: number,
   episode: number
-): Promise<{ uri: string | null; headers?: Record<string, string>; isEmbed?: boolean; error?: string }> {
+): Promise<{
+  uri: string | null;
+  headers?: Record<string, string>;
+  isEmbed?: boolean;
+  type?: string;
+  error?: string;
+}> {
   try {
     // 1. Ambil server yang tersedia untuk episode ini
     const servers = await getServers(animeId, episode, "sub");
@@ -368,38 +383,56 @@ export async function resolveNobarStream(
       return { uri: null, error: "Tidak ada server video yang tersedia untuk episode ini." };
     }
 
-    // 2. Ambil server pertama yang aktif
-    const activeServer = servers[0];
+    // 2. Iterasi server secara berurutan untuk mencari sumber yang aktif
+    for (const activeServer of servers.slice(0, 4)) {
+      try {
+        let sources = activeServer.sources ? playableSources(activeServer.sources) : [];
+        let rawHeaders = activeServer.headers;
 
-    // Cek sumber langsung jika tersedia
-    if (activeServer.sources && activeServer.sources.length > 0) {
-      const valid = playableSources(activeServer.sources);
-      if (valid.length > 0) {
-        const src = valid[0];
-        const isEmbed = src.type === "embed" || src.url?.includes("embed") || src.url?.includes("iframe");
-        const headers = nativePlaybackHeaders(activeServer.headers);
-        const finalUrl = isEmbed ? src.url : anirakuProxyUrl(src.url, headers);
-        return { uri: finalUrl, headers, isEmbed };
-      }
-    }
+        if (!sources.length) {
+          const streamData = await getStream({
+            animeId,
+            episode,
+            provider: activeServer.provider || "anikoto",
+            lang: "sub",
+            quality: "auto",
+          });
+          if (streamData?.sources) {
+            sources = playableSources(streamData.sources);
+            rawHeaders = streamData.headers || rawHeaders;
+          }
+        }
 
-    // 3. Panggil API getStream
-    const streamData = await getStream({
-      animeId,
-      episode,
-      provider: activeServer.provider || "anikoto",
-      lang: "sub",
-      quality: "auto",
-    });
+        if (sources.length > 0) {
+          const src = sources[0];
+          const isEmbed = src.type === "embed" || src.url?.includes("embed") || src.url?.includes("iframe");
+          const isProxy = isAnirakuProxyUrl(src.url);
 
-    if (streamData?.sources && streamData.sources.length > 0) {
-      const valid = playableSources(streamData.sources);
-      if (valid.length > 0) {
-        const src = valid[0];
-        const isEmbed = src.type === "embed" || src.url?.includes("embed") || src.url?.includes("iframe");
-        const headers = nativePlaybackHeaders(streamData.headers || activeServer.headers);
-        const finalUrl = isEmbed ? src.url : anirakuProxyUrl(src.url, headers);
-        return { uri: finalUrl, headers, isEmbed };
+          const finalUrl = isEmbed
+            ? src.url
+            : isProxy
+              ? src.url
+              : Platform.OS === "web"
+                ? anirakuProxyUrl(src.url, nativePlaybackHeaders(rawHeaders))
+                : src.url;
+
+          // Header akurat agar ExoPlayer di Android tidak ditolak 403 Forbidden
+          const finalHeaders: Record<string, string> = isProxy
+            ? {
+                "User-Agent": CHROME_ANDROID_UA,
+                Referer: "https://aniraku.tech/",
+              }
+            : {
+                "User-Agent": CHROME_ANDROID_UA,
+                ...(nativePlaybackHeaders(rawHeaders) || {}),
+              };
+
+          const streamType = src.type === "hls" || src.url?.includes(".m3u8") || isProxy ? "m3u8" : undefined;
+
+          return { uri: finalUrl, headers: finalHeaders, isEmbed, type: streamType };
+        }
+      } catch {
+        continue;
       }
     }
 

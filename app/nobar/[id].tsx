@@ -147,16 +147,34 @@ export default function NobarWatchPartyScreen() {
 
   // LiveKit RTC Voice Chat (On-Mic Realtime)
   const voice = useNobarVoice(roomId, currentUserId, currentUserName);
+  const [remoteSpeakingIds, setRemoteSpeakingIds] = useState<string[]>([]);
+  const speakingSet = useMemo(() => {
+    return new Set([...voice.speakingUserIds, ...remoteSpeakingIds]);
+  }, [voice.speakingUserIds, remoteSpeakingIds]);
 
   // Video Streaming State
   const [streamUri, setStreamUri] = useState<string | null>(null);
   const [streamHeaders, setStreamHeaders] = useState<Record<string, string> | undefined>();
+  const [streamType, setStreamType] = useState<string | undefined>("m3u8");
   const [loadingStream, setLoadingStream] = useState(true);
   const [streamError, setStreamError] = useState<string | null>(null);
 
+  // Buffer Config standar ExoPlayer Android agar streaming HLS lancar tanpa frame drop
+  const videoBufferConfig = useMemo(() => ({
+    minBufferMs: 15_000,
+    maxBufferMs: 120_000,
+    bufferForPlaybackMs: 2_500,
+    bufferForPlaybackAfterRebufferMs: 5_000,
+  }), []);
+
   const videoSource = useMemo(() => {
-    return { uri: streamUri || undefined, headers: streamHeaders };
-  }, [streamUri, streamHeaders]);
+    return {
+      uri: streamUri || undefined,
+      headers: streamHeaders,
+      type: streamType || "m3u8",
+      bufferConfig: videoBufferConfig,
+    };
+  }, [streamUri, streamHeaders, streamType, videoBufferConfig]);
 
   // Playback State
   const [isPlaying, setIsPlaying] = useState(false);
@@ -263,6 +281,7 @@ export default function NobarWatchPartyScreen() {
       if (res.uri) {
         setStreamUri(res.uri);
         setStreamHeaders(res.headers);
+        setStreamType(res.type || "m3u8");
       } else {
         setStreamError(res.error || "Gagal memuat link streaming anime.");
       }
@@ -391,7 +410,24 @@ export default function NobarWatchPartyScreen() {
       }
     );
 
-    // B. Host answers sync requests from new viewers
+    // B. Voice Chat on-mic state listener
+    channel.on(
+      "broadcast",
+      { event: "voice_state" },
+      (payload: { payload: { userId: string; isMicOn: boolean } }) => {
+        const { userId: spkId, isMicOn: active } = payload?.payload || {};
+        if (!spkId) return;
+        setRemoteSpeakingIds((prev) => {
+          if (active) {
+            return prev.includes(spkId) ? prev : [...prev, spkId];
+          } else {
+            return prev.filter((id) => id !== spkId);
+          }
+        });
+      }
+    );
+
+    // C. Host answers sync requests from new viewers
     channel.on("broadcast", { event: "request_sync" }, () => {
       if (isHostRef.current) {
         channel.send({
@@ -532,6 +568,17 @@ export default function NobarWatchPartyScreen() {
       channelRef.current = null;
     };
   }, [roomId, currentUserId, currentUserName, currentUserAvatar, auth.profile?.role]);
+
+  // Sync Voice On-Mic status to all room participants
+  useEffect(() => {
+    if (channelRef.current) {
+      void channelRef.current.send({
+        type: "broadcast",
+        event: "voice_state",
+        payload: { userId: currentUserId, isMicOn: voice.isMicOn },
+      });
+    }
+  }, [voice.isMicOn, currentUserId]);
 
   // 5. Host Periodic Heartbeat Sync
   useEffect(() => {
@@ -944,6 +991,7 @@ export default function NobarWatchPartyScreen() {
               onLoad={(data: OnLoadData) => {
                 setDuration(data.duration);
                 isVideoLoadedRef.current = true;
+                setStreamError(null);
                 if (!isHostRef.current) {
                   const target = targetSyncTimeRef.current;
                   if (target !== null && target > 0) {
@@ -952,13 +1000,15 @@ export default function NobarWatchPartyScreen() {
                     setCurrentTime(target);
                     currentTimeRef.current = target;
                   }
-                  if (isPlayingRef.current) {
+                  if (isPlayingRef.current || roomRef.current?.is_playing) {
+                    setIsPlaying(true);
+                    isPlayingRef.current = true;
                     videoRef.current?.resume();
                   }
                 } else {
-                  if (isPlayingRef.current) {
-                    videoRef.current?.resume();
-                  }
+                  setIsPlaying(true);
+                  isPlayingRef.current = true;
+                  videoRef.current?.resume();
                 }
               }}
               onProgress={(data: OnProgressData) => {
@@ -968,6 +1018,9 @@ export default function NobarWatchPartyScreen() {
                 }
               }}
               onBuffer={({ isBuffering: buf }) => setIsBuffering(buf)}
+              onError={(err) => {
+                console.warn("[Nobar Video playback error]:", err);
+              }}
             />
 
             {/* Buffering Indicator */}
@@ -1294,7 +1347,7 @@ export default function NobarWatchPartyScreen() {
                   Boolean(item.isHost) ||
                   (room?.host_id ? item.userId === room.host_id : false);
                 const isSpecial = isSpecialRole(item.role);
-                const isSpeaking = voice.speakingUserIds.includes(item.userId);
+                const isSpeaking = speakingSet.has(item.userId);
 
                 return (
                   <View style={styles.participantRow}>
