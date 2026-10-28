@@ -34,7 +34,7 @@ const config: ExpoConfig = {
     softwareKeyboardLayoutMode: "resize",
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    permissions: ["POST_NOTIFICATIONS", "REQUEST_INSTALL_PACKAGES"],
+    permissions: ["POST_NOTIFICATIONS", "REQUEST_INSTALL_PACKAGES", "RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS"],
     intentFilters: [
       { action: "VIEW", autoVerify: true, data: [{ scheme: env.scheme, host: "auth" }], category: ["BROWSABLE", "DEFAULT"] },
       { action: "VIEW", data: [{ scheme: env.scheme, host: "anime", pathPattern: ".*" }], category: ["BROWSABLE", "DEFAULT"] },

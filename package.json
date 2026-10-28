@@ -72,6 +72,8 @@
     "express": "^4.22.1",
     "hls.js": "^1.7.2",
     "jose": "6.1.0",
+    "livekit-client": "^2.23.0",
+    "livekit-server-sdk": "^2.19.2",
     "mysql2": "^3.16.0",
     "phosphor-react-native": "^3.0.6",
     "react": "19.1.0",

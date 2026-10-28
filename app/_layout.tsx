@@ -111,6 +111,8 @@ export default function RootLayout() {
               <Stack.Screen name="inventory" options={{ presentation: "card" }} />
               <Stack.Screen name="avatar-decorations" options={{ presentation: "card" }} />
               <Stack.Screen name="developer" options={{ presentation: "card" }} />
+              <Stack.Screen name="nobar/index" options={{ presentation: "card" }} />
+              <Stack.Screen name="nobar/[id]" options={{ presentation: "card" }} />
             </Stack>
             <ConnectivitySignal />
             <AppUpdatePrompt />

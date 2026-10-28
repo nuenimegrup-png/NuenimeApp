@@ -828,6 +828,46 @@ export default function ProfileScreen() {
             </View>
           </Pressable>
 
+          {/* NOBAR ANIME BANNER */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Buka Nobar Anime"
+            onPress={() => {
+              hapticLight();
+              router.push("/nobar" as never);
+            }}
+            // @ts-ignore
+            onClick={() => {
+              hapticLight();
+              router.push("/nobar" as never);
+            }}
+            style={({ pressed }) => [
+              styles.nobarAnimeBanner,
+              pressed && styles.btnPressed,
+              Platform.OS === "web" && ({ cursor: "pointer" } as any),
+            ]}
+          >
+            <View style={styles.nobarIconCircle}>
+              <AppIcon name="television-play" size={22} color="#E2E8F0" />
+            </View>
+            <View style={styles.nobarTextCol}>
+              <View style={styles.nobarTitleRow}>
+                <Text style={styles.nobarTitle}>NOBAR ANIME</Text>
+                <View style={styles.nobarLiveBadge}>
+                  <View style={styles.nobarLiveDot} />
+                  <Text style={styles.nobarLiveBadgeText}>LIVE</Text>
+                </View>
+              </View>
+              <Text style={styles.nobarSubtitle} numberOfLines={1}>
+                Nonton bareng komunitas • Room Publik & Privat
+              </Text>
+            </View>
+            <View style={styles.nobarActionBtn}>
+              <Text style={styles.nobarActionText}>Masuk</Text>
+              <AppIcon name="chevron-right" size={16} color="#CBD5E1" />
+            </View>
+          </Pressable>
+
           {/* B. SECTION: TOKO BORDER & GACHA BANNER */}
           <View style={styles.socialSectionHeader}>
             <Text style={styles.socialSectionTitle}>Koleksi & Kustomisasi</Text>
@@ -3770,5 +3810,85 @@ const styles = StyleSheet.create({
   replySendBtnDisabled: {
     opacity: 0.4,
     backgroundColor: "#334155",
+  },
+  nobarAnimeBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(22, 27, 38, 0.72)",
+    borderRadius: 12,
+    padding: 13,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.11)",
+  },
+  nobarIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(255, 255, 255, 0.07)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.25)",
+  },
+  nobarTextCol: {
+    flex: 1,
+  },
+  nobarTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  nobarTitle: {
+    fontFamily: "Nunito-Black",
+    fontSize: 15,
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
+  },
+  nobarLiveBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(239, 68, 68, 0.16)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.35)",
+    gap: 4,
+  },
+  nobarLiveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "#EF4444",
+  },
+  nobarLiveBadgeText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 9,
+    color: "#EF4444",
+    letterSpacing: 0.5,
+  },
+  nobarSubtitle: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 11.5,
+    color: "#94A3B8",
+    marginTop: 2,
+  },
+  nobarActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 7,
+    gap: 3,
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.22)",
+  },
+  nobarActionText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12,
+    color: "#E2E8F0",
   },
 });
