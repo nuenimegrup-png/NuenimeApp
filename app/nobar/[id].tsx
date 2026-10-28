@@ -102,7 +102,9 @@ export default function NobarWatchPartyScreen() {
     } else {
       activateKeepAwakeAsync("nobar-watch-party").catch(() => {});
       return () => {
-        deactivateKeepAwake("nobar-watch-party");
+        try {
+          void deactivateKeepAwake("nobar-watch-party").catch(() => {});
+        } catch {}
       };
     }
   }, []);

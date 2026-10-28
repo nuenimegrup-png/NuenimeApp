@@ -1,4 +1,4 @@
-import { AccessToken } from "livekit-server-sdk";
+import { SignJWT } from "jose";
 import type { Express, Request, Response } from "express";
 
 export function registerLiveKitRoutes(app: Express) {
@@ -21,22 +21,24 @@ export function registerLiveKitRoutes(app: Express) {
         return;
       }
 
-      // Generate LiveKit token dengan izin audio publish & subscribe
-      const at = new AccessToken(apiKey, apiSecret, {
-        identity: userId,
+      // Generate LiveKit Access Token via jose HS256 JWT
+      const secretBytes = new TextEncoder().encode(apiSecret);
+      const token = await new SignJWT({
+        video: {
+          room: `nobar_${roomId}`,
+          roomJoin: true,
+          canPublish: true,
+          canSubscribe: true,
+          canPublishData: true,
+        },
         name: userName,
-        ttl: "6h",
-      });
-
-      at.addGrant({
-        room: `nobar_${roomId}`,
-        roomJoin: true,
-        canPublish: true,
-        canSubscribe: true,
-        canPublishData: true,
-      });
-
-      const token = await at.toJwt();
+      })
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt()
+        .setIssuer(apiKey)
+        .setSubject(userId)
+        .setExpirationTime("6h")
+        .sign(secretBytes);
 
       res.status(200).json({
         success: true,
