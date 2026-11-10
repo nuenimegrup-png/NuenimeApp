@@ -4,6 +4,7 @@ import { Image } from "expo-image";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
+import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -23,6 +24,9 @@ import { BroadcastNotificationListener } from "@/components/broadcast-notificati
 import { AppIcon } from "@/components/app-icon";
 
 const APP_BG_COLOR = "#0E0E11";
+
+// Pastikan splash screen native tetap bertahan hingga view loading.gif siap
+void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 if (Platform.OS !== "web") {
   try {
@@ -65,19 +69,24 @@ export default function RootLayout() {
     "Nunito-Black": require("../assets/fonts/Nunito-Black.ttf"),
   });
 
-  const [splashVisible, setSplashVisible] = useState(true);
+  const [minSplashElapsed, setMinSplashElapsed] = useState(false);
 
   useEffect(() => {
     void SystemUI.setBackgroundColorAsync(APP_BG_COLOR).catch(() => {});
+    // Lepaskan splash screen native OS agar animasi loading.gif langsung aktif
+    void SplashScreen.hideAsync().catch(() => {});
+
+    // Beri jeda timer agar animasi loading.gif pembuka aplikasi dapat berputar dengan sempurna
+    const timer = setTimeout(() => {
+      setMinSplashElapsed(true);
+    }, 1800);
+
+    return () => clearTimeout(timer);
   }, []);
 
-  useEffect(() => {
-    if (fontsLoaded) {
-      setSplashVisible(false);
-    }
-  }, [fontsLoaded]);
+  const showSplash = !fontsLoaded || !minSplashElapsed;
 
-  if (!fontsLoaded || splashVisible) {
+  if (showSplash) {
     return (
       <GestureHandlerRootView style={{ flex: 1, backgroundColor: APP_BG_COLOR }}>
         <StatusBar style="light" translucent backgroundColor="transparent" />
