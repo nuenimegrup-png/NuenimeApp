@@ -423,7 +423,7 @@ export default function HomeScreen() {
                       pressed && styles.btnPressed,
                     ]}
                   >
-                    <AppIcon name="information" size={15} color="#E2E8F0" />
+                    <AppIcon name="information-outline" size={16} color="#E2E8F0" />
                     <Text style={styles.heroDetailText}>Detail</Text>
                   </Pressable>
                 </View>
