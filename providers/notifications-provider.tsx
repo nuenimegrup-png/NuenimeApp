@@ -31,10 +31,14 @@ export type NotificationPrefs = {
 };
 
 export const EPISODE_NOTIFICATION_CHANNEL_ID = "nuenime_episode_releases";
+export const SYSTEM_NOTIFICATION_CHANNEL_ID = "nuenime_system";
+export const BROADCAST_NOTIFICATION_CHANNEL_ID = "nuenime_broadcast";
+export const SOCIAL_NOTIFICATION_CHANNEL_ID = "nuenime_social";
 
 export async function setupEpisodeNotificationChannel() {
   if (Platform.OS !== "android") return;
   try {
+    // 1. Rilis Episode Baru
     await Notifications.setNotificationChannelAsync(EPISODE_NOTIFICATION_CHANNEL_ID, {
       name: "Rilis Episode Baru",
       description: "Notifikasi saat ada episode anime baru yang tayang di Nuenime",
@@ -46,8 +50,47 @@ export async function setupEpisodeNotificationChannel() {
       enableVibrate: true,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
+
+    // 2. Siaran Notifikasi Massal (Admin Broadcast)
+    await Notifications.setNotificationChannelAsync(BROADCAST_NOTIFICATION_CHANNEL_ID, {
+      name: "Siaran Notifikasi Massal",
+      description: "Pengumuman dan siaran langsung dari Admin Nuenime",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 300, 200, 300],
+      lightColor: "#F59E0B",
+      sound: "default",
+      showBadge: true,
+      enableVibrate: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+
+    // 3. Sistem & Hadiah Mailbox
+    await Notifications.setNotificationChannelAsync(SYSTEM_NOTIFICATION_CHANNEL_ID, {
+      name: "Sistem & Hadiah Mailbox",
+      description: "Notifikasi hadiah massal, event, dan informasi sistem",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#10B981",
+      sound: "default",
+      showBadge: true,
+      enableVibrate: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+
+    // 4. Pertemanan & Interaksi Sosial
+    await Notifications.setNotificationChannelAsync(SOCIAL_NOTIFICATION_CHANNEL_ID, {
+      name: "Pertemanan & Interaksi Sosial",
+      description: "Notifikasi permintaan pertemanan dan penerimaan teman baru",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 200, 250],
+      lightColor: "#EC4899",
+      sound: "default",
+      showBadge: true,
+      enableVibrate: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
   } catch (err) {
-    console.warn("[Notifications] Failed to setup episode channel:", err);
+    console.warn("[Notifications] Failed to setup notification channels:", err);
   }
 }
 
@@ -160,6 +203,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           pathname: "/(tabs)",
           params: { openMailbox: "true", giftId },
         } as never);
+      } else if (data?.type === "friend_request" || data?.actionUrl === "/connections") {
+        router.push("/connections" as never);
+      } else if (data?.type === "friend_accepted" || String(data?.actionUrl || "").startsWith("/chat/")) {
+        router.push((data.actionUrl || "/connections") as never);
       } else if (data?.actionUrl) {
         const url = String(data.actionUrl).trim();
         if (url.startsWith("http://") || url.startsWith("https://")) {

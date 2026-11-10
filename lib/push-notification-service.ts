@@ -37,14 +37,18 @@ export async function registerAndSavePushToken(userId: string): Promise<string |
     const pushToken = tokenResponse?.data;
     if (!pushToken) return null;
 
-    // Simpan ke Supabase jika token belum pernah disimpan atau ada perubahan
-    const savedToken = await AsyncStorage.getItem(STORAGE_SAVED_TOKEN);
-    if (savedToken !== pushToken) {
-      await supabase
+    // Simpan ke Supabase untuk user aktif jika token belum tersimpan
+    const userSavedKey = `${STORAGE_SAVED_TOKEN}_${userId}`;
+    const userSavedToken = await AsyncStorage.getItem(userSavedKey);
+    if (userSavedToken !== pushToken) {
+      const { error: updErr } = await supabase
         .from("profiles")
         .update({ push_token: pushToken })
         .eq("id", userId);
-      await AsyncStorage.setItem(STORAGE_SAVED_TOKEN, pushToken);
+      if (!updErr) {
+        await AsyncStorage.setItem(userSavedKey, pushToken);
+        await AsyncStorage.setItem(STORAGE_SAVED_TOKEN, pushToken);
+      }
     }
 
     return pushToken;
