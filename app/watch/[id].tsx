@@ -288,6 +288,8 @@ export default function WatchScreen() {
   const [episodeSearch, setEpisodeSearch] = useState("");
   const [episodePage, setEpisodePage] = useState(0);
   const [progressWidth, setProgressWidth] = useState(0);
+  const progressBarRef = useRef<View>(null);
+  const barPageXRef = useRef<number>(0);
   const [dragPct, setDragPct] = useState<number | null>(null);
   const [skipSegments, setSkipSegments] = useState<SkipSegments>({ intro: null, outro: null });
   // AniSkip telemetry (Track 4): distinguishes "no skip data" (empty) from
@@ -2414,22 +2416,50 @@ export default function WatchScreen() {
     return `EP ${previousKnownEpisode} ← → EP ${nextKnownEpisode}`;
   }, [nextKnownEpisode, previousKnownEpisode]);
 
-  const seekFromBar = (event: { nativeEvent: { locationX: number } }) => {
+  const calcProgressFromEvent = (event: any): number => {
+    if (duration <= 0 || progressWidth <= 0) return 0;
+    const native = event?.nativeEvent;
+    if (!native) return 0;
+
+    let localX = native.locationX;
+    // Jika pageX tersedia dan posisi bar sudah terukur, gunakan pageX (kebal terhadap child target glitch)
+    if (typeof native.pageX === "number" && barPageXRef.current > 0) {
+      localX = native.pageX - barPageXRef.current;
+    }
+
+    const clampedX = Math.max(0, Math.min(progressWidth, localX));
+    return clampedX / progressWidth;
+  };
+
+  const seekFromBar = (event: any) => {
     if (duration > 0 && progressWidth > 0) {
-      const target = Math.max(0, Math.min(duration, (event.nativeEvent.locationX / progressWidth) * duration));
+      const ratio = calcProgressFromEvent(event);
+      const target = Math.max(0, Math.min(duration, ratio * duration));
       markIntentionalSeek(target);
       videoRef.current?.seek(target);
     }
     setDragPct(null);
   };
 
-  const onBarTouchMove = (event: { nativeEvent: { locationX: number } }) => {
+  const onBarTouchMove = (event: any) => {
     if (duration > 0 && progressWidth > 0) {
-      setDragPct(Math.max(0, Math.min(100, (event.nativeEvent.locationX / progressWidth) * 100)));
+      const ratio = calcProgressFromEvent(event);
+      setDragPct(Math.max(0, Math.min(100, ratio * 100)));
     }
   };
 
-  const onBarTouchStart = () => { setDragPct(progressPct); };
+  const onBarTouchStart = (event: any) => {
+    progressBarRef.current?.measure((_x, _y, width, _height, pageX) => {
+      if (typeof width === "number" && width > 0) setProgressWidth(width);
+      if (typeof pageX === "number" && !isNaN(pageX)) barPageXRef.current = pageX;
+    });
+    if (duration > 0 && progressWidth > 0) {
+      const ratio = calcProgressFromEvent(event);
+      setDragPct(Math.max(0, Math.min(100, ratio * 100)));
+    } else {
+      setDragPct(progressPct);
+    }
+  };
 
   const enterFullscreen = useCallback(() => {
     // Close every overlay so fullscreen never opens with a hidden-behind-modal
@@ -2549,7 +2579,14 @@ export default function WatchScreen() {
     }
   }, [controlsOpacity, playerLocked, showControls]);
 
-  const onProgressLayout = (event: LayoutChangeEvent) => setProgressWidth(event.nativeEvent.layout.width);
+  const onProgressLayout = (event: LayoutChangeEvent) => {
+    const w = event.nativeEvent.layout.width;
+    setProgressWidth(w);
+    progressBarRef.current?.measure((_x, _y, width, _height, pageX) => {
+      if (typeof width === "number" && width > 0) setProgressWidth(width);
+      if (typeof pageX === "number" && !isNaN(pageX)) barPageXRef.current = pageX;
+    });
+  };
 
   // Priority: renditions parsed from the Auto manifest → ExoPlayer
   // bitrate caps (Android) → provider-claimed labels.
@@ -2747,12 +2784,23 @@ export default function WatchScreen() {
             {/* Timeline */}
             <View style={styles.timelineRow}>
               <Text style={styles.timeLabel}>{formatTime(currentTime)}</Text>
-              <View style={styles.progressBarTrack} onLayout={onProgressLayout} onTouchStart={onBarTouchStart} onTouchMove={onBarTouchMove} onTouchEnd={seekFromBar} accessibilityRole="adjustable" accessibilityLabel="Seek bar">
-                <View style={[styles.progressBuffered, dragPct !== null && styles.progressTrackThick, { width: `${bufferPct}%` }]} />
-                <View style={[styles.progressPlayed, dragPct !== null && styles.progressTrackThick, { width: `${dragPct !== null ? dragPct : progressPct}%` }]} />
-                {chapterTrack.map((segment) => <View key={segment.kind} style={[styles.chapterMarker, { left: `${segment.leftPct}%`, width: `${segment.widthPct}%` }]} />)}
-                <View style={[styles.scrubberKnob, dragPct !== null && styles.scrubberKnobActive, { left: `${dragPct !== null ? dragPct : progressPct}%` }]} />
-                {dragPct !== null ? <View style={[styles.dragPreview, { left: `${Math.max(0, Math.min(dragPct, 100))}%` }]}><Text style={styles.dragPreviewText}>{formatTime((dragPct / 100) * duration)}</Text></View> : null}
+              <View
+                ref={progressBarRef}
+                style={styles.progressBarTrack}
+                hitSlop={{ top: 14, bottom: 14, left: 6, right: 6 }}
+                onLayout={onProgressLayout}
+                onTouchStart={onBarTouchStart}
+                onTouchMove={onBarTouchMove}
+                onTouchEnd={seekFromBar}
+                onTouchCancel={() => setDragPct(null)}
+                accessibilityRole="adjustable"
+                accessibilityLabel="Seek bar"
+              >
+                <View pointerEvents="none" style={[styles.progressBuffered, dragPct !== null && styles.progressTrackThick, { width: `${bufferPct}%` }]} />
+                <View pointerEvents="none" style={[styles.progressPlayed, dragPct !== null && styles.progressTrackThick, { width: `${dragPct !== null ? dragPct : progressPct}%` }]} />
+                {chapterTrack.map((segment) => <View key={segment.kind} pointerEvents="none" style={[styles.chapterMarker, { left: `${segment.leftPct}%`, width: `${segment.widthPct}%` }]} />)}
+                <View pointerEvents="none" style={[styles.scrubberKnob, dragPct !== null && styles.scrubberKnobActive, { left: `${dragPct !== null ? dragPct : progressPct}%` }]} />
+                {dragPct !== null ? <View pointerEvents="none" style={[styles.dragPreview, { left: `${Math.max(0, Math.min(dragPct, 100))}%` }]}><Text style={styles.dragPreviewText}>{formatTime((dragPct / 100) * duration)}</Text></View> : null}
               </View>
               <Text style={styles.timeLabel}>{formatTime(duration)}</Text>
             </View>
