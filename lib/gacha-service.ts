@@ -10,11 +10,13 @@ import {
   WallpaperItem,
   WallpaperRarity,
   GachaTransaction,
+  DUPLICATE_BANNER_REFUND_CRYSTALS,
 } from "./gacha-data";
 import {
   getCrystalBalance as getTopUpCrystalBalance,
   setCrystalBalance as setTopUpCrystalBalance,
   deductCrystalBalance as deductTopUpCrystalBalance,
+  addCrystalBalance as addTopUpCrystalBalance,
 } from "./topup-service";
 import type { AdminUser } from "./admin-service";
 import { logAdminAction } from "./admin-service";
@@ -360,23 +362,45 @@ export async function updateGachaBanner(
   };
 
   try {
-    const { error } = await supabase
-      .from("gacha_banners")
-      .update({
-        name: updatedItem.name,
-        anime: updatedItem.anime,
-        rarity: updatedItem.rarity,
-        category: updatedItem.category,
-        exp_bonus: updatedItem.expBonus,
-        image: updatedItem.image,
-        color: updatedItem.color,
-        is_active: updatedItem.isActive,
-        updated_at: updatedItem.updatedAt,
-      })
-      .eq("id", updatedItem.id);
+    let rpcDone = false;
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_upsert_gacha_banner", {
+        p_banner: {
+          id: updatedItem.id,
+          name: updatedItem.name,
+          anime: updatedItem.anime,
+          rarity: updatedItem.rarity,
+          category: updatedItem.category,
+          exp_bonus: updatedItem.expBonus,
+          image: updatedItem.image,
+          color: updatedItem.color,
+          is_active: updatedItem.isActive,
+        },
+      });
+      if (!rpcErr && rpcRes && (rpcRes as any).success) {
+        rpcDone = true;
+      }
+    } catch {}
 
-    if (error) {
-      return { success: false, error: error.message };
+    if (!rpcDone) {
+      const { error } = await supabase
+        .from("gacha_banners")
+        .update({
+          name: updatedItem.name,
+          anime: updatedItem.anime,
+          rarity: updatedItem.rarity,
+          category: updatedItem.category,
+          exp_bonus: updatedItem.expBonus,
+          image: updatedItem.image,
+          color: updatedItem.color,
+          is_active: updatedItem.isActive,
+          updated_at: updatedItem.updatedAt,
+        })
+        .eq("id", updatedItem.id);
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
     }
   } catch (err: any) {
     console.warn("[gacha-service] Supabase update failed:", err);
@@ -520,13 +544,39 @@ export async function toggleGachaBannerActive(
   admin?: AdminUser
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await supabase
-      .from("gacha_banners")
-      .update({ is_active: isActive, updated_at: new Date().toISOString() })
-      .eq("id", id);
+    let rpcDone = false;
+    const current = await getAllGachaBanners();
+    const item = current.find((b) => b.id === id);
+    if (item) {
+      try {
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_upsert_gacha_banner", {
+          p_banner: {
+            id: item.id,
+            name: item.name,
+            anime: item.anime,
+            rarity: item.rarity,
+            category: item.category,
+            exp_bonus: item.expBonus,
+            image: item.image,
+            color: item.color,
+            is_active: isActive,
+          },
+        });
+        if (!rpcErr && rpcRes && (rpcRes as any).success) {
+          rpcDone = true;
+        }
+      } catch {}
+    }
 
-    if (error) {
-      return { success: false, error: error.message };
+    if (!rpcDone) {
+      const { error } = await supabase
+        .from("gacha_banners")
+        .update({ is_active: isActive, updated_at: new Date().toISOString() })
+        .eq("id", id);
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
     }
   } catch (err: any) {
     console.warn("[gacha-service] Supabase toggle active error:", err);
@@ -929,6 +979,8 @@ export async function executeGachaSummon(
   results: WallpaperItem[];
   newBalance: number;
   newOwnedCount: number;
+  duplicateCount?: number;
+  totalRefundCrystals?: number;
   xpAwarded?: number;
   newExp?: number;
   newLevel?: number;
@@ -963,11 +1015,33 @@ export async function executeGachaSummon(
     };
   }
 
-  // 4. Undi hadiah banner
+  // 3b. Ambil banner yang sudah dimiliki pengguna sebelum summon untuk deteksi duplikat
+  const previouslyOwned = new Set(await getOwnedWallpaperIds(userId));
+  const trackingSet = new Set(previouslyOwned);
+
+  // 4. Undi hadiah banner & tandai duplikat
   const results: WallpaperItem[] = [];
+  let duplicateCount = 0;
   for (let i = 0; i < count; i++) {
-    results.push(rollSingleItemFromPool(activePool, config.rates));
+    const rolled = rollSingleItemFromPool(activePool, config.rates);
+    const isDupe = trackingSet.has(rolled.id);
+    if (isDupe) {
+      duplicateCount += 1;
+      results.push({
+        ...rolled,
+        isDuplicate: true,
+        refundCrystals: DUPLICATE_BANNER_REFUND_CRYSTALS,
+      });
+    } else {
+      trackingSet.add(rolled.id);
+      results.push({
+        ...rolled,
+        isDuplicate: false,
+      });
+    }
   }
+
+  const totalRefundCrystals = duplicateCount * DUPLICATE_BANNER_REFUND_CRYSTALS;
   const bannerIds = results.map((r) => r.id);
   const txId = generateGachaTransactionId();
 
@@ -1024,6 +1098,20 @@ export async function executeGachaSummon(
     await recordBannerOwnership(userId, bannerIds);
   }
 
+  // 5b. JIKA ADA BANNER DUPLIKAT: KEMBALIKAN 500 CRYSTAL PER BANNER LANGSUNG KE SALDO PENGGUNA
+  if (totalRefundCrystals > 0) {
+    try {
+      finalBalance = await addTopUpCrystalBalance(
+        userId,
+        totalRefundCrystals,
+        `Kompensasi Gacha: ${duplicateCount}x banner duplikat ditukar ${totalRefundCrystals} Daylan Crystal`
+      );
+    } catch (err) {
+      console.warn("[gacha-service] Gagal menambahkan kompensasi crystal duplikat:", err);
+      finalBalance = await setTopUpCrystalBalance(userId, finalBalance + totalRefundCrystals);
+    }
+  }
+
   // 6. Update cache lokal AsyncStorage & riwayat
   const updatedOwned = await getOwnedWallpaperIds(userId);
   try {
@@ -1061,6 +1149,8 @@ export async function executeGachaSummon(
     results,
     newBalance: finalBalance,
     newOwnedCount: updatedOwned.length,
+    duplicateCount,
+    totalRefundCrystals,
     xpAwarded,
     newExp,
     newLevel,

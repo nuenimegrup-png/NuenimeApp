@@ -19,6 +19,7 @@ import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { AppIcon } from "@/components/app-icon";
+import { ChibiLoading } from "@/components/chibi-loading";
 import { BorderAvatar } from "@/components/border-avatar";
 import { getTierForLevel } from "@/components/level-progress-modal";
 import { getEquippedBorderId, getEquippedBorderStorageKey } from "@/lib/avatar-borders";
@@ -527,11 +528,7 @@ export default function LeaderboardScreen() {
       <Text style={styles.periodDateLabel}>{periodLabel}</Text>
 
       {isLoading ? (
-        <ActivityIndicator
-          size="large"
-          color="#38BDF8"
-          style={{ marginTop: 60 }}
-        />
+        <ChibiLoading size={80} style={{ marginTop: 60 }} />
       ) : entries.length === 0 ? (
         <View style={styles.empty}>
           <AppIcon name="trophy-outline" size={48} color="#334155" />

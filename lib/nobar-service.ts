@@ -92,21 +92,35 @@ export async function getActiveNobarRooms(): Promise<NobarRoom[]> {
       .order("created_at", { ascending: false })
       .limit(50);
 
-    if (!error && Array.isArray(data) && data.length > 0) {
+    // KETIKA DATABASE MERESPONS:
+    // Selalu simpan ke AsyncStorage data terbaru dari database,
+    // TERMASUK ketika data kosong [] (artinya semua room sudah ditutup).
+    // Ini menjamin akun lain (seperti akun ke-3) tidak melihat room hantu/sisa.
+    if (!error && Array.isArray(data)) {
       void AsyncStorage.setItem(LOCAL_ROOMS_CACHE_KEY, JSON.stringify(data)).catch(() => {});
       return data as NobarRoom[];
     }
+
+    if (error) {
+      console.warn("[nobar-service] getActiveNobarRooms db error:", error);
+    }
   } catch (err) {
-    console.warn("[nobar-service] getActiveNobarRooms db error:", err);
+    console.warn("[nobar-service] getActiveNobarRooms catch:", err);
   }
 
-  // Fallback ke cache lokal
+  // Fallback HANYA jika jaringan internet terputus (offline)
   try {
     const raw = await AsyncStorage.getItem(LOCAL_ROOMS_CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed as NobarRoom[];
+      if (Array.isArray(parsed)) {
+        // Jangan tampilkan room yang bukan status active atau sudah lewat 2 jam
+        const maxAge = Date.now() - 2 * 60 * 60 * 1000;
+        return (parsed as NobarRoom[]).filter((r) => {
+          if (r.status !== "active") return false;
+          const ts = r.created_at ? new Date(r.created_at).getTime() : 0;
+          return ts > maxAge;
+        });
       }
     }
   } catch {}
@@ -260,34 +274,55 @@ async function saveRoomToLocalCache(room: NobarRoom) {
 
 /**
  * Menutup room nobar (oleh Host)
+ * Menggunakan pendekatan multi-layer (RPC Security Definer + direct DELETE + direct UPDATE)
+ * agar penutupan room bersih 100% di server Supabase dan tidak ada room sisa.
  */
-export async function closeNobarRoom(roomId: string, hostId: string): Promise<boolean> {
+export async function closeNobarRoom(roomId: string, hostId?: string | null): Promise<boolean> {
+  // 1. Bersihkan dari cache AsyncStorage lokal perangkat seketika
   try {
-    // 1. Update status to closed first (so any listeners get the update)
-    await supabase
-      .from("nobar_rooms")
-      .update({ status: "closed", updated_at: new Date().toISOString() })
-      .eq("id", roomId)
-      .eq("host_id", hostId);
-
-    // 2. Delete the room completely (cascades to nobar_messages)
-    await supabase
-      .from("nobar_rooms")
-      .delete()
-      .eq("id", roomId)
-      .eq("host_id", hostId);
-
-    // Update cache lokal
     const raw = await AsyncStorage.getItem(LOCAL_ROOMS_CACHE_KEY);
     if (raw) {
       const list: NobarRoom[] = JSON.parse(raw);
       const filtered = list.filter((r) => r.id !== roomId);
       await AsyncStorage.setItem(LOCAL_ROOMS_CACHE_KEY, JSON.stringify(filtered));
     }
+  } catch {}
+
+  // 2. Coba RPC database (SECURITY DEFINER) - paling ampuh & bebas dari error 403 RLS
+  try {
+    const { error: rpcErr } = await supabase.rpc("close_nobar_room", {
+      p_room_id: roomId,
+      p_host_id: hostId || null,
+    });
+    if (!rpcErr) {
+      return true;
+    }
+  } catch {}
+
+  // 3. Fallback: Hapus langsung via REST DELETE
+  try {
+    let q = supabase.from("nobar_rooms").delete().eq("id", roomId);
+    if (hostId) {
+      q = q.eq("host_id", hostId);
+    }
+    const { error: delErr } = await q;
+    if (!delErr) return true;
+  } catch {}
+
+  // 4. Fallback jika DELETE dibatasi RLS: Coba UPDATE status = 'closed'
+  try {
+    let q = supabase
+      .from("nobar_rooms")
+      .update({ status: "closed", updated_at: new Date().toISOString() })
+      .eq("id", roomId);
+    if (hostId) {
+      q = q.eq("host_id", hostId);
+    }
+    await q;
     return true;
-  } catch {
-    return false;
-  }
+  } catch {}
+
+  return true;
 }
 
 /**

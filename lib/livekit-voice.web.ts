@@ -186,10 +186,13 @@ export function useNobarVoice(
   }, [isDeafened]);
 
   useEffect(() => {
+    if (roomId && userId) {
+      void connectVoice();
+    }
     return () => {
       disconnectVoice();
     };
-  }, [disconnectVoice]);
+  }, [roomId, userId, connectVoice, disconnectVoice]);
 
   return {
     isConnected,

@@ -17,8 +17,8 @@ export function buildEpisodeNotificationContent(input: EpisodeNotificationInput)
 } {
   const episode = Math.max(1, Math.floor(input.episode));
   return {
-    title: input.title.trim() || "Aniraku",
-    body: `Episode ${episode} is now available`,
+    title: input.title.trim() || "Nuenime",
+    body: `Episode ${episode} sudah tayang! Tonton sekarang di Nuenime.`,
     data: { animeId: input.animeId, episode },
   };
 }

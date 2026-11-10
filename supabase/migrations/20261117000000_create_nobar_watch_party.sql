@@ -66,7 +66,8 @@ CREATE POLICY "Anyone authenticated or guest can create rooms"
 
 CREATE POLICY "Host or members can update room state"
     ON public.nobar_rooms FOR UPDATE
-    USING (true);
+    USING (true)
+    WITH CHECK (true);
 
 CREATE POLICY "Host can delete room"
     ON public.nobar_rooms FOR DELETE
@@ -80,6 +81,29 @@ CREATE POLICY "Anyone can view messages in room"
 CREATE POLICY "Anyone can send messages in room"
     ON public.nobar_messages FOR INSERT
     WITH CHECK (true);
+
+-- Explicit table permissions for anon & authenticated roles to prevent 403 Forbidden
+GRANT ALL ON TABLE public.nobar_rooms TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.nobar_messages TO anon, authenticated, service_role;
+
+-- RPC Security Definer Function: Menjamin penutupan & penghapusan room
+-- selalu berhasil dari sisi host tanpa terhalang RLS atau permission PostgREST
+CREATE OR REPLACE FUNCTION public.close_nobar_room(p_room_id UUID, p_host_id TEXT DEFAULT NULL)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  IF p_host_id IS NOT NULL AND p_host_id <> '' THEN
+    DELETE FROM public.nobar_rooms WHERE id = p_room_id AND host_id = p_host_id;
+  ELSE
+    DELETE FROM public.nobar_rooms WHERE id = p_room_id;
+  END IF;
+  RETURN TRUE;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.close_nobar_room(UUID, TEXT) TO anon, authenticated, service_role;
 
 -- Enable Realtime for nobar tables
 DO $$

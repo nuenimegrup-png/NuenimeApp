@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -23,6 +23,15 @@ import { BroadcastNotificationListener } from "@/components/broadcast-notificati
 import { AppIcon } from "@/components/app-icon";
 
 const APP_BG_COLOR = "#0E0E11";
+
+if (Platform.OS !== "web") {
+  try {
+    const { registerGlobals } = require("@livekit/react-native");
+    registerGlobals();
+  } catch (e) {
+    console.warn("[App] LiveKit registerGlobals failed:", e);
+  }
+}
 
 /** Must render inside AppProviders — calls useQueryClient. */
 function StartupPrefetcher() {
@@ -113,6 +122,7 @@ export default function RootLayout() {
               <Stack.Screen name="developer" options={{ presentation: "card" }} />
               <Stack.Screen name="nobar/index" options={{ presentation: "card" }} />
               <Stack.Screen name="nobar/[id]" options={{ presentation: "card" }} />
+              <Stack.Screen name="lelang" options={{ presentation: "card" }} />
             </Stack>
             <ConnectivitySignal />
             <AppUpdatePrompt />

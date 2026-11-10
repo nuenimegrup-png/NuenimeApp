@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
+import { getCrystalBalance, deductCrystalBalance } from "@/lib/topup-service";
 
 export type BorderRarity = "Mythic" | "Legends" | "Epic" | "Rare" | "Normal";
 
@@ -453,7 +454,7 @@ export async function setOwnedBorderIds(
 
 /**
  * Mencatat pembelian border baru ke Supabase user_border_purchases.
- * Tidak melakukan pengurangan Crystal — pengurangan dilakukan oleh pemanggil (purchaseBorder).
+ * Memvalidasi dan memotong saldo Crystal secara aman (anti-bypass saldo kurang).
  * Menggunakan ON CONFLICT DO NOTHING untuk mencegah pembelian ganda.
  */
 export async function recordBorderPurchaseToSupabase(
@@ -462,6 +463,17 @@ export async function recordBorderPurchaseToSupabase(
   pricePaid: number
 ): Promise<{ success: boolean; error?: string; newBalance?: number }> {
   try {
+    // 0. Validasi ketat saldo akun di client/server sebelum proses apapun
+    if (pricePaid > 0) {
+      const balanceBefore = await getCrystalBalance(userId);
+      if (balanceBefore < pricePaid || balanceBefore <= 0) {
+        return {
+          success: false,
+          error: `Saldo Crystal tidak mencukupi (${(balanceBefore || 0).toLocaleString("id-ID")} Crystal). Dibutuhkan ${pricePaid.toLocaleString("id-ID")} Crystal.`,
+        };
+      }
+    }
+
     // 1. Coba eksekusi fungsi database atomik (aman dari tampering & bypass saldo)
     const { data: rpcData, error: rpcError } = await supabase.rpc("execute_border_purchase", {
       p_user_id: userId,
@@ -478,7 +490,24 @@ export async function recordBorderPurchaseToSupabase(
       return { success: true, newBalance: rpcData.new_balance };
     }
 
-    // 2. Fallback upsert standar
+    // 2. Fallback aman jika RPC tidak tersedia: WAJIB potong saldo terlebih dahulu
+    let newBalance: number | undefined;
+    if (pricePaid > 0) {
+      try {
+        newBalance = await deductCrystalBalance(
+          userId,
+          pricePaid,
+          `Beli Border Avatar: ${border.name} (${border.rarity})`
+        );
+      } catch (deductErr: any) {
+        return {
+          success: false,
+          error: deductErr?.message || "Saldo Crystal tidak mencukupi untuk membeli border ini.",
+        };
+      }
+    }
+
+    // 3. Catat kepemilikan HANYA SETELAH saldo berhasil dipotong
     const { error } = await supabase.from("user_border_purchases").upsert(
       {
         user_id: userId,
@@ -493,7 +522,7 @@ export async function recordBorderPurchaseToSupabase(
     if (error) {
       return { success: false, error: error.message };
     }
-    return { success: true };
+    return { success: true, newBalance };
   } catch (e: any) {
     return { success: false, error: e?.message ?? "unknown" };
   }

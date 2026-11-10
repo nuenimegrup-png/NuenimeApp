@@ -112,7 +112,35 @@ export function candidateFromAnime(anime: {
   if (!Number.isInteger(animeId) || animeId <= 0) return null;
   if (!next || !Number.isInteger(episode) || episode <= 0) return null;
   if (!Number.isFinite(airingAt) || airingAt <= 0) return null;
-  const title = anime.title?.english || anime.title?.romaji || anime.title?.native || "Your saved anime";
+  const title = anime.title?.english || anime.title?.romaji || anime.title?.native || "Anime";
+  return { animeId, title, episode, airingAt };
+}
+
+/**
+ * Mengubah entri jadwal tayang AniList mingguan (airingSchedules) menjadi
+ * kandidat pengingat notifikasi episode baru (Opsi 4: SEMUA Episode Baru).
+ */
+export function candidateFromAiringSchedule(schedule: {
+  airingAt?: number | null;
+  episode?: number | null;
+  media?: {
+    id?: number | null;
+    title?: { romaji?: string | null; english?: string | null; native?: string | null } | null;
+    isAdult?: boolean | null;
+  } | null;
+}): AiringReminderCandidate | null {
+  if (!schedule || schedule.media?.isAdult) return null;
+  const animeId = Number(schedule.media?.id);
+  const episode = Number(schedule.episode);
+  const airingAt = Number(schedule.airingAt);
+  if (!Number.isInteger(animeId) || animeId <= 0) return null;
+  if (!Number.isInteger(episode) || episode <= 0) return null;
+  if (!Number.isFinite(airingAt) || airingAt <= 0) return null;
+  const title =
+    schedule.media?.title?.english ||
+    schedule.media?.title?.romaji ||
+    schedule.media?.title?.native ||
+    "Anime";
   return { animeId, title, episode, airingAt };
 }
 

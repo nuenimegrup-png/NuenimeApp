@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Alert,
@@ -84,9 +84,16 @@ export default function HomeScreen() {
   const isAdultParam = nsfwFilterParam(nsfw.enabled);
   const { notifications } = useNotifications();
   const unreadNotifCount = notifications.data?.filter((n) => !n.read).length || 0;
+  const params = useLocalSearchParams<{ openMailbox?: string; giftId?: string }>();
   const [notifSheetVisible, setNotifSheetVisible] = useState(false);
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const [selectedGenre, setSelectedGenre] = useState<string>("Action");
+
+  useEffect(() => {
+    if (params?.openMailbox === "true") {
+      setNotifSheetVisible(true);
+    }
+  }, [params?.openMailbox]);
 
   const [cachedHome, setCachedHome] = useState<{ trending: any[]; popular: any[]; upcoming: any[] } | null>(memoryCachedHome);
 
@@ -672,6 +679,8 @@ export default function HomeScreen() {
       <NotificationSheet
         visible={notifSheetVisible}
         onClose={() => setNotifSheetVisible(false)}
+        initialTab={params?.openMailbox === "true" ? "gifts" : undefined}
+        initialGiftId={params?.giftId || null}
       />
     </SafeAreaView>
   );

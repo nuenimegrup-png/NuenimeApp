@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, useImperativeHandle } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -18,21 +18,32 @@ import { router, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
 
 import { AppIcon } from "@/components/app-icon";
+import { ChibiLoading } from "@/components/chibi-loading";
 import { BorderAvatar } from "@/components/border-avatar";
 import { UserVerificationBadge } from "@/components/user-verification-badge";
 import { getTierForLevel } from "@/components/level-progress-modal";
+import { ProfileCityPlaque } from "@/components/profile-city-plaque";
+import { ChatStickerPicker } from "@/components/chat-sticker-picker";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { getEquippedBorderId } from "@/lib/avatar-borders";
 import { hapticLight, hapticSuccess, hapticWarning } from "@/lib/haptics";
 import {
   type GlobalRoom,
   type GlobalChatMessage,
+  type GlobalChatReplyInfo,
   GLOBAL_ROOMS,
   getGlobalMessages,
   sendGlobalMessage,
   subscribeGlobalMessages,
   purgeGlobalChatMockCache,
 } from "@/lib/global-chat-service";
+import {
+  isStickerMessage,
+  extractStickerUrl,
+  formatStickerMessage,
+  preloadChatStickers,
+  type ChatSticker,
+} from "@/lib/chat-stickers";
 import { checkChatCooldown, CHAT_COOLDOWN_SECONDS } from "@/lib/security-defense";
 
 function formatChatTime(dateStr: string): string {
@@ -135,6 +146,345 @@ function getTierPillColors(tierName: string) {
   }
 }
 
+interface ChatMessageItemProps {
+  item: GlobalChatMessage;
+  isHighlighted: boolean;
+  onReply: (msg: GlobalChatMessage) => void;
+  onQuotePress: (replyInfo?: GlobalChatReplyInfo | null) => void;
+}
+
+const ChatMessageItem = React.memo(
+  function ChatMessageItem({
+    item,
+    isHighlighted,
+    onReply,
+    onQuotePress,
+  }: ChatMessageItemProps) {
+    const tierInfo = useMemo(() => getTierForLevel(item.senderLevel || 1), [item.senderLevel]);
+    const activeTier = tierInfo?.currentTier;
+    const nameColor = useMemo(() => getUsernameColor(item.senderName), [item.senderName]);
+    const tierPillColors = useMemo(
+      () => getTierPillColors(activeTier?.name || "Stone"),
+      [activeTier?.name]
+    );
+    const isSticker = isStickerMessage(item.message);
+    const stickerUrl = isSticker ? extractStickerUrl(item.message) : null;
+
+    const handlePressAvatar = useCallback(() => {
+      hapticLight();
+      router.push(`/user/${item.senderId}` as never);
+    }, [item.senderId]);
+
+    const handleLongPressCard = useCallback(() => {
+      onReply(item);
+    }, [onReply, item]);
+
+    const handleQuotePress = useCallback(() => {
+      onQuotePress(item.replyTo);
+    }, [onQuotePress, item.replyTo]);
+
+    return (
+      <View
+        key={item.id}
+        // @ts-ignore
+        id={Platform.OS === "web" ? `chat-msg-${item.id}` : undefined}
+        nativeID={`chat-msg-${item.id}`}
+        style={[
+          styles.messageRow,
+          isHighlighted && styles.messageRowHighlighted,
+        ]}
+      >
+        {/* Left Avatar with live border */}
+        <Pressable onPress={handlePressAvatar} style={styles.avatarWrap}>
+          <BorderAvatar
+            size={32}
+            borderId={item.senderBorder}
+            avatarUrl={item.senderAvatar || "https://images.alphacoders.com/132/1328004.png"}
+          />
+        </Pressable>
+
+        {/* Right Bubble Content */}
+        <View style={styles.bubbleCol}>
+          <Pressable
+            onLongPress={handleLongPressCard}
+            delayLongPress={250}
+            style={({ pressed }) => [
+              styles.messageCard,
+              isSticker && styles.messageCardSticker,
+              isHighlighted && styles.messageCardHighlighted,
+              pressed && styles.messageCardPressed,
+            ]}
+          >
+            {/* 1. Header: Display Name + Verification Checkmark + Member Tag */}
+            <View style={styles.senderHeaderRow}>
+              <Pressable onPress={handlePressAvatar}>
+                <Text style={[styles.senderNameText, { color: nameColor }]} numberOfLines={1}>
+                  {item.senderName}
+                </Text>
+              </Pressable>
+
+              <UserVerificationBadge
+                role={item.senderRole}
+                isVip={item.senderIsVip}
+                size={13}
+              />
+
+              <Text style={styles.memberTagText}>{item.senderMemberNumber}</Text>
+            </View>
+
+            {/* 2. Plakat Kota & Klan (DRAKONIA / GELANDANGAN, tanpa banner) */}
+            <View style={styles.cityClanRow}>
+              <ProfileCityPlaque
+                userId={item.senderId}
+                compact
+                inlineClan
+              />
+            </View>
+
+            {/* 3. Badges Row: Rank Tier Pill + Level Pill */}
+            <View style={styles.badgesRow}>
+              {activeTier ? (
+                <View
+                  style={[
+                    styles.rankTierPill,
+                    {
+                      backgroundColor: tierPillColors.bg,
+                      borderColor: tierPillColors.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.rankTierText, { color: tierPillColors.text }]}>
+                    {activeTier.name.toUpperCase()}
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={styles.levelPill}>
+                {activeTier?.imageUrl && (
+                  <Image
+                    source={{ uri: activeTier.imageUrl }}
+                    style={styles.tierPillIcon}
+                    contentFit="contain"
+                    cachePolicy="memory-disk"
+                  />
+                )}
+                <Text style={styles.levelPillText}>
+                  Lvl {Number(item.senderLevel || 1).toLocaleString("id-ID")}
+                </Text>
+              </View>
+            </View>
+
+            {/* 4. Reply Quote Box */}
+            {item.replyTo && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Menuju pesan yang dikutip dari ${item.replyTo.senderName}`}
+                onPress={handleQuotePress}
+                style={({ pressed }) => [
+                  styles.quoteBox,
+                  pressed && styles.quoteBoxPressed,
+                  Platform.OS === "web" && ({ cursor: "pointer" } as any),
+                ]}
+              >
+                <View style={styles.quoteAccentLine} />
+                <View style={styles.quoteContent}>
+                  <View style={styles.quoteHeaderRow}>
+                    <Text style={styles.quoteSenderName} numberOfLines={1}>
+                      {item.replyTo.senderName}
+                    </Text>
+                    {item.replyTo.memberNumber ? (
+                      <Text style={styles.quoteMemberNumber}>{item.replyTo.memberNumber}</Text>
+                    ) : null}
+                    <UserVerificationBadge
+                      role={item.replyTo.role}
+                      isVip={item.replyTo.isVip}
+                      size={11}
+                    />
+                    <AppIcon
+                      name="arrow-up"
+                      size={12}
+                      color="#38BDF8"
+                      style={{ marginLeft: "auto" }}
+                    />
+                  </View>
+                  <Text style={styles.quoteText} numberOfLines={1}>
+                    {isStickerMessage(item.replyTo.text) ? "🎨 [Stiker]" : item.replyTo.text}
+                  </Text>
+                </View>
+              </Pressable>
+            )}
+
+            {/* 5. Isi Pesan atau Tampilan Stiker */}
+            {isSticker && stickerUrl ? (
+              <View style={styles.stickerMessageWrap}>
+                <Image
+                  source={{ uri: stickerUrl }}
+                  style={styles.stickerMessageImage}
+                  contentFit="contain"
+                  transition={0}
+                  cachePolicy="memory-disk"
+                  priority="high"
+                />
+              </View>
+            ) : (
+              <Text style={styles.messageText}>{item.message}</Text>
+            )}
+          </Pressable>
+
+          <Text style={styles.timestampText}>{formatChatTime(item.createdAt)}</Text>
+        </View>
+      </View>
+    );
+  },
+  (prev, next) => {
+    return (
+      prev.item.id === next.item.id &&
+      prev.isHighlighted === next.isHighlighted &&
+      prev.item.message === next.item.message &&
+      prev.item.senderLevel === next.item.senderLevel &&
+      prev.item.senderAvatar === next.item.senderAvatar &&
+      prev.item.senderBorder === next.item.senderBorder &&
+      prev.item.senderRole === next.item.senderRole &&
+      prev.item.senderIsVip === next.item.senderIsVip &&
+      prev.onReply === next.onReply &&
+      prev.onQuotePress === next.onQuotePress
+    );
+  }
+);
+
+interface ChatInputBarProps {
+  cooldownRemaining: number;
+  keyboardVisible: boolean;
+  bottomPadding: number;
+  sending: boolean;
+  showStickerPicker: boolean;
+  onToggleStickerPicker: () => void;
+  onFocusInput: () => void;
+  onSend: (text: string) => Promise<boolean>;
+}
+
+export interface ChatInputBarRef {
+  focus: () => void;
+  setText: (text: string) => void;
+  clear: () => void;
+}
+
+const ChatInputBar = React.memo(
+  React.forwardRef<ChatInputBarRef, ChatInputBarProps>(function ChatInputBar(
+    {
+      cooldownRemaining,
+      bottomPadding,
+      sending,
+      showStickerPicker,
+      onToggleStickerPicker,
+      onFocusInput,
+      onSend,
+    },
+    ref
+  ) {
+    const [text, setText] = useState("");
+    const internalInputRef = useRef<TextInput>(null);
+
+    useImperativeHandle(ref, () => ({
+      focus: () => internalInputRef.current?.focus(),
+      setText: (val: string) => setText(val),
+      clear: () => setText(""),
+    }));
+
+    const handleSendPress = async () => {
+      const trimmed = text.trim();
+      if (!trimmed || sending || cooldownRemaining > 0) return;
+      const success = await onSend(trimmed);
+      if (success) {
+        setText("");
+      }
+    };
+
+    const hasContent = text.trim().length > 0;
+    const canSend = hasContent && !sending && cooldownRemaining <= 0;
+
+    return (
+      <View style={[styles.inputContainer, { paddingBottom: bottomPadding }]}>
+        {/* Metadata Row: Detik Cooldown & Counter Karakter 0/255 */}
+        <View style={styles.inputMetaRow}>
+          {cooldownRemaining > 0 ? (
+            <View style={styles.cooldownBadge}>
+              <AppIcon name="timer-outline" size={12} color="#F59E0B" />
+              <Text style={styles.cooldownBadgeText}>Jeda chat: {cooldownRemaining}s</Text>
+            </View>
+          ) : (
+            <View />
+          )}
+          <Text style={styles.charCounterText}>{text.length}/255</Text>
+        </View>
+
+        <View style={styles.inputRow}>
+          {/* Tombol Buka Panel Stiker */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Buka panel stiker"
+            onPress={onToggleStickerPicker}
+            hitSlop={6}
+            style={({ pressed }) => [
+              styles.stickerToggleBtn,
+              showStickerPicker && styles.stickerToggleBtnActive,
+              pressed && styles.btnPressed,
+            ]}
+          >
+            <AppIcon
+              name="emoticon-happy-outline"
+              size={22}
+              color={showStickerPicker ? "#38BDF8" : "#94A3B8"}
+            />
+          </Pressable>
+
+          <TextInput
+            ref={internalInputRef}
+            style={styles.textInput}
+            placeholder={
+              cooldownRemaining > 0
+                ? `Tunggu ${cooldownRemaining} detik...`
+                : "Silakan masukkan pesan..."
+            }
+            placeholderTextColor="#64748B"
+            value={text}
+            onChangeText={setText}
+            onFocus={onFocusInput}
+            maxLength={255}
+            multiline
+            blurOnSubmit={false}
+            returnKeyType="send"
+            onSubmitEditing={() => {
+              void handleSendPress();
+            }}
+          />
+
+          {/* Tombol Kirim */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Kirim pesan"
+            onPress={handleSendPress}
+            disabled={!canSend}
+            style={({ pressed }) => [
+              styles.sendBtn,
+              !canSend && styles.sendBtnDisabled,
+              pressed && styles.btnPressed,
+            ]}
+          >
+            {sending ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : cooldownRemaining > 0 ? (
+              <Text style={styles.sendBtnCooldownText}>{cooldownRemaining}s</Text>
+            ) : (
+              <AppIcon name="send" size={17} color="#FFFFFF" />
+            )}
+          </Pressable>
+        </View>
+      </View>
+    );
+  })
+);
+
 export default function ChatGlobalScreen() {
   const auth = useAnirakuAuth();
   const insets = useSafeAreaInsets();
@@ -142,7 +492,6 @@ export default function ChatGlobalScreen() {
 
   const [activeRoom, setActiveRoom] = useState<GlobalRoom>("ngobrol_1");
   const [messages, setMessages] = useState<GlobalChatMessage[]>([]);
-  const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
@@ -151,22 +500,129 @@ export default function ChatGlobalScreen() {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
   const [showNewMessageBadge, setShowNewMessageBadge] = useState(false);
+  const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
+  const [unreadCountWhileScrolled, setUnreadCountWhileScrolled] = useState(0);
+  const [showStickerPicker, setShowStickerPicker] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<ChatInputBarRef>(null);
   const cooldownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isNearBottomRef = useRef(true);
   const isInitialLoadRef = useRef(true);
   const isUserInteractingRef = useRef(false);
   const userHasScrolledUpRef = useRef(false);
 
+  // ID pesan yang disorot saat tombol quote reply ditekan
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Helper scroll ke pesan paling akhir (andal di Web maupun Native)
+  const scrollToLatest = useCallback((animated = false) => {
+    if (flatListRef.current) {
+      try {
+        flatListRef.current.scrollToEnd({ animated });
+      } catch {}
+      if (Platform.OS === "web") {
+        try {
+          const ref = flatListRef.current as any;
+          const node =
+            ref?.getScrollableNode?.() ||
+            ref?.getScrollResponder?.()?.getScrollableNode?.() ||
+            ref?._listRef?._scrollRef?.getScrollableNode?.() ||
+            ref?._scrollRef?.getScrollableNode?.() ||
+            (typeof document !== "undefined"
+              ? (document.querySelector('[data-testid="global-chat-list"]') as HTMLElement) ||
+                (document.getElementById("global-chat-scroll-container") as HTMLElement)
+              : null);
+          if (node) {
+            node.scrollTop = node.scrollHeight;
+          }
+        } catch {}
+      }
+    }
+  }, []);
+
   const jumpToLatestMessages = useCallback(() => {
     hapticLight();
     setShowNewMessageBadge(false);
+    setShowScrollBottomBtn(false);
+    setUnreadCountWhileScrolled(0);
     userHasScrolledUpRef.current = false;
     isNearBottomRef.current = true;
-    flatListRef.current?.scrollToEnd({ animated: false });
-  }, []);
+    scrollToLatest(true);
+  }, [scrollToLatest]);
+
+  // Melompat ke pesan yang dibalas saat kotak kutipan ditekan
+  const handleScrollToRepliedMessage = useCallback((replyInfo?: GlobalChatReplyInfo | null) => {
+    if (!replyInfo) return;
+    hapticLight();
+
+    // 1. Cari berdasarkan ID pesan jika ada & valid
+    let targetIndex = -1;
+    if (replyInfo.id && replyInfo.id !== "reply") {
+      targetIndex = messages.findIndex((m) => m.id === replyInfo.id);
+    }
+
+    // 2. Fallback: Cari berdasarkan pengirim dan cuplikan teks
+    if (targetIndex === -1 && replyInfo.senderName) {
+      const cleanSnippet = (replyInfo.text || "").trim();
+      targetIndex = messages.findLastIndex((m) => {
+        if (m.senderName !== replyInfo.senderName) return false;
+        if (!cleanSnippet) return true;
+        const mText = (m.message || "").trim();
+        return mText === cleanSnippet || mText.includes(cleanSnippet) || cleanSnippet.includes(mText);
+      });
+    }
+
+    if (targetIndex !== -1) {
+      const targetMsg = messages[targetIndex];
+      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+      setHighlightedMessageId(targetMsg.id);
+      highlightTimeoutRef.current = setTimeout(() => {
+        setHighlightedMessageId(null);
+      }, 2200);
+
+      // Web: Scroll smooth ke elemen menggunakan DOM jika sudah ada di viewport
+      if (Platform.OS === "web") {
+        try {
+          const el = document.getElementById(`chat-msg-${targetMsg.id}`);
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            return;
+          }
+        } catch {}
+      }
+
+      // Native / Fallback Web: Scroll FlatList ke index yang dituju
+      try {
+        flatListRef.current?.scrollToIndex({
+          index: targetIndex,
+          animated: true,
+          viewPosition: 0.5,
+        });
+      } catch {
+        flatListRef.current?.scrollToOffset({
+          offset: Math.max(0, targetIndex * 100),
+          animated: true,
+        });
+      }
+
+      // Web: Cek ulang setelah FlatList me-render item virtual
+      if (Platform.OS === "web") {
+        setTimeout(() => {
+          const elAfter = document.getElementById(`chat-msg-${targetMsg.id}`);
+          if (elAfter) {
+            elAfter.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }, 120);
+      }
+    } else {
+      Alert.alert(
+        "Pesan Tidak Ditemukan",
+        "Pesan yang dikutip sudah berada di luar batas riwayat pesan saat ini."
+      );
+    }
+  }, [messages]);
 
   const startCooldownTimer = useCallback((seconds: number) => {
     if (seconds <= 0) return;
@@ -181,6 +637,11 @@ export default function ChatGlobalScreen() {
         return prev - 1;
       });
     }, 1000);
+  }, []);
+
+  // ─── 0. PRELOAD & PRE-CACHE STIKER (AGAR DATA INSTAN 0ms SAAT DIBUKA) ───
+  useEffect(() => {
+    preloadChatStickers();
   }, []);
 
   // ─── 0. KEYBOARD LISTENER (AGAR INPUT NAIK TEPAT DI ATAS KEYBOARD) ───
@@ -229,25 +690,32 @@ export default function ChatGlobalScreen() {
       const data = await getGlobalMessages(activeRoom);
       setMessages(data);
       // Posisikan seketika ke pesan paling baru saat data selesai dimuat
-      if (isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
-        setTimeout(() => {
-          if (isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
-            flatListRef.current?.scrollToEnd({ animated: false });
-          }
-        }, 20);
-        setTimeout(() => {
-          if (isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
-            flatListRef.current?.scrollToEnd({ animated: false });
-          }
-        }, 80);
-      }
+      userHasScrolledUpRef.current = false;
+      isNearBottomRef.current = true;
+      isInitialLoadRef.current = true;
+
+      const performScroll = () => {
+        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+          scrollToLatest(false);
+        }
+      };
+
+      requestAnimationFrame(performScroll);
+      setTimeout(performScroll, 25);
+      setTimeout(performScroll, 75);
+      setTimeout(performScroll, 180);
+      setTimeout(performScroll, 400);
+      setTimeout(performScroll, 800);
+      setTimeout(() => {
+        isInitialLoadRef.current = false;
+      }, 1200);
     } catch (err) {
       console.warn("[chat-global] load error:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [activeRoom]);
+  }, [activeRoom, scrollToLatest]);
 
   // Saat pertama kali buka layar ATAU saat masuk kembali setelah keluar room / diskusi
   useFocusEffect(
@@ -257,30 +725,61 @@ export default function ChatGlobalScreen() {
       isNearBottomRef.current = true;
       isUserInteractingRef.current = false;
       setShowNewMessageBadge(false);
+      setShowScrollBottomBtn(false);
+      setUnreadCountWhileScrolled(0);
       void purgeGlobalChatMockCache();
       void loadMessages();
 
       const scrollIfInitial = () => {
-        if (isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
-          flatListRef.current?.scrollToEnd({ animated: false });
+        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+          scrollToLatest(false);
         }
       };
 
-      const t1 = setTimeout(scrollIfInitial, 50);
-      const t2 = setTimeout(scrollIfInitial, 150);
-      const t3 = setTimeout(scrollIfInitial, 350);
+      const t1 = setTimeout(scrollIfInitial, 30);
+      const t2 = setTimeout(scrollIfInitial, 100);
+      const t3 = setTimeout(scrollIfInitial, 250);
+      const t4 = setTimeout(scrollIfInitial, 500);
+      const t5 = setTimeout(scrollIfInitial, 850);
       const tClose = setTimeout(() => {
         isInitialLoadRef.current = false;
-      }, 1000);
+      }, 1400);
 
       return () => {
         clearTimeout(t1);
         clearTimeout(t2);
         clearTimeout(t3);
+        clearTimeout(t4);
+        clearTimeout(t5);
         clearTimeout(tClose);
       };
-    }, [loadMessages])
+    }, [loadMessages, scrollToLatest])
   );
+
+  // Otomatis posisikan ke pesan paling akhir saat layar/room dibuka
+  useEffect(() => {
+    if (!loading && messages.length > 0 && !userHasScrolledUpRef.current) {
+      scrollToLatest(false);
+      const t1 = setTimeout(() => {
+        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) scrollToLatest(false);
+      }, 30);
+      const t2 = setTimeout(() => {
+        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) scrollToLatest(false);
+      }, 120);
+      const t3 = setTimeout(() => {
+        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) scrollToLatest(false);
+      }, 280);
+      const t4 = setTimeout(() => {
+        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) scrollToLatest(false);
+      }, 600);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+        clearTimeout(t4);
+      };
+    }
+  }, [loading, activeRoom, messages.length, scrollToLatest]);
 
   // ─── 2. REALTIME SUBSCRIPTION ───
   useEffect(() => {
@@ -298,15 +797,19 @@ export default function ChatGlobalScreen() {
 
       // Kalo ada pesan baru masuk:
       // Pengguna berada tepat di paling bawah atau pesan sendiri -> scroll instan tanpa animasi
-      // Pengguna sedang membaca pesan lama / tidak di paling bawah -> munculkan tombol '↓ Pesan Baru'
+      // Pengguna sedang membaca pesan lama / tidak di paling bawah -> munculkan tombol panah bawah dengan badge
       const isMyMessage = newMsg.senderId === currentUserId;
       if (isMyMessage || (isNearBottomRef.current && !userHasScrolledUpRef.current)) {
         setShowNewMessageBadge(false);
+        setShowScrollBottomBtn(false);
+        setUnreadCountWhileScrolled(0);
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: false });
         }, 10);
       } else {
         setShowNewMessageBadge(true);
+        setShowScrollBottomBtn(true);
+        setUnreadCountWhileScrolled((prev) => prev + 1);
       }
     });
 
@@ -316,9 +819,109 @@ export default function ChatGlobalScreen() {
   }, [activeRoom, currentUserId]);
 
   // ─── 3. SEND MESSAGE ───
-  const handleSendMessage = async () => {
-    const textToSend = inputText.trim();
-    if (!textToSend || sending || cooldownRemaining > 0) return;
+  const handleSendMessage = useCallback(
+    async (textOverride?: string): Promise<boolean> => {
+      const textToSend = (textOverride || "").trim();
+      if (!textToSend || sending || cooldownRemaining > 0) return false;
+
+      if (!currentUserId || currentUserId === "guest") {
+        hapticWarning();
+        router.push("/auth" as never);
+        return false;
+      }
+
+      setSending(true);
+      hapticLight();
+
+      const senderProfile = auth.profile;
+      const equippedBorder = await getEquippedBorderId(currentUserId);
+      const res = await sendGlobalMessage({
+        room: activeRoom,
+        senderId: currentUserId,
+        senderName: senderProfile?.display_name || senderProfile?.username || "Pengguna Nuenime",
+        senderAvatar: senderProfile?.avatar_url || null,
+        senderBorder: equippedBorder || senderProfile?.equipped_border || null,
+        senderRole: senderProfile?.role || "Member",
+        senderLevel: Number(senderProfile?.level) || 1,
+        senderMemberNumber: "#" + (String(senderProfile?.member_number).replace(/[^0-9]/g, "") || "1"),
+        senderIsVip: Boolean(senderProfile?.is_vip),
+        clanTag: null,
+        message: textToSend,
+        replyTo: replyingTo
+          ? {
+            id: replyingTo.id,
+            senderName: replyingTo.senderName,
+            text: replyingTo.message,
+            memberNumber: replyingTo.senderMemberNumber,
+            role: replyingTo.senderRole,
+            isVip: replyingTo.senderIsVip,
+          }
+          : null,
+      });
+
+      setSending(false);
+
+      if (res.isBanned) {
+        await auth.refreshProfile();
+        Alert.alert(
+          "AKUN DIBLOKIR",
+          res.error || "Akun Anda telah DIBLOKIR permanen karena melakukan spam pesan berulang 4 kali!"
+        );
+        return false;
+      }
+
+      if (res.warning) {
+        Alert.alert("Peringatan Keamanan", res.warning);
+      }
+
+      if (res.success && res.data) {
+        hapticSuccess();
+        setReplyingTo(null);
+
+        // Mulai jeda countdown 30 detik setelah berhasil mengirim pesan
+        startCooldownTimer(CHAT_COOLDOWN_SECONDS);
+
+        // Tambahkan ke UI lokal seketika jika belum ada
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === res.data!.id)) return prev;
+          return [...prev, res.data!];
+        });
+
+        setShowNewMessageBadge(false);
+        setShowScrollBottomBtn(false);
+        setUnreadCountWhileScrolled(0);
+        userHasScrolledUpRef.current = false;
+        isNearBottomRef.current = true;
+        isInitialLoadRef.current = false;
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: false });
+        }, 10);
+        return true;
+      } else if (!res.success && res.error) {
+        hapticWarning();
+        // Jika error terkait jeda waktu, ekstrak detiknya dan mulai timer
+        const matchSeconds = res.error.match(/tunggu\s+(\d+)\s+detik/i);
+        if (matchSeconds && matchSeconds[1]) {
+          startCooldownTimer(Number(matchSeconds[1]));
+        }
+        Alert.alert("Pesan Gagal Terkirim", res.error);
+      }
+      return false;
+    },
+    [
+      sending,
+      cooldownRemaining,
+      currentUserId,
+      auth,
+      activeRoom,
+      replyingTo,
+      startCooldownTimer,
+    ]
+  );
+
+  // ─── 3b. SEND STICKER ───
+  const handleSendSticker = async (sticker: ChatSticker) => {
+    if (sending || cooldownRemaining > 0) return;
 
     if (!currentUserId || currentUserId === "guest") {
       hapticWarning();
@@ -331,6 +934,8 @@ export default function ChatGlobalScreen() {
 
     const senderProfile = auth.profile;
     const equippedBorder = await getEquippedBorderId(currentUserId);
+    const formattedStickerMsg = formatStickerMessage(sticker);
+
     const res = await sendGlobalMessage({
       room: activeRoom,
       senderId: currentUserId,
@@ -342,16 +947,16 @@ export default function ChatGlobalScreen() {
       senderMemberNumber: "#" + (String(senderProfile?.member_number).replace(/[^0-9]/g, "") || "1"),
       senderIsVip: Boolean(senderProfile?.is_vip),
       clanTag: null,
-      message: textToSend,
+      message: formattedStickerMsg,
       replyTo: replyingTo
         ? {
-          id: replyingTo.id,
-          senderName: replyingTo.senderName,
-          text: replyingTo.message,
-          memberNumber: replyingTo.senderMemberNumber,
-          role: replyingTo.senderRole,
-          isVip: replyingTo.senderIsVip,
-        }
+            id: replyingTo.id,
+            senderName: replyingTo.senderName,
+            text: replyingTo.message,
+            memberNumber: replyingTo.senderMemberNumber,
+            role: replyingTo.senderRole,
+            isVip: replyingTo.senderIsVip,
+          }
         : null,
     });
 
@@ -372,10 +977,9 @@ export default function ChatGlobalScreen() {
 
     if (res.success && res.data) {
       hapticSuccess();
-      setInputText("");
       setReplyingTo(null);
 
-      // Mulai jeda countdown 30 detik setelah berhasil mengirim pesan
+      // Mulai jeda countdown 30 detik setelah berhasil mengirim stiker
       startCooldownTimer(CHAT_COOLDOWN_SECONDS);
 
       // Tambahkan ke UI lokal seketika jika belum ada
@@ -385,20 +989,21 @@ export default function ChatGlobalScreen() {
       });
 
       setShowNewMessageBadge(false);
+      setShowScrollBottomBtn(false);
+      setUnreadCountWhileScrolled(0);
       userHasScrolledUpRef.current = false;
       isNearBottomRef.current = true;
       isInitialLoadRef.current = false;
       setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: false });
+        flatListRef.current?.scrollToEnd({ animated: true });
       }, 10);
     } else if (!res.success && res.error) {
       hapticWarning();
-      // Jika error terkait jeda waktu, ekstrak detiknya dan mulai timer
       const matchSeconds = res.error.match(/tunggu\s+(\d+)\s+detik/i);
       if (matchSeconds && matchSeconds[1]) {
         startCooldownTimer(Number(matchSeconds[1]));
       }
-      Alert.alert("Pesan Gagal Terkirim", res.error);
+      Alert.alert("Stiker Gagal Terkirim", res.error);
     }
   };
 
@@ -428,137 +1033,17 @@ export default function ChatGlobalScreen() {
     setActiveRoom("ngobrol_1");
   };
 
-  const renderMessageItem = useCallback(({ item }: { item: GlobalChatMessage }) => {
-    const tierInfo = getTierForLevel(item.senderLevel || 1);
-    const activeTier = tierInfo?.currentTier;
-    const nameColor = getUsernameColor(item.senderName);
-    const tierPillColors = getTierPillColors(activeTier?.name || "Stone");
-
-    return (
-      <View style={styles.messageRow}>
-        {/* Left Avatar with live border (diperkecil agar proporsional & rapi) */}
-        <Pressable
-          onPress={() => {
-            hapticLight();
-            router.push(`/user/${item.senderId}` as never);
-          }}
-          style={styles.avatarWrap}
-        >
-          <BorderAvatar
-            size={32}
-            borderId={item.senderBorder}
-            avatarUrl={item.senderAvatar || "https://images.alphacoders.com/132/1328004.png"}
-          />
-        </Pressable>
-
-        {/* Right Bubble Content */}
-        <View style={styles.bubbleCol}>
-          <Pressable
-            onLongPress={() => handleReplyMessage(item)}
-            delayLongPress={250}
-            style={({ pressed }) => [
-              styles.messageCard,
-              pressed && styles.messageCardPressed,
-            ]}
-          >
-            {/* 1. Header: Display Name + Verification Checkmark + Member Tag */}
-            <View style={styles.senderHeaderRow}>
-              <Pressable
-                onPress={() => {
-                  hapticLight();
-                  router.push(`/user/${item.senderId}` as never);
-                }}
-              >
-                <Text style={[styles.senderNameText, { color: nameColor }]} numberOfLines={1}>
-                  {item.senderName}
-                </Text>
-              </Pressable>
-
-              {/* Otoritatif Checkmark */}
-              <UserVerificationBadge
-                role={item.senderRole}
-                isVip={item.senderIsVip}
-                size={13}
-              />
-
-              {/* Member Tag Number */}
-              <Text style={styles.memberTagText}>{item.senderMemberNumber}</Text>
-            </View>
-
-            {/* 2. Badges Row: Rank Tier Pill (e.g. ETERNAL, GOLD) + Level Pill (Persis Screenshot 2) */}
-            <View style={styles.badgesRow}>
-              {activeTier ? (
-                <View
-                  style={[
-                    styles.rankTierPill,
-                    {
-                      backgroundColor: tierPillColors.bg,
-                      borderColor: tierPillColors.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.rankTierText,
-                      { color: tierPillColors.text },
-                    ]}
-                  >
-                    {activeTier.name.toUpperCase()}
-                  </Text>
-                </View>
-              ) : null}
-
-              {/* Level Badge Pill */}
-              <View style={styles.levelPill}>
-                {activeTier?.imageUrl && (
-                  <Image
-                    source={{ uri: activeTier.imageUrl }}
-                    style={styles.tierPillIcon}
-                    contentFit="contain"
-                    cachePolicy="memory-disk"
-                  />
-                )}
-                <Text style={styles.levelPillText}>
-                  Lvl {Number(item.senderLevel || 1).toLocaleString("id-ID")}
-                </Text>
-              </View>
-            </View>
-
-            {/* 3. Reply Quote Box (jika membalas pesan lain) */}
-            {item.replyTo && (
-              <View style={styles.quoteBox}>
-                <View style={styles.quoteAccentLine} />
-                <View style={styles.quoteContent}>
-                  <View style={styles.quoteHeaderRow}>
-                    <Text style={styles.quoteSenderName} numberOfLines={1}>
-                      {item.replyTo.senderName}
-                    </Text>
-                    {item.replyTo.memberNumber ? (
-                      <Text style={styles.quoteMemberNumber}>{item.replyTo.memberNumber}</Text>
-                    ) : null}
-                    <UserVerificationBadge
-                      role={item.replyTo.role}
-                      isVip={item.replyTo.isVip}
-                      size={11}
-                    />
-                  </View>
-                  <Text style={styles.quoteText} numberOfLines={1}>
-                    {item.replyTo.text}
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            {/* 4. Isi Pesan */}
-            <Text style={styles.messageText}>{item.message}</Text>
-          </Pressable>
-
-          {/* Timestamp di kanan bawah bubble */}
-          <Text style={styles.timestampText}>{formatChatTime(item.createdAt)}</Text>
-        </View>
-      </View>
-    );
-  }, [handleReplyMessage]);
+  const renderMessageItem = useCallback(
+    ({ item }: { item: GlobalChatMessage }) => (
+      <ChatMessageItem
+        item={item}
+        isHighlighted={highlightedMessageId === item.id}
+        onReply={handleReplyMessage}
+        onQuotePress={handleScrollToRepliedMessage}
+      />
+    ),
+    [highlightedMessageId, handleReplyMessage, handleScrollToRepliedMessage]
+  );
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
@@ -634,106 +1119,137 @@ export default function ChatGlobalScreen() {
         behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
       >
-        {loading ? (
-          <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color="#38BDF8" />
-            <Text style={styles.loadingText}>Memuat percakapan global...</Text>
-          </View>
-        ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.messageListContent}
-            showsVerticalScrollIndicator={false}
-            initialNumToRender={messages.length > 0 ? messages.length : 35}
-            maxToRenderPerBatch={15}
-            windowSize={9}
-            updateCellsBatchingPeriod={50}
-            removeClippedSubviews={Platform.OS !== "web"}
-            onLayout={() => {
-              if (isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
-                flatListRef.current?.scrollToEnd({ animated: false });
-              }
-            }}
-            onContentSizeChange={(_w, h) => {
-              // Posisikan ke bawah seketika saat pertama kali layar dibuka (sebelum user scroll manual)
-              if (h > 0 && isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
-                flatListRef.current?.scrollToEnd({ animated: false });
-              }
-            }}
-            onScrollBeginDrag={() => {
-              isUserInteractingRef.current = true;
-              userHasScrolledUpRef.current = true;
-              isNearBottomRef.current = false;
-              isInitialLoadRef.current = false;
-            }}
-            onScrollEndDrag={() => {
-              isUserInteractingRef.current = false;
-            }}
-            onMomentumScrollBegin={() => {
-              isUserInteractingRef.current = true;
-              isInitialLoadRef.current = false;
-            }}
-            onMomentumScrollEnd={() => {
-              isUserInteractingRef.current = false;
-            }}
-            onScroll={(e) => {
-              const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
-              if (contentSize.height <= 0) return;
-              const distanceFromBottom = contentSize.height - (layoutMeasurement.height + contentOffset.y);
-              // Toleransi presisi 10 piksel untuk mendeteksi posisi paling bawah
-              const isAtBottom = distanceFromBottom <= 10;
-              isNearBottomRef.current = isAtBottom;
-
-              if (isAtBottom) {
-                userHasScrolledUpRef.current = false;
-                setShowNewMessageBadge(false);
-              } else {
+        <View style={styles.chatFeedContainer}>
+          {loading ? (
+            <View style={styles.centerContainer}>
+              <ChibiLoading size={76} style={{ marginBottom: 12 }} />
+              <Text style={styles.loadingText}>Memuat percakapan global...</Text>
+            </View>
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              keyExtractor={(item) => item.id}
+              extraData={highlightedMessageId}
+              style={{ flex: 1 }}
+              contentContainerStyle={styles.messageListContent}
+              showsVerticalScrollIndicator={false}
+              testID="global-chat-list"
+              nativeID="global-chat-scroll-container"
+              initialNumToRender={20}
+              maxToRenderPerBatch={8}
+              windowSize={5}
+              updateCellsBatchingPeriod={50}
+              removeClippedSubviews={Platform.OS !== "web"}
+              onScrollToIndexFailed={(info) => {
+                flatListRef.current?.scrollToOffset({
+                  offset: Math.max(0, info.averageItemLength * info.index),
+                  animated: true,
+                });
+              }}
+              onLayout={() => {
+                if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+                  scrollToLatest(false);
+                }
+              }}
+              onContentSizeChange={(_w, h) => {
+                // Posisikan ke bawah seketika saat pertama kali layar dibuka (sebelum user scroll manual)
+                if (h > 0 && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+                  scrollToLatest(false);
+                  requestAnimationFrame(() => scrollToLatest(false));
+                }
+              }}
+              onScrollBeginDrag={() => {
+                isUserInteractingRef.current = true;
                 userHasScrolledUpRef.current = true;
+                isNearBottomRef.current = false;
                 isInitialLoadRef.current = false;
-              }
-            }}
-            scrollEventThrottle={16}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => loadMessages(true)}
-                tintColor="#38BDF8"
-              />
-            }
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <View style={styles.emptyIconCircle}>
-                  <AppIcon name="chat" size={32} color="#64748B" />
-                </View>
-                <Text style={styles.emptyTitle}>Belum Ada Pesan</Text>
-                <Text style={styles.emptySubtitle}>
-                  Belum ada percakapan di ruang ini. Jadilah yang pertama menyapa komunitas!
-                </Text>
-              </View>
-            }
-            renderItem={renderMessageItem}
-          />
-        )}
+              }}
+              onScrollEndDrag={() => {
+                isUserInteractingRef.current = false;
+              }}
+              onMomentumScrollBegin={() => {
+                isUserInteractingRef.current = true;
+                isInitialLoadRef.current = false;
+              }}
+              onMomentumScrollEnd={() => {
+                isUserInteractingRef.current = false;
+              }}
+              onScroll={(e) => {
+                const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+                if (contentSize.height <= 0) return;
+                const distanceFromBottom = contentSize.height - (layoutMeasurement.height + contentOffset.y);
 
-        {/* ─── FLOATING NEW MESSAGE INDICATOR ─── */}
-        {showNewMessageBadge && (
-          <View style={styles.floatingNewMsgWrap} pointerEvents="box-none">
-            <Pressable
-              style={({ pressed }) => [
-                styles.floatingNewMsgBtn,
-                pressed && styles.floatingNewMsgBtnPressed,
-              ]}
-              onPress={jumpToLatestMessages}
-              accessibilityRole="button"
-              accessibilityLabel="Lompat ke pesan terbaru"
-            >
-              <AppIcon name="arrow-down" size={13} color="#FFFFFF" />
-              <Text style={styles.floatingNewMsgText}>Pesan Baru</Text>
-            </Pressable>
-          </View>
-        )}
+                // Toleransi presisi 30 piksel untuk mendeteksi posisi paling bawah
+                const isAtBottom = distanceFromBottom <= 30;
+                isNearBottomRef.current = isAtBottom;
+
+                if (isAtBottom) {
+                  userHasScrolledUpRef.current = false;
+                  setShowScrollBottomBtn(false);
+                  setShowNewMessageBadge(false);
+                  setUnreadCountWhileScrolled(0);
+                  isInitialLoadRef.current = false;
+                } else {
+                  // Selama fase inisialisasi awal saat layar baru dibuka,
+                  // offset 0 jangan pernah dianggap sebagai aksi user scroll naik!
+                  if (isInitialLoadRef.current && !isUserInteractingRef.current) {
+                    return;
+                  }
+
+                  // Jika user aktif dragging atau momentum scroll ke atas
+                  userHasScrolledUpRef.current = true;
+                  setShowScrollBottomBtn(distanceFromBottom > 100);
+                }
+              }}
+              scrollEventThrottle={16}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={() => loadMessages(true)}
+                  tintColor="#38BDF8"
+                />
+              }
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <View style={styles.emptyIconCircle}>
+                    <AppIcon name="chat" size={32} color="#64748B" />
+                  </View>
+                  <Text style={styles.emptyTitle}>Belum Ada Pesan</Text>
+                  <Text style={styles.emptySubtitle}>
+                    Belum ada percakapan di ruang ini. Jadilah yang pertama menyapa komunitas!
+                  </Text>
+                </View>
+              }
+              renderItem={renderMessageItem}
+            />
+          )}
+
+          {/* ─── FLOATING SCROLL TO BOTTOM BUTTON DENGAN TANDA PANAH KE BAWAH (SELALU DI ATAS NAVBAR KETIK) ─── */}
+          {(showScrollBottomBtn || showNewMessageBadge) && (
+            <View style={styles.scrollToBottomWrap} pointerEvents="box-none">
+              <Pressable
+                style={({ pressed }) => [
+                  styles.scrollToBottomBtn,
+                  pressed && styles.scrollToBottomBtnPressed,
+                ]}
+                onPress={jumpToLatestMessages}
+                accessibilityRole="button"
+                accessibilityLabel="Scroll ke pesan paling bawah"
+                hitSlop={8}
+              >
+                <AppIcon name="chevron-down" size={26} color="#FFFFFF" />
+                {unreadCountWhileScrolled > 0 && (
+                  <View style={styles.scrollBadge}>
+                    <Text style={styles.scrollBadgeText}>
+                      {unreadCountWhileScrolled > 99 ? "99+" : unreadCountWhileScrolled}
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
+            </View>
+          )}
+        </View>
 
         {/* ─── E. REPLYING PREVIEW BAR ─── */}
         {replyingTo && (
@@ -745,7 +1261,7 @@ export default function ChatGlobalScreen() {
                   Membalas {replyingTo.senderName}
                 </Text>
                 <Text style={styles.replyingTextSnippet} numberOfLines={1}>
-                  {replyingTo.message}
+                  {isStickerMessage(replyingTo.message) ? "🎨 [Stiker]" : replyingTo.message}
                 </Text>
               </View>
             </View>
@@ -759,70 +1275,45 @@ export default function ChatGlobalScreen() {
           </View>
         )}
 
-        {/* ─── F. INPUT BAR (DILENGKAPI DETIK COOLDOWN & POSISI TEPAT DI ATAS KEYBOARD) ─── */}
-        <View
-          style={[
-            styles.inputContainer,
-            {
-              paddingBottom: keyboardVisible
-                ? 8
-                : Math.max(insets.bottom > 0 ? 8 : 12, 10),
-            },
-          ]}
-        >
-          {/* Metadata Row: Detik Cooldown & Counter Karakter 0/255 */}
-          <View style={styles.inputMetaRow}>
-            {cooldownRemaining > 0 ? (
-              <View style={styles.cooldownBadge}>
-                <AppIcon name="timer-outline" size={12} color="#F59E0B" />
-                <Text style={styles.cooldownBadgeText}>Jeda chat: {cooldownRemaining}s</Text>
-              </View>
-            ) : (
-              <View />
-            )}
-            <Text style={styles.charCounterText}>{inputText.length}/255</Text>
-          </View>
+        {/* ─── F. INPUT BAR (TERISOLASI AGAR KETIKAN SUPER RINGAN 0ms DELAY) ─── */}
+        <ChatInputBar
+          ref={inputRef}
+          cooldownRemaining={cooldownRemaining}
+          keyboardVisible={keyboardVisible}
+          bottomPadding={
+            keyboardVisible
+              ? 8
+              : Math.max(insets.bottom > 0 ? 8 : 12, 10)
+          }
+          sending={sending}
+          showStickerPicker={showStickerPicker}
+          onToggleStickerPicker={useCallback(() => {
+            hapticLight();
+            if (showStickerPicker) {
+              setShowStickerPicker(false);
+            } else {
+              Keyboard.dismiss();
+              setShowStickerPicker(true);
+            }
+          }, [showStickerPicker])}
+          onFocusInput={useCallback(() => {
+            setShowStickerPicker(false);
+          }, [])}
+          onSend={handleSendMessage}
+        />
 
-          <View style={styles.inputRow}>
-            <TextInput
-              ref={inputRef}
-              style={styles.textInput}
-              placeholder={cooldownRemaining > 0 ? `Tunggu ${cooldownRemaining} detik...` : "Silakan masukkan pesan..."}
-              placeholderTextColor="#64748B"
-              value={inputText}
-              onChangeText={setInputText}
-              maxLength={255}
-              multiline
-              returnKeyType="send"
-              onSubmitEditing={handleSendMessage}
-            />
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Kirim pesan"
-              onPress={handleSendMessage}
-              disabled={sending || cooldownRemaining > 0 || !inputText.trim()}
-              style={({ pressed }) => [
-                styles.sendBtn,
-                (!inputText.trim() || sending || cooldownRemaining > 0) && styles.sendBtnDisabled,
-                cooldownRemaining > 0 && styles.sendBtnCooldown,
-                pressed && styles.btnPressed,
-              ]}
-            >
-              {sending ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : cooldownRemaining > 0 ? (
-                <Text style={styles.sendBtnCooldownText}>{cooldownRemaining}s</Text>
-              ) : (
-                <AppIcon name="send" size={17} color="#FFFFFF" />
-              )}
-            </Pressable>
-          </View>
-        </View>
+        {/* ─── STICKER PICKER TRAY ─── */}
+        <ChatStickerPicker
+          visible={showStickerPicker}
+          onSelectSticker={handleSendSticker}
+          onClose={() => setShowStickerPicker(false)}
+          cooldownRemaining={cooldownRemaining}
+          sending={sending}
+        />
       </KeyboardAvoidingView>
 
-      {/* ─── G. BOTTOM NAVIGATION (GLOBAL | CLAN | TEMAN) (SEMBUNYIKAN KETIKA KEYBOARD AKTIF) ─── */}
-      {!keyboardVisible && (
+      {/* ─── G. BOTTOM NAVIGATION (GLOBAL | CLAN | TEMAN) (SEMBUNYIKAN KETIKA KEYBOARD ATAU STIKER AKTIF) ─── */}
+      {!keyboardVisible && !showStickerPicker && (
         <View style={[styles.bottomNavContainer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
           {/* Tab Global */}
           <Pressable
@@ -1024,14 +1515,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 8,
-    paddingRight: 52, // Memberi jarak kosong di sebelah kanan agar bubble TIDAK MENTOK ke pojok layar
+    paddingRight: 24, // Memberi jarak kosong proporsional di kanan agar bubble rapi
+  },
+  messageRowHighlighted: {
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
+    borderRadius: 14,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
   },
   avatarWrap: {
     paddingTop: 2,
   },
   bubbleCol: {
     flex: 1,
-    maxWidth: "78%", // Lebar proporsional (78%) agar pas & seragam tanpa memenuhi seluruh layar
+    maxWidth: "88%", // Lebar proporsional (88%) agar muat plakat klan & kota tanpa berdesakan
   },
   messageCard: {
     backgroundColor: "#171B24",
@@ -1042,8 +1539,31 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     width: "100%", // Panjang / lebar akhir rata dan seragam untuk semua pesan
   },
+  messageCardHighlighted: {
+    borderColor: "#38BDF8",
+    borderWidth: 1.5,
+    backgroundColor: "rgba(14, 165, 233, 0.22)",
+    shadowColor: "#38BDF8",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  messageCardSticker: {
+    backgroundColor: "rgba(22, 27, 36, 0.45)",
+    borderColor: "rgba(34, 45, 61, 0.5)",
+  },
   messageCardPressed: {
     backgroundColor: "#1C212D",
+  },
+  stickerMessageWrap: {
+    paddingVertical: 4,
+    alignItems: "flex-start",
+  },
+  stickerMessageImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 8,
   },
 
   // ─── SENDER HEADER ROW ───
@@ -1062,6 +1582,14 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: "#64748B",
     fontWeight: "500",
+  },
+  cityClanRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 5,
+    marginTop: 2,
+    marginBottom: 3,
   },
 
   // ─── BADGES ROW ───
@@ -1114,6 +1642,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
     marginBottom: 4,
     gap: 5,
+  },
+  quoteBoxPressed: {
+    opacity: 0.7,
+    backgroundColor: "rgba(56, 189, 248, 0.16)",
   },
   quoteAccentLine: {
     width: 2.5,
@@ -1239,6 +1771,20 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     maxHeight: 90,
   },
+  stickerToggleBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#161B24",
+    borderWidth: 1,
+    borderColor: "#222D3D",
+  },
+  stickerToggleBtnActive: {
+    backgroundColor: "rgba(2, 132, 199, 0.18)",
+    borderColor: "#0284C7",
+  },
   sendBtn: {
     width: 42,
     height: 42,
@@ -1298,35 +1844,53 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // ─── FLOATING NEW MESSAGE BUTTON ───
-  floatingNewMsgWrap: {
+  // ─── CHAT FEED CONTAINER & FLOATING SCROLL BUTTON ───
+  chatFeedContainer: {
+    flex: 1,
+    position: "relative",
+  },
+  scrollToBottomWrap: {
     position: "absolute",
-    bottom: 84,
-    alignSelf: "center",
+    right: 16,
+    bottom: 12,
     zIndex: 999,
   },
-  floatingNewMsgBtn: {
-    flexDirection: "row",
+  scrollToBottomBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#161D2B",
+    borderWidth: 1.5,
+    borderColor: "rgba(56, 189, 248, 0.45)",
     alignItems: "center",
-    backgroundColor: "#0284C7",
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    gap: 6,
+    justifyContent: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.4,
     shadowRadius: 6,
     elevation: 8,
   },
-  floatingNewMsgBtnPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.96 }],
+  scrollToBottomBtnPressed: {
+    backgroundColor: "#1F2B3E",
+    transform: [{ scale: 0.94 }],
   },
-  floatingNewMsgText: {
-    fontFamily: "Nunito-Bold",
-    fontSize: 12,
-    fontWeight: "700",
+  scrollBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: "#EF4444",
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: "#0F1115",
+  },
+  scrollBadgeText: {
     color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "800",
   },
 });

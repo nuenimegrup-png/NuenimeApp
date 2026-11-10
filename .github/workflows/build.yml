@@ -9,7 +9,7 @@ on:
       tag:
         description: "Release tag to build (must match the version in app.config.ts)"
         required: false
-        default: "v0.0.6"
+        default: "v0.0.7"
 
 env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
@@ -192,10 +192,11 @@ jobs:
           body: |
             ## Nuenime ${{ env.RELEASE_TAG }}
 
-            - **Auto-scroll Chat Realtime**: Pesan baru di Chat Global dan Chat Pribadi langsung otomatis scroll ke pesan paling bawah.
-            - **Centang Biru Member**: Seluruh member terverifikasi memiliki badge centang biru di profil, koneksi, dan obrolan. Centang merah khusus untuk Admin & Developer.
-            - **Integrasi Web NuePet Zoo & Dunia Nuenime**: Terintegrasi via tautan responsif tanpa membebani ukuran bundle APK.
-            - **Perbaikan Transaksi & Keamanan**: Penyelesaian RPC approval top-up admin dan isolasi database Supabase.
+            - **Chat Global Super Cepat & Ringan**: Pengetikan instan 0ms delay, auto-scroll langsung ke pesan terbaru, dan klik kotak kutipan balasan (reply) langsung menuju ke pesan asal dengan highlight menyala.
+            - **Plakat Kota & Klan Terpadu**: Tampilan 3 baris seragam pada kolom komentar dan chat global dengan status kota, klan, maupun gelandangan.
+            - **Fitur Lelang & Penawaran Realtime**: Sistem bidding item lelang eksklusif dengan anti-snipe dan sinkronisasi saldo kristal otomatis.
+            - **Fitur Mailbox & Notifikasi Cerdas**: Kotak masuk hadiah sistem dan notifikasi rilis episode baru via Android AlarmManager (tetap muncul saat aplikasi ditutup).
+            - **Perbaikan Banner Gacha & Audit Moderasi**: Sinkronisasi edit banner admin ke Supabase RPC terverifikasi.
 
             Download file APK di bawah ini dan pasang di perangkat Android Anda.
           files: ./artifacts/*.apk

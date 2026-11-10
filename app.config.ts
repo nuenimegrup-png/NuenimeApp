@@ -13,7 +13,7 @@ const env = {
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
-  version: "0.0.6",
+  version: "0.0.7",
   orientation: "default",
   icon: "./assets/images/logo-app.png",
   scheme: env.scheme,
@@ -28,13 +28,23 @@ const config: ExpoConfig = {
     infoPlist: { ITSAppUsesNonExemptEncryption: false },
   },
   android: {
-    versionCode: 6,
+    versionCode: 7,
     adaptiveIcon: { backgroundColor: "#0E0E11", foregroundImage: "./assets/images/logo-app.png" },
     edgeToEdgeEnabled: true,
     softwareKeyboardLayoutMode: "resize",
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    permissions: ["POST_NOTIFICATIONS", "REQUEST_INSTALL_PACKAGES", "RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS"],
+    permissions: [
+      "POST_NOTIFICATIONS",
+      "SCHEDULE_EXACT_ALARM",
+      "USE_EXACT_ALARM",
+      "WAKE_LOCK",
+      "RECEIVE_BOOT_COMPLETED",
+      "REQUEST_INSTALL_PACKAGES",
+      "RECORD_AUDIO",
+      "MODIFY_AUDIO_SETTINGS",
+      "BLUETOOTH_CONNECT",
+    ],
     intentFilters: [
       { action: "VIEW", autoVerify: true, data: [{ scheme: env.scheme, host: "auth" }], category: ["BROWSABLE", "DEFAULT"] },
       { action: "VIEW", data: [{ scheme: env.scheme, host: "anime", pathPattern: ".*" }], category: ["BROWSABLE", "DEFAULT"] },
@@ -61,6 +71,15 @@ const config: ExpoConfig = {
       }
     }],
     "@react-native-google-signin/google-signin",
+    [
+      "@livekit/react-native-expo-plugin",
+      {
+        android: {
+          audioType: "communication",
+        },
+      },
+    ],
+    "@config-plugins/react-native-webrtc",
   ],
   // Keep file-route typing, but remove optional compiler/runtime experiments
   // from the compatibility build's startup path.

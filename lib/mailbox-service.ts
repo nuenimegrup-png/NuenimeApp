@@ -3,7 +3,7 @@ import { supabase } from "./supabase";
 import { sendPushToUser, sendPushToAllUsers } from "./push-notification-service";
 import type { AdminUser } from "./admin-audit";
 import { logAdminAction } from "./admin-audit";
-import { addCrystalBalance, getCrystalBalance } from "./topup-service";
+import { addCrystalBalance, getCrystalBalance, getCrystalBalanceStorageKey } from "./topup-service";
 import {
   recordBorderPurchaseToSupabase,
   getOwnedBorderIds,
@@ -33,6 +33,17 @@ export function getUserClaimsStorageKey(userId?: string | null): string {
   return `${STORAGE_USER_CLAIMS_PREFIX}guest`;
 }
 
+function generateValidUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 /**
  * Mengirim hadiah massal oleh Admin ke database dan menyiarkan notifikasi.
  */
@@ -46,7 +57,7 @@ export async function sendMassGift(
   admin?: AdminUser
 ): Promise<{ success: boolean; data?: SystemGift; error?: string }> {
   const newGift: SystemGift = {
-    id: `gift_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    id: generateValidUUID(),
     title: params.title.trim(),
     message: params.message.trim(),
     giftType: params.giftType,
@@ -55,22 +66,36 @@ export async function sendMassGift(
     createdAt: new Date().toISOString(),
   };
 
-  // 1. Simpan ke Supabase system_gifts
+  // 1. Simpan ke Supabase system_gifts via RPC admin_create_system_gift (fallback direct insert)
   try {
-    const { data, error } = await supabase
-      .from("system_gifts")
-      .insert({
-        title: newGift.title,
-        message: newGift.message,
-        gift_type: newGift.giftType,
-        gift_value: newGift.giftValue,
-        is_active: true,
-      })
-      .select("id")
-      .single();
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_create_system_gift", {
+      p_title: newGift.title,
+      p_message: newGift.message,
+      p_gift_type: newGift.giftType,
+      p_gift_value: newGift.giftValue,
+      p_target_user_id: null,
+    });
 
-    if (!error && data?.id) {
-      newGift.id = data.id;
+    if (!rpcErr && rpcRes && rpcRes.id) {
+      newGift.id = String(rpcRes.id);
+      if (rpcRes.created_at) newGift.createdAt = rpcRes.created_at;
+    } else {
+      const { data, error } = await supabase
+        .from("system_gifts")
+        .insert({
+          id: newGift.id,
+          title: newGift.title,
+          message: newGift.message,
+          gift_type: newGift.giftType,
+          gift_value: newGift.giftValue,
+          is_active: true,
+        })
+        .select("id")
+        .single();
+
+      if (!error && data?.id) {
+        newGift.id = data.id;
+      }
     }
   } catch (err) {
     console.warn("[mailbox-service] Supabase insert system_gifts error:", err);
@@ -94,15 +119,34 @@ export async function sendMassGift(
 
   // 3. Buat entri notifikasi siaran di broadcast_notifications
   try {
-    await supabase.from("broadcast_notifications").insert({
-      admin_id: admin?.id || "00000000-0000-0000-0000-000000000000",
-      title: `🎁 ${newGift.title}`,
-      message: newGift.message,
-      type: "gift",
-      action_url: `/mailbox?giftId=${newGift.id}`,
-      recipients_count: 100,
-    });
-  } catch {}
+    const isUuid = (val?: string) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val || "");
+    const adminUuid = isUuid(admin?.id) ? admin!.id : null;
+
+    let bInserted = false;
+    if (adminUuid) {
+      const res = await supabase.from("broadcast_notifications").insert({
+        admin_id: adminUuid,
+        title: `🎁 ${newGift.title}`,
+        message: newGift.message,
+        type: "gift",
+        action_url: `/(tabs)?openMailbox=true&giftId=${newGift.id}`,
+        recipients_count: 100,
+      });
+      if (!res.error) bInserted = true;
+    }
+    if (!bInserted) {
+      await supabase.from("broadcast_notifications").insert({
+        title: `🎁 ${newGift.title}`,
+        message: newGift.message,
+        type: "gift",
+        action_url: `/(tabs)?openMailbox=true&giftId=${newGift.id}`,
+        recipients_count: 100,
+      });
+    }
+  } catch (bErr) {
+    console.warn("[mailbox-service] broadcast_notifications warning:", bErr);
+  }
 
   // 🔔 Kirim Push Notification ke seluruh pengguna (tetap sampai walaupun APK mati)
   void sendPushToAllUsers({
@@ -111,7 +155,8 @@ export async function sendMassGift(
     channelId: "nuenime_system",
     data: {
       type: "gift",
-      actionUrl: `/mailbox?giftId=${newGift.id}`,
+      giftId: newGift.id,
+      actionUrl: `/(tabs)?openMailbox=true&giftId=${newGift.id}`,
     },
   });
 
@@ -145,6 +190,24 @@ export async function sendMassGift(
  */
 export async function getAllAdminGifts(): Promise<SystemGift[]> {
   try {
+    // 1. Coba via RPC admin_get_all_system_gifts
+    const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_get_all_system_gifts");
+    if (!rpcErr && Array.isArray(rpcData)) {
+      const mapped: SystemGift[] = rpcData.map((d: any) => ({
+        id: String(d.id),
+        title: d.title,
+        message: d.message,
+        giftType: d.gift_type,
+        giftValue: d.gift_value,
+        isActive: d.is_active !== false,
+        createdAt: d.created_at,
+        targetUserId: d.target_user_id || null,
+      }));
+      await AsyncStorage.setItem(STORAGE_SYSTEM_GIFTS, JSON.stringify(mapped));
+      return mapped;
+    }
+
+    // 2. Fallback direct select
     const { data, error } = await supabase
       .from("system_gifts")
       .select("*")
@@ -152,7 +215,7 @@ export async function getAllAdminGifts(): Promise<SystemGift[]> {
 
     if (!error && Array.isArray(data)) {
       const mapped: SystemGift[] = data.map((d: any) => ({
-        id: d.id,
+        id: String(d.id),
         title: d.title,
         message: d.message,
         giftType: d.gift_type,
@@ -261,6 +324,15 @@ export async function claimGiftForUser(
         // Catat ke local storage
         await recordLocalClaim(userId, giftId);
 
+        // Update local crystal balance cache
+        if (typeof data.new_balance === "number") {
+          try {
+            const bKey = getCrystalBalanceStorageKey(userId);
+            await AsyncStorage.setItem(bKey, String(data.new_balance));
+            await AsyncStorage.setItem("nuenime.crystal.balance", String(data.new_balance));
+          } catch {}
+        }
+
         // Jika hadiah berupa border, langsung tambahkan ke cache border milik user
         if (data.gift_type === "border" && data.gift_value) {
           try {
@@ -353,29 +425,49 @@ export async function createBorderCompensationGift(params: {
   const giftMessage = `Border avatar "${borderName}" telah dihapus dari sistem oleh Admin. Seluruh biaya pembelian sebesar ${refundAmount} Dylan Crystal telah dikembalikan untukmu. Silakan klik klaim untuk memasukkan kembali crystal ke saldomu!`;
 
   try {
-    // 1. Simpan ke Supabase system_gifts khusus target_user_id
-    const rowPayload: Record<string, any> = {
-      title: giftTitle,
-      message: giftMessage,
-      gift_type: "crystal",
-      gift_value: String(refundAmount),
-      is_active: true,
-      target_user_id: userId,
-    };
+    const isUuid = (val?: string) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val || "");
+    const targetUuid = isUuid(userId) ? userId : null;
 
+    let realGiftId = generateValidUUID();
+    let createdAt = new Date().toISOString();
+
+    // 1. Simpan ke Supabase via RPC admin_create_system_gift (Bypass RLS & auto-notif)
     try {
-      const { data, error } = await supabase
-        .from("system_gifts")
-        .insert(rowPayload)
-        .select("id")
-        .single();
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_create_system_gift", {
+        p_title: giftTitle,
+        p_message: giftMessage,
+        p_gift_type: "crystal",
+        p_gift_value: String(refundAmount),
+        p_target_user_id: targetUuid,
+      });
 
-      if (error) {
-        // Fallback jika kolom target_user_id belum dibuat di DB
-        delete rowPayload.target_user_id;
-        await supabase.from("system_gifts").insert(rowPayload);
+      if (!rpcErr && rpcData && typeof rpcData === "object" && (rpcData as any).id) {
+        realGiftId = String((rpcData as any).id);
+        if ((rpcData as any).created_at) createdAt = (rpcData as any).created_at;
+      } else {
+        const rowPayload: Record<string, any> = {
+          id: realGiftId,
+          title: giftTitle,
+          message: giftMessage,
+          gift_type: "crystal",
+          gift_value: String(refundAmount),
+          is_active: true,
+          target_user_id: targetUuid,
+        };
+        const { data, error } = await supabase
+          .from("system_gifts")
+          .insert(rowPayload)
+          .select("id")
+          .single();
+
+        if (!error && data?.id) {
+          realGiftId = data.id;
+        }
       }
-    } catch {}
+    } catch (dbErr) {
+      console.warn("[mailbox-service] createBorderCompensationGift db error:", dbErr);
+    }
 
     // 2. Buat notifikasi langsung ke tabel notifications pengguna
     try {
@@ -394,27 +486,28 @@ export async function createBorderCompensationGift(params: {
       channelId: "nuenime_system",
       data: {
         type: "gift",
-        actionUrl: "/mailbox",
+        giftId: realGiftId,
+        actionUrl: `/(tabs)?openMailbox=true&giftId=${realGiftId}`,
       },
     });
 
     // 3. Simpan juga ke cache lokal system_gifts
     const localGift: SystemGift = {
-      id: `refund_${borderId}_${userId.substring(0, 8)}_${Date.now()}`,
+      id: realGiftId,
       title: giftTitle,
       message: giftMessage,
       giftType: "crystal",
       giftValue: String(refundAmount),
-      targetUserId: userId,
+      targetUserId: targetUuid,
       isActive: true,
-      createdAt: new Date().toISOString(),
+      createdAt,
     };
 
     try {
       const prev = await getAllAdminGifts();
       await AsyncStorage.setItem(
         STORAGE_SYSTEM_GIFTS,
-        JSON.stringify([localGift, ...prev])
+        JSON.stringify([localGift, ...prev.filter((g) => g.id !== localGift.id)])
       );
     } catch {}
 
@@ -453,26 +546,49 @@ export async function createBannerCompensationGift(params: {
     const giftTitle = `💎 Pengembalian Crystal: Banner "${bannerName}"`;
     const giftMessage = `Banner wallpaper "${bannerName}" (${bannerRarity}) telah dihapus dari sistem oleh Administrator. Saldo Anda dikembalikan 100% sebesar ${refundAmount.toLocaleString("id-ID")} Daylan Crystal. Silakan klaim sekarang!`;
 
-    // 1. Simpan ke Supabase system_gifts khusus target_user_id
-    const rowPayload: Record<string, any> = {
-      title: giftTitle,
-      message: giftMessage,
-      gift_type: "crystal",
-      gift_value: String(refundAmount),
-      is_active: true,
-      target_user_id: userId,
-    };
+    const isUuid = (val?: string) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val || "");
+    const targetUuid = isUuid(userId) ? userId : null;
 
+    let realGiftId = generateValidUUID();
+    let createdAt = new Date().toISOString();
+
+    // 1. Simpan ke Supabase via RPC admin_create_system_gift (Bypass RLS & auto-notif)
     try {
-      const { error } = await supabase
-        .from("system_gifts")
-        .insert(rowPayload);
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_create_system_gift", {
+        p_title: giftTitle,
+        p_message: giftMessage,
+        p_gift_type: "crystal",
+        p_gift_value: String(refundAmount),
+        p_target_user_id: targetUuid,
+      });
 
-      if (error) {
-        delete rowPayload.target_user_id;
-        await supabase.from("system_gifts").insert(rowPayload);
+      if (!rpcErr && rpcData && typeof rpcData === "object" && (rpcData as any).id) {
+        realGiftId = String((rpcData as any).id);
+        if ((rpcData as any).created_at) createdAt = (rpcData as any).created_at;
+      } else {
+        const rowPayload: Record<string, any> = {
+          id: realGiftId,
+          title: giftTitle,
+          message: giftMessage,
+          gift_type: "crystal",
+          gift_value: String(refundAmount),
+          is_active: true,
+          target_user_id: targetUuid,
+        };
+        const { data, error } = await supabase
+          .from("system_gifts")
+          .insert(rowPayload)
+          .select("id")
+          .single();
+
+        if (!error && data?.id) {
+          realGiftId = data.id;
+        }
       }
-    } catch {}
+    } catch (dbErr) {
+      console.warn("[mailbox-service] createBannerCompensationGift db error:", dbErr);
+    }
 
     // 2. Buat notifikasi langsung ke tabel notifications pengguna
     try {
@@ -484,23 +600,35 @@ export async function createBannerCompensationGift(params: {
       });
     } catch {}
 
+    // 🔔 Kirim Push Notification langsung ke target user
+    void sendPushToUser(userId, {
+      title: `💎 Klaim Pengembalian: Banner "${bannerName}"`,
+      body: `Banner "${bannerName}" dihapus. Kamu mendapatkan pengembalian ${refundAmount.toLocaleString("id-ID")} Dylan Crystal.`,
+      channelId: "nuenime_system",
+      data: {
+        type: "gift",
+        giftId: realGiftId,
+        actionUrl: `/(tabs)?openMailbox=true&giftId=${realGiftId}`,
+      },
+    });
+
     // 3. Simpan juga ke cache lokal system_gifts
     const localGift: SystemGift = {
-      id: `refund_banner_${bannerId}_${userId.substring(0, 8)}_${Date.now()}`,
+      id: realGiftId,
       title: giftTitle,
       message: giftMessage,
       giftType: "crystal",
       giftValue: String(refundAmount),
-      targetUserId: userId,
+      targetUserId: targetUuid,
       isActive: true,
-      createdAt: new Date().toISOString(),
+      createdAt,
     };
 
     try {
       const prev = await getAllAdminGifts();
       await AsyncStorage.setItem(
         STORAGE_SYSTEM_GIFTS,
-        JSON.stringify([localGift, ...prev])
+        JSON.stringify([localGift, ...prev.filter((g) => g.id !== localGift.id)])
       );
     } catch {}
 
@@ -550,9 +678,16 @@ export async function deleteSystemGift(
       }
     } catch {}
 
-    // 2. Hapus hadiah dari Supabase system_gifts (akan cascade ke user_gift_claims)
+    // 2. Hapus hadiah via RPC admin_delete_system_gift (fallback direct delete)
     try {
-      await supabase.from("system_gifts").delete().eq("id", giftId);
+      const { error: rpcErr } = await supabase.rpc("admin_delete_system_gift", {
+        p_gift_id: giftId,
+      });
+
+      if (rpcErr) {
+        await supabase.from("user_gift_claims").delete().eq("gift_id", giftId);
+        await supabase.from("system_gifts").delete().eq("id", giftId);
+      }
     } catch (err) {
       console.warn("[mailbox-service] Error deleting system_gifts from DB:", err);
     }
@@ -593,6 +728,3 @@ export async function deleteSystemGift(
     return { success: false, error: err?.message || "Gagal menghapus hadiah sistem." };
   }
 }
-
-
-

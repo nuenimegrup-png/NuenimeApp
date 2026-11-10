@@ -15,6 +15,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
 import { AppIcon } from "@/components/app-icon";
+import { ChibiLoading } from "@/components/chibi-loading";
 import { BorderAvatar } from "@/components/border-avatar";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import {
@@ -393,7 +394,7 @@ export default function PrivateChatRoomScreen() {
       >
         {loading ? (
           <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color="#38BDF8" />
+            <ChibiLoading size={76} style={{ marginBottom: 12 }} />
           </View>
         ) : messages.length === 0 ? (
           /* EMPTY STATE (PERSIS SCREENSHOT 1) */

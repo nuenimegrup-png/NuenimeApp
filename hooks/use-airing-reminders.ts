@@ -6,9 +6,11 @@ import {
   AIRING_REMINDER_MANAGED_KEY,
   NOTIFY_ME_CHANGED_EVENT,
   candidateFromAnime,
+  candidateFromAiringSchedule,
   parseAiringReminderRecords,
   pickAiringReminders,
   serializeAiringReminderRecords,
+  type AiringReminderCandidate,
   type AiringReminderRecord,
 } from "@/lib/airing-reminders";
 import {
@@ -17,7 +19,7 @@ import {
   parseScheduledEpisodeKeys,
   withoutScheduledEpisodeKeys,
 } from "@/lib/episode-notifications";
-import { getAnimeByIds } from "@/lib/anilist";
+import { currentWeekWindow, getAiringScheduleWindow, getAnimeByIds } from "@/lib/anilist";
 import {
   NOTIFICATION_PREFS_CHANGED_EVENT,
   cancelAiringReminders,
@@ -82,23 +84,7 @@ export function AiringReminderScheduler() {
       );
 
       const prefs = await readNotificationPrefs().catch(() => null);
-      const notifyMeIds = await getNotifyMeAnimeIds();
-
-      let bookmarkIds: number[] = [];
-      if (user) {
-        const { data, error } = await supabase.from("bookmarks").select("anime_id").eq("user_id", user.id);
-        // Transient backend failure: keep the existing schedule instead of
-        // destructively cancelling reminders we cannot reason about.
-        if (error) return;
-        bookmarkIds = (data ?? [])
-          .map((row: { anime_id?: unknown }) => Number(row.anime_id))
-          .filter((id: number) => Number.isInteger(id) && id > 0);
-      }
-
-      const ids = [...new Set([...notifyMeIds, ...bookmarkIds])];
-      // prefs === null (unreadable) behaves as enabled, matching the repo-wide
-      // "missing = default-on" rule — only an explicit opt-out disarms.
-      if (!ids.length || prefs?.newEpisodes === false) {
+      if (prefs?.newEpisodes === false) {
         await disarm(managed);
         return;
       }
@@ -108,16 +94,56 @@ export function AiringReminderScheduler() {
         return;
       }
 
-      let anime;
+      // ─── OPSI 4: AMBIL SELURUH JADWAL TAYANG ANIME MINGGU INI DARI ANILIST ───
+      let scheduleCandidates: AiringReminderCandidate[] = [];
       try {
-        anime = await getAnimeByIds(ids);
-      } catch {
-        return; // Mirror unreachable: keep whatever is already scheduled.
+        const window = currentWeekWindow();
+        const schedulePage = await getAiringScheduleWindow(window);
+        scheduleCandidates = (schedulePage?.airingSchedules || [])
+          .map(candidateFromAiringSchedule)
+          .filter((c): c is AiringReminderCandidate => c !== null);
+      } catch (err) {
+        console.warn("[AiringReminder] Gagal memuat jadwal tayang mingguan:", err);
       }
 
-      const desired = anime
-        .map(candidateFromAnime)
-        .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null);
+      // ─── AMBIL DARI BOOKMARK & LONCENG PENGGUNA (UNTUK ANIME LAINNYA) ───
+      let bookmarkCandidates: AiringReminderCandidate[] = [];
+      try {
+        const notifyMeIds = await getNotifyMeAnimeIds();
+        let bookmarkIds: number[] = [];
+        if (user) {
+          const { data, error } = await supabase.from("bookmarks").select("anime_id").eq("user_id", user.id);
+          if (!error && data) {
+            bookmarkIds = data
+              .map((row: { anime_id?: unknown }) => Number(row.anime_id))
+              .filter((id: number) => Number.isInteger(id) && id > 0);
+          }
+        }
+        const ids = [...new Set([...notifyMeIds, ...bookmarkIds])];
+        if (ids.length > 0) {
+          const anime = await getAnimeByIds(ids);
+          bookmarkCandidates = anime
+            .map(candidateFromAnime)
+            .filter((c): c is AiringReminderCandidate => c !== null);
+        }
+      } catch (err) {
+        console.warn("[AiringReminder] Gagal memuat bookmark pengguna:", err);
+      }
+
+      // ─── GABUNGKAN SEMUA KANDIDAT EPISODE BARU TANPA DUPLIKASI ───
+      const candidateMap = new Map<string, AiringReminderCandidate>();
+      for (const c of [...scheduleCandidates, ...bookmarkCandidates]) {
+        const key = `${c.animeId}:${c.episode}`;
+        if (!candidateMap.has(key)) {
+          candidateMap.set(key, c);
+        }
+      }
+      const desired = Array.from(candidateMap.values());
+
+      if (!desired.length) {
+        return;
+      }
+
       const alreadyNotified = parseScheduledEpisodeKeys(
         await AsyncStorage.getItem(EPISODE_NOTIFICATION_STORAGE_KEY).catch(() => null),
       );
@@ -143,8 +169,8 @@ export function AiringReminderScheduler() {
   }, [disarm, user]);
 
   useEffect(() => {
-    // Tunda initial sync reminder ke kickoff 15 detik agar tidak membebani cold start
-    const kickoff = [setTimeout(() => void syncReminders(), 15_000), setTimeout(() => void syncReminders(), 90_000)];
+    // Sinkronkan jadwal tayang 4 detik setelah cold start agar segera terdaftar ke AlarmManager HP
+    const kickoff = [setTimeout(() => void syncReminders(), 4_000), setTimeout(() => void syncReminders(), 60_000)];
     const interval = setInterval(() => void syncReminders(), SYNC_INTERVAL_MS);
     const appStateSubscription = AppState.addEventListener("change", (state) => {
       if (state === "active") void syncReminders();

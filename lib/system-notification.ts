@@ -41,6 +41,7 @@ export async function showSystemBarNotification({
         showBadge: true,
         enableLights: true,
         enableVibrate: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
     }
 

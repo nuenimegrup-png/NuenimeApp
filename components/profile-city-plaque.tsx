@@ -6,9 +6,14 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { hapticLight } from '@/lib/haptics';
 
-interface ProfileCityPlaqueProps {
+export interface ProfileCityPlaqueProps {
   userId?: string | null;
   style?: StyleProp<ViewStyle>;
+  compact?: boolean;
+  inlineClan?: boolean;
+  hideIfNoClan?: boolean;
+  hideNoClanBadge?: boolean;
+  onPress?: (() => void) | null;
 }
 
 interface CityTheme {
@@ -38,7 +43,7 @@ const CITY_THEMES: Record<string, CityTheme> = {
 /**
  * City Emblem SVG Icon for React Native
  */
-const CityEmblemSvg: React.FC<{ cityId: string; size?: number; accent: string }> = ({
+const CityEmblemSvg: React.FC<{ cityId: string; size?: number; accent: string }> = React.memo(({
   cityId,
   size = 38,
   accent,
@@ -165,9 +170,17 @@ const CityEmblemSvg: React.FC<{ cityId: string; size?: number; accent: string }>
       )}
     </Svg>
   );
-};
+});
 
-export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = ({ userId, style }) => {
+export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
+  userId,
+  style,
+  compact = false,
+  inlineClan = false,
+  hideIfNoClan = false,
+  hideNoClanBadge = false,
+  onPress,
+}) => {
   // Query keanggotaan klan user dari Supabase
   const { data: clanData } = useQuery({
     queryKey: ['user-clan-profile-banner', userId],
@@ -233,11 +246,17 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = ({ userId, st
         return null;
       }
     },
-    staleTime: 1000 * 30,
+    staleTime: 1000 * 60 * 10, // 10 menit in-memory TanStack cache
+    gcTime: 1000 * 60 * 30, // 30 menit
   });
 
   const clanInfo = clanData?.clan;
   const isJoinedClan = !!clanInfo;
+
+  // Jika hideIfNoClan diaktifkan dan pengguna belum memiliki klan, sembunyikan sepenuhnya
+  if (hideIfNoClan && !isJoinedClan) {
+    return null;
+  }
 
   // Jika belum gabung klan: Plakat menampilkan "GELANDANGAN" dengan logo pengelana/wanderer
   // Jika sudah gabung klan: Otomatis menyesuaikan dengan kota dan klan tempat bernaung
@@ -256,6 +275,11 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = ({ userId, st
   const accentColor = theme.accent;
 
   const handlePress = () => {
+    if (onPress === null) return;
+    if (typeof onPress === 'function') {
+      onPress();
+      return;
+    }
     hapticLight();
     router.push({
       pathname: '/dunia',
@@ -263,28 +287,48 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = ({ userId, st
     } as never);
   };
 
+  const isClickable = onPress !== null;
+
   return (
-    <View style={[styles.outerContainer, style]}>
+    <View
+      style={[
+        styles.outerContainer,
+        inlineClan && styles.outerContainerInline,
+        style,
+      ]}
+    >
       {/* 1. Plakat Kota / Status Pengelana */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={isJoinedClan ? `Kota ${cityName}` : 'Status Gelandangan / Pengelana'}
+        disabled={!isClickable}
         onPress={handlePress}
         // @ts-ignore
         onClick={handlePress}
         style={({ pressed }) => [
           styles.plaqueRow,
-          pressed && styles.pressed,
-          Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+          compact && styles.plaqueRowCompact,
+          pressed && isClickable && styles.pressed,
+          Platform.OS === 'web' && isClickable && ({ cursor: 'pointer' } as any),
         ]}
-        hitSlop={6}
+        hitSlop={compact ? 4 : 6}
       >
         {/* Metallic City Emblem Shield Badge */}
-        <View style={[styles.emblemWrapper, { shadowColor: accentColor }]}>
-          <CityEmblemSvg cityId={cityId} size={38} accent={accentColor} />
+        <View
+          style={[
+            styles.emblemWrapper,
+            { shadowColor: accentColor },
+            compact && styles.emblemWrapperCompact,
+          ]}
+        >
+          <CityEmblemSvg
+            cityId={cityId}
+            size={compact ? 22 : 38}
+            accent={accentColor}
+          />
         </View>
 
-        {/* Solid Beveled Dark Obsidian Plaque (Single Row persis Gambar 1) */}
+        {/* Solid Beveled Dark Obsidian Plaque */}
         <View
           style={[
             styles.plaqueBody,
@@ -292,10 +336,17 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = ({ userId, st
               borderTopColor: accentColor,
               borderBottomColor: `${accentColor}88`,
             },
+            compact && styles.plaqueBodyCompact,
           ]}
         >
           {/* City Name */}
-          <Text style={styles.cityNameText} numberOfLines={1}>
+          <Text
+            style={[
+              styles.cityNameText,
+              compact && styles.cityNameTextCompact,
+            ]}
+            numberOfLines={1}
+          >
             {cityName}
           </Text>
 
@@ -306,73 +357,139 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = ({ userId, st
               {
                 borderColor: `${accentColor}66`,
               },
+              compact && styles.levelBadgeCompact,
             ]}
           >
-            <Text style={[styles.levelText, { color: theme.secondary }]}>Lv.{cityLevel}</Text>
+            <Text
+              style={[
+                styles.levelText,
+                { color: theme.secondary },
+                compact && styles.levelTextCompact,
+              ]}
+            >
+              Lv.{cityLevel}
+            </Text>
           </View>
 
           {/* Arrow Chevron Tip on Right */}
-          <View style={styles.chevronTip}>
-            <Svg width={10} height={28} viewBox="0 0 10 28" fill="none">
-              <Path
-                d="M0 0 L6 14 L0 28 Z"
-                fill="#070E1C"
-                stroke={accentColor}
-                strokeWidth={1.2}
-              />
-            </Svg>
+          <View
+            style={[
+              styles.chevronTip,
+              compact && styles.chevronTipCompact,
+            ]}
+          >
+            {compact ? (
+              <Svg width={6} height={18} viewBox="0 0 6 18" fill="none">
+                <Path
+                  d="M0 0 L4 9 L0 18 Z"
+                  fill="#070E1C"
+                  stroke={accentColor}
+                  strokeWidth={1}
+                />
+              </Svg>
+            ) : (
+              <Svg width={10} height={28} viewBox="0 0 10 28" fill="none">
+                <Path
+                  d="M0 0 L6 14 L0 28 Z"
+                  fill="#070E1C"
+                  stroke={accentColor}
+                  strokeWidth={1.2}
+                />
+              </Svg>
+            )}
           </View>
         </View>
       </Pressable>
 
-      {/* 2. Informasi Klan di Luar Plakat (Tepat di Bawahnya) */}
+      {/* 2. Informasi Klan di Luar Plakat */}
       {isJoinedClan && (clanName || clanTag) ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Klan ${clanName || clanTag}`}
+          disabled={!isClickable}
           onPress={handlePress}
           // @ts-ignore
           onClick={handlePress}
           style={({ pressed }) => [
             styles.clanBadgeBelow,
-            pressed && styles.pressed,
-            Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+            inlineClan && styles.clanBadgeInline,
+            compact && styles.clanBadgeCompact,
+            pressed && isClickable && styles.pressed,
+            Platform.OS === 'web' && isClickable && ({ cursor: 'pointer' } as any),
           ]}
         >
           {clanTag && (
-            <View style={[styles.clanTagPill, { borderColor: `${accentColor}88` }]}>
-              <Text style={[styles.clanTagText, { color: accentColor }]}>[{clanTag}]</Text>
+            <View
+              style={[
+                styles.clanTagPill,
+                { borderColor: `${accentColor}88` },
+                compact && styles.clanTagPillCompact,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.clanTagText,
+                  { color: accentColor },
+                  compact && styles.clanTagTextCompact,
+                ]}
+              >
+                [{clanTag}]
+              </Text>
             </View>
           )}
-          <Text style={styles.clanNameText} numberOfLines={1}>
+          <Text
+            style={[
+              styles.clanNameText,
+              compact && styles.clanNameTextCompact,
+            ]}
+            numberOfLines={1}
+          >
             {clanName || 'Klan Anggota'}
           </Text>
         </Pressable>
-      ) : (
+      ) : !hideIfNoClan && !hideNoClanBadge ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Belum memiliki klan — Ketuk untuk cari klan"
+          accessibilityLabel="Anda belum ada klan — Ketuk untuk cari klan"
+          disabled={!isClickable}
           onPress={handlePress}
           // @ts-ignore
           onClick={handlePress}
           style={({ pressed }) => [
             styles.noClanBadgeBelow,
-            pressed && styles.pressed,
-            Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+            inlineClan && styles.clanBadgeInline,
+            compact && styles.clanBadgeCompact,
+            pressed && isClickable && styles.pressed,
+            Platform.OS === 'web' && isClickable && ({ cursor: 'pointer' } as any),
           ]}
         >
           <View style={styles.noClanDot} />
-          <Text style={styles.noClanText}>Belum Punya Klan (Cari Klan)</Text>
+          <Text
+            style={[
+              styles.clanNameText,
+              compact && styles.clanNameTextCompact,
+              { color: '#94A3B8' },
+            ]}
+            numberOfLines={1}
+          >
+            {compact ? 'Anda belum ada klan' : 'Belum Punya Klan (Cari Klan)'}
+          </Text>
         </Pressable>
-      )}
+      ) : null}
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   outerContainer: {
     zIndex: 20,
     alignItems: 'flex-start',
+  },
+  outerContainerInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   pressed: {
     opacity: 0.85,
@@ -381,6 +498,9 @@ const styles = StyleSheet.create({
   plaqueRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  plaqueRowCompact: {
+    height: 20,
   },
   emblemWrapper: {
     zIndex: 10,
@@ -394,6 +514,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 6,
     elevation: 6,
+  },
+  emblemWrapperCompact: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    elevation: 3,
   },
   plaqueBody: {
     position: 'relative',
@@ -413,11 +539,25 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
+  plaqueBodyCompact: {
+    height: 18,
+    marginLeft: -5,
+    paddingLeft: 8,
+    paddingRight: 6,
+    gap: 4,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    elevation: 2,
+  },
   cityNameText: {
     fontFamily: 'Nunito-Bold',
     fontSize: 11.5,
     color: '#FFFFFF',
     letterSpacing: 0.8,
+  },
+  cityNameTextCompact: {
+    fontSize: 9.5,
+    letterSpacing: 0.5,
   },
   levelBadge: {
     backgroundColor: 'rgba(15, 23, 42, 0.95)',
@@ -426,9 +566,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 1,
   },
+  levelBadgeCompact: {
+    paddingHorizontal: 3,
+    paddingVertical: 0.5,
+    borderRadius: 3,
+  },
   levelText: {
     fontFamily: 'Nunito-Bold',
     fontSize: 9,
+  },
+  levelTextCompact: {
+    fontSize: 7.5,
   },
   chevronTip: {
     position: 'absolute',
@@ -436,6 +584,11 @@ const styles = StyleSheet.create({
     top: -1.5,
     height: 28,
     justifyContent: 'center',
+  },
+  chevronTipCompact: {
+    right: -5,
+    top: -1,
+    height: 18,
   },
   clanBadgeBelow: {
     marginTop: 4,
@@ -456,6 +609,18 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  clanBadgeInline: {
+    marginTop: 0,
+    marginLeft: 6,
+  },
+  clanBadgeCompact: {
+    height: 18,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    gap: 3.5,
+    borderRadius: 4,
+    maxWidth: 160,
+  },
   clanTagPill: {
     backgroundColor: 'rgba(15, 23, 42, 0.9)',
     borderWidth: 1,
@@ -463,16 +628,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3.5,
     paddingVertical: 0.5,
   },
+  clanTagPillCompact: {
+    paddingHorizontal: 3,
+    paddingVertical: 0,
+    borderRadius: 2.5,
+  },
   clanTagText: {
     fontFamily: 'Nunito-Bold',
     fontSize: 8.5,
     letterSpacing: 0.4,
+  },
+  clanTagTextCompact: {
+    fontSize: 7.5,
+    letterSpacing: 0.3,
   },
   clanNameText: {
     fontFamily: 'Nunito-Bold',
     fontSize: 10,
     color: '#E2E8F0',
     letterSpacing: 0.3,
+  },
+  clanNameTextCompact: {
+    fontSize: 8.5,
+    letterSpacing: 0.2,
   },
   noClanDot: {
     width: 5,

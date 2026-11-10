@@ -38,13 +38,17 @@ function timeAgo(dateStr: string): string {
 export function NotificationSheet({
   visible,
   onClose,
+  initialTab,
+  initialGiftId,
 }: {
   onClose: () => void;
   visible: boolean;
+  initialTab?: "all" | "unread" | "gifts";
+  initialGiftId?: string | null;
 }) {
   const { user } = useAnirakuAuth();
   const { notifications, markRead, markAllRead, deleteAll } = useNotifications();
-  const [filter, setFilter] = useState<"all" | "unread" | "gifts">("unread");
+  const [filter, setFilter] = useState<"all" | "unread" | "gifts">(initialTab || "unread");
   const [gifts, setGifts] = useState<SystemGift[]>([]);
   const [loadingGifts, setLoadingGifts] = useState(false);
   const [selectedGift, setSelectedGift] = useState<SystemGift | null>(null);
@@ -56,18 +60,26 @@ export function NotificationSheet({
       setLoadingGifts(true);
       const data = await getUserMailboxGifts(user?.id);
       setGifts(data);
+      if (initialGiftId && data.length > 0) {
+        const target = data.find((g) => g.id === initialGiftId);
+        if (target && !target.isClaimed) {
+          setSelectedGift(target);
+          setClaimModalVisible(true);
+        }
+      }
     } catch (err) {
       console.warn("[notification-sheet] loadGifts error:", err);
     } finally {
       setLoadingGifts(false);
     }
-  }, [user?.id]);
+  }, [user?.id, initialGiftId]);
 
   useEffect(() => {
     if (visible) {
+      if (initialTab) setFilter(initialTab);
       loadGifts();
     }
-  }, [visible, loadGifts]);
+  }, [visible, initialTab, loadGifts]);
 
   // Realtime subscription untuk system_gifts baru dari Admin
   // Channel ini menggunakan nama statis, jadi kita HARUS bersihkan channel
@@ -265,7 +277,7 @@ export function NotificationSheet({
 
             {/* TAB: HADIAH MASSAL (MAILBOX) */}
             {filter === "gifts" ? (
-              loadingGifts ? (
+              loadingGifts && gifts.length === 0 ? (
                 <View style={styles.empty}>
                   <ActivityIndicator size="small" color="#38BDF8" />
                   <Text style={styles.emptyText}>Memuat kotak hadiah...</Text>

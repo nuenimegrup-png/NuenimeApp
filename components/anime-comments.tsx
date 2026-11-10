@@ -5,7 +5,6 @@ import {
   Alert,
   Animated,
   FlatList,
-  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -13,6 +12,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { AppIcon } from "@/components/app-icon";
 import { AvatarImage } from "@/components/avatar-image";
 import { ErrorState, LoadingState } from "@/components/async-state";
@@ -22,10 +23,105 @@ import { canSubmitSharedComment, commentAuthorLabel } from "@/lib/comment-conten
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { BorderAvatar } from "@/components/border-avatar";
 import { getEquippedBorderId } from "@/lib/avatar-borders";
+import { UserVerificationBadge } from "@/components/user-verification-badge";
+import { getTierForLevel } from "@/components/level-progress-modal";
+import { ProfileCityPlaque } from "@/components/profile-city-plaque";
+import { hapticLight } from "@/lib/haptics";
 import {
   checkDiscussionCooldown,
   checkDuplicateSpamAndAutoBan,
 } from "@/lib/security-defense";
+
+const NAME_COLORS = [
+  "#EF4444", // Red (Developer / Admin)
+  "#38BDF8", // Cyan
+  "#10B981", // Emerald
+  "#F59E0B", // Amber
+  "#EC4899", // Pink
+  "#8B5CF6", // Purple
+  "#06B6D4", // Sky
+  "#84CC16", // Lime
+  "#F97316", // Orange
+  "#6366F1", // Indigo
+];
+
+function getUsernameColor(username: string, role?: string | null): string {
+  const cleanRole = (role || "").trim().toLowerCase();
+  if (cleanRole && cleanRole !== "member" && cleanRole !== "guest") {
+    return "#EF4444"; // Red for developer / admin
+  }
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) {
+    hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % NAME_COLORS.length;
+  return NAME_COLORS[index];
+}
+
+function getTierPillColors(tierName: string) {
+  switch (tierName.toLowerCase()) {
+    case "eternal":
+      return {
+        bg: "rgba(168, 85, 247, 0.16)",
+        border: "rgba(168, 85, 247, 0.45)",
+        text: "#D8B4FE",
+      };
+    case "celestial":
+      return {
+        bg: "rgba(251, 146, 60, 0.16)",
+        border: "rgba(251, 146, 60, 0.45)",
+        text: "#FDBA74",
+      };
+    case "ruby star":
+      return {
+        bg: "rgba(251, 113, 133, 0.16)",
+        border: "rgba(251, 113, 133, 0.45)",
+        text: "#FDA4AF",
+      };
+    case "amethyst":
+      return {
+        bg: "rgba(192, 132, 252, 0.16)",
+        border: "rgba(192, 132, 252, 0.45)",
+        text: "#E9D5FF",
+      };
+    case "sapphire":
+      return {
+        bg: "rgba(56, 189, 248, 0.16)",
+        border: "rgba(56, 189, 248, 0.45)",
+        text: "#7DD3FC",
+      };
+    case "emerald":
+      return {
+        bg: "rgba(52, 211, 153, 0.16)",
+        border: "rgba(52, 211, 153, 0.45)",
+        text: "#6EE7B7",
+      };
+    case "gold":
+      return {
+        bg: "rgba(251, 191, 36, 0.16)",
+        border: "rgba(251, 191, 36, 0.45)",
+        text: "#FDE047",
+      };
+    case "silver":
+      return {
+        bg: "rgba(203, 213, 225, 0.16)",
+        border: "rgba(203, 213, 225, 0.45)",
+        text: "#E2E8F0",
+      };
+    case "bronze":
+      return {
+        bg: "rgba(217, 119, 6, 0.16)",
+        border: "rgba(217, 119, 6, 0.45)",
+        text: "#FDBA74",
+      };
+    default:
+      return {
+        bg: "rgba(148, 163, 184, 0.16)",
+        border: "rgba(148, 163, 184, 0.45)",
+        text: "#94A3B8",
+      };
+  }
+}
 
 function authorName(comment: SharedComment) {
   return commentAuthorLabel(comment.author);
@@ -49,27 +145,118 @@ function CommentAuthor({ comment }: { comment: SharedComment }) {
   const [myBorderId, setMyBorderId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isMe) {
-      getEquippedBorderId(auth.user?.id).then(setMyBorderId);
+    if (isMe && auth.user?.id) {
+      getEquippedBorderId(auth.user.id).then(setMyBorderId);
     }
   }, [isMe, auth.user?.id]);
 
+  const borderId =
+    (isMe && (myBorderId || auth.profile?.equipped_border)) ||
+    comment.author?.equipped_border ||
+    null;
+  const role = (isMe && auth.profile?.role) || comment.author?.role || "member";
+  const isVip = (isMe && auth.profile?.is_vip) ?? comment.author?.is_vip ?? false;
+  const rawMemberNumber =
+    (isMe && auth.profile?.member_number) || comment.author?.member_number;
+  const memberTag = rawMemberNumber
+    ? `#${String(rawMemberNumber).replace(/[^0-9]/g, "")}`
+    : null;
+  const level = (isMe && auth.profile?.level) || comment.author?.level || 1;
+
+  const tierInfo = getTierForLevel(level);
+  const activeTier = tierInfo?.currentTier;
+  const tierPillColors = getTierPillColors(activeTier?.name || "Stone");
+  const nameColor = getUsernameColor(name, role);
+
+  const handlePressUser = () => {
+    if (comment.user_id) {
+      hapticLight();
+      router.push(`/user/${comment.user_id}` as never);
+    }
+  };
+
   return (
     <View style={styles.commentAuthor}>
-      <BorderAvatar
-        avatarUrl={avatar}
-        fallbackText={name}
-        borderId={isMe ? myBorderId : null}
-        avatarSize={30}
-      />
+      <Pressable onPress={handlePressUser} style={styles.authorAvatarWrap}>
+        <BorderAvatar
+          avatarUrl={avatar}
+          fallbackText={name}
+          borderId={borderId}
+          avatarSize={34}
+        />
+      </Pressable>
+
       <View style={styles.authorCopy}>
-        <Text style={styles.authorName} numberOfLines={1}>
-          {name}
-        </Text>
-        <Text style={styles.authorMeta}>
-          {comment.episode_number ? `EP ${comment.episode_number} · ` : ""}
-          {elapsedTime(comment.created_at)}
-        </Text>
+        {/* Baris 1: Nama Pengguna + Centang Verifikasi (Merah/Biru) + Tag Nomor (#2) */}
+        <View style={styles.authorHeaderRow}>
+          <Pressable onPress={handlePressUser}>
+            <Text
+              style={[styles.authorName, { color: nameColor }]}
+              numberOfLines={1}
+            >
+              {name}
+            </Text>
+          </Pressable>
+
+          {/* Otoritatif Checkmark (Merah untuk Admin, Biru untuk Member) */}
+          <UserVerificationBadge role={role} isVip={isVip} size={13} />
+
+          {/* Member Tag Number (e.g. #2) */}
+          {memberTag ? (
+            <Text style={styles.memberTagText}>{memberTag}</Text>
+          ) : null}
+        </View>
+
+        {/* Baris 2: Plakat Kota & Klan (Posisinya seragam di bawah nama, persis DRAKONIA / GELANDANGAN) */}
+        <View style={styles.cityClanRow}>
+          <ProfileCityPlaque
+            userId={comment.user_id}
+            compact
+            inlineClan
+          />
+        </View>
+
+        {/* Baris 3: Rank Tier Pill (e.g. GOLD) + Level Pill (Lvl 11) + Timestamp */}
+        <View style={styles.badgesAndMetaRow}>
+          {activeTier ? (
+            <View
+              style={[
+                styles.rankTierPill,
+                {
+                  backgroundColor: tierPillColors.bg,
+                  borderColor: tierPillColors.border,
+                },
+              ]}
+            >
+              <Text
+                style={[styles.rankTierText, { color: tierPillColors.text }]}
+              >
+                {activeTier.name.toUpperCase()}
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Level Pill dengan Icon Sayap / Tier */}
+          <View style={styles.levelPill}>
+            {activeTier?.imageUrl && (
+              <Image
+                source={{ uri: activeTier.imageUrl }}
+                style={styles.tierPillIcon}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+              />
+            )}
+            <Text style={styles.levelPillText}>
+              Lvl {Number(level).toLocaleString("id-ID")}
+            </Text>
+          </View>
+
+          {/* Episode & Waktu */}
+          <Text style={styles.authorMeta}>
+            {comment.episode_number ? `EP ${comment.episode_number} · ` : ""}
+            {elapsedTime(comment.created_at)}
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -548,8 +735,39 @@ export const AnimeComments = memo(function AnimeComments({
             const isDeletingThis = deletingId === comment.id;
             const thread = repliesByParent.get(comment.id) ?? [];
 
+            const isMe =
+              Boolean(auth.user) && auth.user!.id === comment.user_id;
+            const bannerUrl =
+              (isMe && auth.profile?.banner_url) ||
+              comment.author?.banner_url ||
+              null;
+            const hasBanner = Boolean(bannerUrl && bannerUrl.trim().length > 0);
+
             return (
-              <View style={styles.commentCard}>
+              <View
+                key={comment.id}
+                style={[
+                  styles.commentCard,
+                  hasBanner && styles.commentCardWithBanner,
+                ]}
+              >
+                {hasBanner ? (
+                  <>
+                    <Image
+                      source={{ uri: bannerUrl! }}
+                      style={StyleSheet.absoluteFillObject}
+                      contentFit="cover"
+                      cachePolicy="memory-disk"
+                    />
+                    <LinearGradient
+                      colors={["rgba(10, 15, 26, 0.65)", "rgba(10, 15, 26, 0.40)"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={StyleSheet.absoluteFillObject}
+                    />
+                  </>
+                ) : null}
+
                 <CommentAuthor comment={comment} />
 
                 {hidden ? (
@@ -680,8 +898,41 @@ export const AnimeComments = memo(function AnimeComments({
                   const replyCanDelete = replyOwn || isAdmin;
                   const isDeletingReply = deletingId === reply.id;
 
+                  const replyIsMe =
+                    Boolean(auth.user) && auth.user!.id === reply.user_id;
+                  const replyBannerUrl =
+                    (replyIsMe && auth.profile?.banner_url) ||
+                    reply.author?.banner_url ||
+                    null;
+                  const replyHasBanner = Boolean(
+                    replyBannerUrl && replyBannerUrl.trim().length > 0
+                  );
+
                   return (
-                    <View key={reply.id} style={styles.replyRow}>
+                    <View
+                      key={reply.id}
+                      style={[
+                        styles.replyRow,
+                        replyHasBanner && styles.replyRowWithBanner,
+                      ]}
+                    >
+                      {replyHasBanner ? (
+                        <>
+                          <Image
+                            source={{ uri: replyBannerUrl! }}
+                            style={StyleSheet.absoluteFillObject}
+                            contentFit="cover"
+                            cachePolicy="memory-disk"
+                          />
+                          <LinearGradient
+                            colors={["rgba(10, 15, 26, 0.65)", "rgba(10, 15, 26, 0.40)"]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={StyleSheet.absoluteFillObject}
+                          />
+                        </>
+                      ) : null}
+
                       <CommentAuthor comment={reply} />
                       {replyHidden ? (
                         <Pressable
@@ -999,25 +1250,101 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.06)",
     padding: 14,
     gap: 10,
+    overflow: "hidden",
+  },
+  commentCardWithBanner: {
+    borderColor: "rgba(255, 255, 255, 0.14)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  commentBannerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(10, 15, 26, 0.52)",
   },
   commentAuthor: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
   },
+  authorAvatarWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
   authorCopy: {
     flex: 1,
-    gap: 1,
+    gap: 2,
+  },
+  authorHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap",
   },
   authorName: {
     fontFamily: "Nunito-Bold",
     fontSize: 13.5,
     color: "#FFFFFF",
   },
+  memberTagText: {
+    fontSize: 10.5,
+    color: "#64748B",
+    fontWeight: "700",
+  },
+  cityClanRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 2,
+    marginBottom: 1,
+  },
+  badgesAndMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 2,
+    flexWrap: "wrap",
+  },
+  rankTierPill: {
+    paddingHorizontal: 5.5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rankTierText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 9.5,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  levelPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "#1E2636",
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
+  },
+  tierPillIcon: {
+    width: 11,
+    height: 11,
+  },
+  levelPillText: {
+    fontSize: 9.5,
+    fontWeight: "700",
+    color: "#38BDF8",
+  },
   authorMeta: {
     fontFamily: "Nunito-SemiBold",
-    fontSize: 11,
+    fontSize: 10.5,
     color: "#64748B",
+    marginLeft: 2,
   },
   commentText: {
     fontFamily: "Nunito-Regular",
@@ -1086,6 +1413,14 @@ const styles = StyleSheet.create({
     paddingLeft: 12,
     borderLeftWidth: 2,
     borderLeftColor: "rgba(255, 255, 255, 0.08)",
+    overflow: "hidden",
+  },
+  replyRowWithBanner: {
+    borderRadius: 12,
+    borderLeftColor: "rgba(255, 255, 255, 0.25)",
+    padding: 10,
+    marginTop: 8,
+    backgroundColor: "transparent",
   },
   showMore: {
     height: 42,

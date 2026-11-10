@@ -30,6 +30,27 @@ export type NotificationPrefs = {
   systemAnnouncements: boolean;
 };
 
+export const EPISODE_NOTIFICATION_CHANNEL_ID = "nuenime_episode_releases";
+
+export async function setupEpisodeNotificationChannel() {
+  if (Platform.OS !== "android") return;
+  try {
+    await Notifications.setNotificationChannelAsync(EPISODE_NOTIFICATION_CHANNEL_ID, {
+      name: "Rilis Episode Baru",
+      description: "Notifikasi saat ada episode anime baru yang tayang di Nuenime",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#38BDF8",
+      sound: "default",
+      showBadge: true,
+      enableVibrate: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+  } catch (err) {
+    console.warn("[Notifications] Failed to setup episode channel:", err);
+  }
+}
+
 const NOTIFICATION_PREFS_STORAGE_KEY = "aniraku.notificationprefs";
 const NOTIFICATION_PREFS_CHANGED_EVENT = "aniraku.notification-prefs-changed";
 export { NOTIFICATION_PREFS_CHANGED_EVENT };
@@ -124,6 +145,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     // Push listeners are native-only: on web they warn and do nothing.
     if (Platform.OS === "web") return;
+    setupEpisodeNotificationChannel().catch(() => {});
     registerForPushNotifications().catch(() => {});
 
     notificationListener.current = Notifications.addNotificationReceivedListener((_notification) => {});
@@ -132,6 +154,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       const data = response.notification.request.content.data;
       if (data?.animeId) {
         router.push({ pathname: "/anime/[id]", params: { id: String(data.animeId) } } as never);
+      } else if (data?.type === "gift" || String(data?.actionUrl || "").includes("mailbox")) {
+        const giftId = data?.giftId ? String(data.giftId) : "";
+        router.push({
+          pathname: "/(tabs)",
+          params: { openMailbox: "true", giftId },
+        } as never);
       } else if (data?.actionUrl) {
         const url = String(data.actionUrl).trim();
         if (url.startsWith("http://") || url.startsWith("https://")) {
@@ -441,8 +469,17 @@ export async function scheduleNewEpisodeNotification(input: EpisodeNotificationI
   if (!shouldScheduleEpisodeNotification(scheduled, input.animeId, input.episode)) return false;
   const content = buildEpisodeNotificationContent(input);
   await Notifications.scheduleNotificationAsync({
-    content: { title: content.title, body: content.body, data: content.data },
-    trigger: null,
+    content: {
+      title: content.title,
+      body: content.body,
+      data: content.data,
+      sound: "default",
+      color: "#38BDF8",
+      priority: Notifications.AndroidNotificationPriority.MAX,
+    },
+    trigger: {
+      channelId: EPISODE_NOTIFICATION_CHANNEL_ID,
+    },
   });
   await AsyncStorage.setItem(
     EPISODE_NOTIFICATION_STORAGE_KEY,
@@ -483,8 +520,19 @@ export async function scheduleAiringReminder(input: AiringReminderCandidate): Pr
   try {
     await Notifications.scheduleNotificationAsync({
       identifier,
-      content: { title: content.title, body: content.body, data: content.data },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireAt },
+      content: {
+        title: content.title,
+        body: content.body,
+        data: content.data,
+        sound: "default",
+        color: "#38BDF8",
+        priority: Notifications.AndroidNotificationPriority.MAX,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: fireAt,
+        channelId: EPISODE_NOTIFICATION_CHANNEL_ID,
+      },
     });
   } catch {
     return null;

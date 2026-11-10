@@ -16,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Image } from "expo-image";
 import { AppIcon } from "@/components/app-icon";
+import { ChibiLoading } from "@/components/chibi-loading";
 import { BorderAvatar } from "@/components/border-avatar";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { isSpecialRole } from "@/lib/admin-service";
@@ -317,7 +318,7 @@ export default function ConnectionsScreen() {
       {/* ─── 3. CONTENT AREA ─── */}
       {loading ? (
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color="#38BDF8" />
+          <ChibiLoading size={76} style={{ marginBottom: 12 }} />
           <Text style={styles.loadingText}>Menghubungkan jaringan teman...</Text>
         </View>
       ) : activeTab === "teman" ? (

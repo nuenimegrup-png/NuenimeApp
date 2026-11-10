@@ -4,6 +4,7 @@ import { currentWeekWindow, getAiringScheduleWindow, getAnimePool } from "@/lib/
 import { readNsfwPreference } from "@/lib/nsfw-preference";
 import { sessionRandomPages } from "@/lib/random-pool";
 import { nsfwFilterParam } from "@/lib/nsfw-preference";
+import { preloadChatStickers } from "@/lib/chat-stickers";
 
 /**
  * Fires AniList prefetches on mount so both the Schedule and Random tabs
@@ -19,6 +20,10 @@ export function useStartupPrefetch() {
   const queryClient = useQueryClient();
   useEffect(() => {
     let cancelled = false;
+
+    // Pra-cache stiker chat global secara agresif di background agar instan 0ms
+    void preloadChatStickers().catch(() => {});
+
     // Delay prefetch so Home screen gets 100% of network & AniList request slots at cold start
     const timer = setTimeout(() => {
       if (cancelled) return;

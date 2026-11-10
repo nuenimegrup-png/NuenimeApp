@@ -68,6 +68,7 @@ import { useWatchHistory, listLocalWatchEntries } from "@/hooks/use-watch-histor
 import { useEpisodeRatings } from "@/hooks/use-episode-ratings";
 import { AnimeComments } from "@/components/anime-comments";
 import { useProviderSync } from "@/hooks/use-provider-sync";
+import { markMissionProgress } from "@/lib/lelang-service";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { useExp } from "@/providers/exp-toast-provider";
 import { EXP_RULES } from "@/lib/user-level";
@@ -88,6 +89,7 @@ import { resolveNextEpisode, resolvePrevEpisode } from "@/lib/up-next";
 import { PATREON_URL } from "@/lib/support";
 import { t } from "@/lib/i18n";
 import Svg, { Rect } from "react-native-svg";
+import { ReportStreamModal } from "@/components/report-stream-modal";
 
 const TOPUP_CRYSTAL = require("@/assets/images/topup/topup-crystal.png");
 
@@ -306,6 +308,7 @@ export default function WatchScreen() {
   const [gesturesEnabled, setGesturesEnabled] = useState(true);
   const [skipIntroEnabled, setSkipIntroEnabled] = useState(true);
   const [configuredIntroDuration, setConfiguredIntroDuration] = useState(85);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
 
   const handleShare = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1071,7 +1074,10 @@ export default function WatchScreen() {
   }, [embedSource, source]);
 
   useEffect(() => {
-    if (hasConfirmedPlaybackStart({ isPlaying, currentTime, firstFrameRendered: sourceFirstFrame.current })) sourceStarted.current = true;
+    if (hasConfirmedPlaybackStart({ isPlaying, currentTime, firstFrameRendered: sourceFirstFrame.current })) {
+      sourceStarted.current = true;
+      void markMissionProgress("misi-anime");
+    }
     const pendingPosition = pendingResume.current;
     if (shouldApplyInitialHistoryResume({
       currentTime, hasPendingResume: isResumablePosition(pendingPosition),
@@ -2336,30 +2342,9 @@ export default function WatchScreen() {
   ].join("\n"), [activeProvider?.label, activeProvider?.provider, embedSource, episode, error, language, lastPlayerError, source?.type, title, useSourceProxy]);
 
   const reportBrokenSource = useCallback(() => {
-    const message = buildSourceReport();
-    const summary = [
-      `Provider: ${activeProvider?.provider || "unknown"}`,
-      `Server: ${activeProvider?.label || "unknown"}`,
-      `Language: ${language === "sub" ? "Subtitled" : "Dubbed"}`,
-      `Episode: ${episode}`,
-      `Error: ${lastPlayerError || error || "playback failed"}`,
-    ].join("\n");
-    Alert.alert(
-      "Report broken source",
-      `This report includes only:\n\n${summary}\n\nShare it through your usual channels? Nothing else from your account is included.`,
-      [
-        { text: t("player.cancel"), style: "cancel" },
-        {
-          text: "Share report",
-          onPress: () => {
-            void Share.share({ title: "Aniraku broken source report", message }).catch(() => {
-              void Linking.openURL(`mailto:?subject=${encodeURIComponent("Aniraku broken source report")}&body=${encodeURIComponent(message)}`).catch(() => {});
-            });
-          },
-        },
-      ],
-    );
-  }, [activeProvider?.label, activeProvider?.provider, buildSourceReport, episode, error, language, lastPlayerError]);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setReportModalVisible(true);
+  }, []);
 
   useEffect(() => {
     if (!source || duration <= 0) return;
@@ -3203,7 +3188,7 @@ export default function WatchScreen() {
             onPress={reportBrokenSource}
             style={styles.reportPillBtn}
           >
-            <Flag size={13} color="#000000" weight="fill" />
+            <Flag size={13} color="#F43F5E" weight="fill" />
             <Text style={styles.reportPillText}>Report</Text>
           </Pressable>
         </View>
@@ -3415,6 +3400,15 @@ export default function WatchScreen() {
         </View>
       )}
     </View></Pressable></Modal>
+
+      <ReportStreamModal
+        visible={reportModalVisible}
+        onClose={() => setReportModalVisible(false)}
+        animeId={animeId || 0}
+        animeTitle={title}
+        episodeNumber={episode}
+        serverName={`${activeProvider?.label || "Server 1"} (${requestedQuality || "Auto"})`}
+      />
   </NativeScreen>;
 }
 
@@ -3631,8 +3625,8 @@ const styles = StyleSheet.create({
   animeSubMetaText: { color: "#94A3B8", fontSize: 12, fontWeight: "600" },
   animeSubMetaDot: { color: "#64748B", fontSize: 12 },
   viewsRow: { flexDirection: "row", alignItems: "center", gap: 3 },
-  reportPillBtn: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#EAB308", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 6 },
-  reportPillText: { color: "#000000", fontSize: 12, fontWeight: "800" },
+  reportPillBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255, 255, 255, 0.08)", borderWidth: 1, borderColor: "rgba(255, 255, 255, 0.14)", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 6 },
+  reportPillText: { color: "#E2E8F0", fontSize: 12, fontWeight: "700" },
   animeDescText: { color: "#CBD5E1", fontSize: 13, lineHeight: 19 },
   descToggleBtn: { alignSelf: "flex-start", marginTop: -4 },
   descToggleText: { color: "#38BDF8", fontSize: 12, fontWeight: "700" },

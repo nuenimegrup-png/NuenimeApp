@@ -1,13 +1,14 @@
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { AppIcon } from "@/components/app-icon";
+import { ChibiLoading } from "@/components/chibi-loading";
 
 const EMPTY_ILLUSTRATION = require("@/assets/images/empty-state.png");
 
 export function LoadingState({ label = "Memuat data anime..." }: { label?: string }) {
   return (
     <View style={styles.loadingContainer}>
-      <ActivityIndicator color="#38BDF8" size="large" />
+      <ChibiLoading size={76} />
       {label ? <Text style={styles.loadingText}>{label}</Text> : null}
     </View>
   );

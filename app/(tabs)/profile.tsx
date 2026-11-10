@@ -29,6 +29,7 @@ import { useWatchHistory } from "@/hooks/use-watch-history";
 import { useBookmarks } from "@/hooks/use-bookmarks";
 import { avatarUrl, isDefaultAvatar } from "@/lib/aniraku-avatars";
 import { AppIcon } from "@/components/app-icon";
+import { ChibiLoading } from "@/components/chibi-loading";
 import { hapticLight, hapticSuccess, hapticWarning } from "@/lib/haptics";
 import { supabase } from "@/lib/supabase";
 import { LevelProgressModal, getTierForLevel } from "@/components/level-progress-modal";
@@ -61,6 +62,7 @@ const INVENTORY_STAR_IMG = require("@/assets/images/inventory/crystal-star.png")
 const BORDER_WHITE_MAGE_IMG = require("@/assets/images/inventory/border-white-mage.png");
 const GACHA_BOOK_IMG = require("@/assets/images/inventory/border-magic-book.png");
 const DUNIA_EMBLEM_IMG = require("@/assets/images/dunia-nuenime-emblem.png");
+const LELANG_BANNER_IMG = require("@/assets/images/lelang-banner.jpg");
 
 function formatJoinDuration(createdAt?: string | null): string {
   if (!createdAt) return "1 bulan";
@@ -532,7 +534,7 @@ export default function ProfileScreen() {
     return (
       <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#38BDF8" />
+          <ChibiLoading size={80} />
         </View>
       </SafeAreaView>
     );
@@ -957,6 +959,32 @@ export default function ProfileScreen() {
               </View>
             </Pressable>
           </View>
+
+          {/* C. SECTION: BANNER LELANG EXCLUSIVE (DI BAWAH FITUR GACHA) */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Buka Lelang Exclusive Banner & Border"
+            onPress={() => {
+              hapticLight();
+              router.push("/lelang" as never);
+            }}
+            // @ts-ignore
+            onClick={() => {
+              hapticLight();
+              router.push("/lelang" as never);
+            }}
+            style={({ pressed }) => [
+              styles.lelangExclusiveBanner,
+              pressed && styles.btnPressed,
+              Platform.OS === "web" && ({ cursor: "pointer" } as any),
+            ]}
+          >
+            <Image
+              source={LELANG_BANNER_IMG}
+              style={styles.lelangBannerImg}
+              contentFit="cover"
+            />
+          </Pressable>
         </ScrollView>
 
         {/* 2. FLOATING ACTION BUTTON (DUNIA NUENIME) - DI ATAS ICON PERTEMANAN */}
@@ -3820,6 +3848,20 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.11)",
+  },
+  lelangExclusiveBanner: {
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: "#0B0E14",
+    marginBottom: 20,
+  },
+  lelangBannerImg: {
+    width: "100%",
+    aspectRatio: 1024 / 380,
+    maxHeight: 140,
+    borderRadius: 13,
   },
   nobarIconCircle: {
     width: 42,

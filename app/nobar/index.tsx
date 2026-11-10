@@ -22,12 +22,14 @@ import { useAnirakuAuth } from "@/providers/auth-provider";
 import { hapticLight, hapticSuccess, hapticWarning } from "@/lib/haptics";
 import { getAnimePage } from "@/lib/anilist";
 import { animeTitle, type Anime } from "@/lib/types";
+import { supabase } from "@/lib/supabase";
 import {
   getActiveNobarRooms,
   createNobarRoom,
   getRoomCode,
   type NobarRoom,
 } from "@/lib/nobar-service";
+import { markMissionProgress } from "@/lib/lelang-service";
 
 type FilterTab = "all" | "public" | "private";
 
@@ -89,11 +91,51 @@ export default function NobarLobbyScreen() {
   }, []);
 
   useEffect(() => {
+    void markMissionProgress("misi-nobar", auth.user?.id);
     void loadRooms();
+
+    // Supabase Realtime: Otomatis hapus room jika host keluar/menutup room
+    // Menggunakan nama channel unik per lifecycle dan removeChannel saat unmount
+    // agar tidak terjadi error "cannot add postgres_changes callbacks after subscribe"
+    const channelName = `nobar_lobby_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "nobar_rooms" },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const deletedId = (payload.old as any)?.id;
+            if (deletedId) {
+              setRooms((prev) => prev.filter((r) => r.id !== deletedId));
+            }
+          } else if (payload.eventType === "UPDATE") {
+            const updated = payload.new as NobarRoom;
+            if (updated?.status === "closed") {
+              setRooms((prev) => prev.filter((r) => r.id !== updated.id));
+            } else if (updated) {
+              setRooms((prev) =>
+                prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r))
+              );
+            }
+          } else if (payload.eventType === "INSERT") {
+            const newRoom = payload.new as NobarRoom;
+            if (newRoom && newRoom.status === "active") {
+              setRooms((prev) => [newRoom, ...prev.filter((r) => r.id !== newRoom.id)]);
+            }
+          }
+        }
+      )
+      .subscribe();
+
     const interval = setInterval(() => {
       void loadRooms();
     }, 8000);
-    return () => clearInterval(interval);
+
+    return () => {
+      clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
   }, [loadRooms]);
 
   const onRefresh = () => {

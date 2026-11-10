@@ -19,6 +19,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { AppIcon } from "@/components/app-icon";
+import { ChibiLoading } from "@/components/chibi-loading";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { hapticLight, hapticSuccess, hapticWarning } from "@/lib/haptics";
 import {
@@ -106,6 +107,8 @@ export default function GachaScreen() {
   const [showResultModal, setShowResultModal] = useState(false);
   const [gachaResults, setGachaResults] = useState<WallpaperItem[]>([]);
   const [lastSummonType, setLastSummonType] = useState<1 | 10>(1);
+  const [lastDuplicateCount, setLastDuplicateCount] = useState<number>(0);
+  const [lastRefundCrystals, setLastRefundCrystals] = useState<number>(0);
 
   const gifTimerRef = useRef<any>(null);
 
@@ -317,6 +320,8 @@ export default function GachaScreen() {
       setCrystalBalance(result.newBalance);
       setGachaResults(result.results);
       setLastXpAwarded(result.xpAwarded ?? 0);
+      setLastDuplicateCount(result.duplicateCount ?? 0);
+      setLastRefundCrystals(result.totalRefundCrystals ?? 0);
       if (typeof result.newExp === "number" && typeof result.newLevel === "number") {
         auth.updateProfileExpAndLevel(result.newExp, result.newLevel);
       }
@@ -436,9 +441,7 @@ export default function GachaScreen() {
 
           {/* Loading Glow & Message */}
           <View style={styles.loadingContainer}>
-            <View style={styles.loadingGlowBox}>
-              <ActivityIndicator size="large" color="#38BDF8" />
-            </View>
+            <ChibiLoading size={80} style={{ marginBottom: 14 }} />
             <Text style={styles.loadingTitle}>Memuat Nuenime Gacha...</Text>
             <Text style={styles.loadingSubtitle}>
               Menyiapkan koleksi banner wallpaper dan saldo Daylan Crystal...
@@ -709,7 +712,7 @@ export default function GachaScreen() {
           {/* ─── 8. WALLPAPER GROUPS BY RARITY (100% DATABASE DRIVEN) ─── */}
           {isLoadingBanners ? (
             <View style={styles.emptyCatalogContainer}>
-              <ActivityIndicator size="large" color="#38BDF8" />
+              <ChibiLoading size={68} style={{ marginBottom: 10 }} />
               <Text style={styles.emptyCatalogTitle}>Memuat Koleksi Gacha...</Text>
               <Text style={styles.emptyCatalogSubtitle}>
                 Mengambil data katalog banner langsung dari database utama Nuenime.
@@ -904,7 +907,9 @@ export default function GachaScreen() {
                 {lastSummonType === 1 ? "Hasil Summon" : "Hasil Summon 10x"}
               </Text>
               <Text style={styles.resultSubHeadline}>
-                Wallpaper baru telah berhasil ditambahkan ke koleksi kamu!
+                {lastRefundCrystals > 0
+                  ? `${lastDuplicateCount} banner sama ditukar +${lastRefundCrystals.toLocaleString("id-ID")} Crystal langsung ke saldo!`
+                  : "Wallpaper baru telah berhasil ditambahkan ke koleksi kamu!"}
               </Text>
             </View>
 
@@ -935,6 +940,15 @@ export default function GachaScreen() {
                           Bonus Profil: +{item.expBonus}% EXP
                         </Text>
                       </View>
+
+                      {item.isDuplicate && (
+                        <View style={styles.duplicateRefundBadge}>
+                          <Image source={CRYSTAL_ICON} style={styles.duplicateRefundIcon} contentFit="contain" />
+                          <Text style={styles.duplicateRefundText}>
+                            Banner Sudah Dimiliki • +500 Crystal Masuk ke Saldo!
+                          </Text>
+                        </View>
+                      )}
 
                       {lastXpAwarded > 0 && (
                         <View style={styles.resultXpGainBadge}>
@@ -972,6 +986,15 @@ export default function GachaScreen() {
             ) : (
               /* 10x Multi Results Grid */
               <>
+                {lastRefundCrystals > 0 && (
+                  <View style={styles.multiRefundBanner}>
+                    <Image source={CRYSTAL_ICON} style={styles.multiRefundIcon} contentFit="contain" />
+                    <Text style={styles.multiRefundText}>
+                      {lastDuplicateCount} Banner Duplikat: +{lastRefundCrystals.toLocaleString("id-ID")} Crystal Dikembalikan ke Saldo!
+                    </Text>
+                  </View>
+                )}
+
                 {lastXpAwarded > 0 && (
                   <View style={styles.resultXpGainBadgeMulti}>
                     <AppIcon name="sparkles" size={14} color="#F59E0B" />
@@ -1009,6 +1032,11 @@ export default function GachaScreen() {
                       <View style={[styles.multiRarityPill, { backgroundColor: cfg.color }]}>
                         <Text style={styles.multiRarityPillText}>{item.rarity}</Text>
                       </View>
+                      {item.isDuplicate && (
+                        <View style={styles.multiCardDupePill}>
+                          <Text style={styles.multiCardDupeText}>+500 💎</Text>
+                        </View>
+                      )}
                       <Text style={styles.multiResultName} numberOfLines={1}>
                         {item.name}
                       </Text>
@@ -1960,12 +1988,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
   },
   loadingGlowBox: {
-    width: 68,
-    height: 68,
-    borderRadius: 22,
-    backgroundColor: "rgba(56, 189, 248, 0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(56, 189, 248, 0.25)",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 16,
@@ -2241,6 +2263,68 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: "700",
     color: "#F59E0B",
+  },
+
+  // ─── GACHA DUPLICATE REFUND BADGES ───
+  duplicateRefundBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    borderColor: "rgba(16, 185, 129, 0.4)",
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  duplicateRefundIcon: {
+    width: 15,
+    height: 15,
+  },
+  duplicateRefundText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#34D399",
+  },
+  multiRefundBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "rgba(16, 185, 129, 0.14)",
+    borderColor: "rgba(16, 185, 129, 0.35)",
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  multiRefundIcon: {
+    width: 15,
+    height: 15,
+  },
+  multiRefundText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#34D399",
+  },
+  multiCardDupePill: {
+    position: "absolute",
+    bottom: 24,
+    right: 8,
+    backgroundColor: "rgba(16, 185, 129, 0.92)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    zIndex: 5,
+  },
+  multiCardDupeText: {
+    fontSize: 9.5,
+    fontWeight: "800",
+    color: "#FFFFFF",
   },
 
 

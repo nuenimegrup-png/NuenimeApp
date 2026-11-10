@@ -9,6 +9,8 @@ export const STORAGE_GACHA_HISTORY = "nuenime.gacha.history";
 export type WallpaperRarity = "Mythic" | "Legendary" | "Epic" | "Rare" | "Normal";
 export type WallpaperCategory = "Basic" | "Standard" | "Premium";
 
+export const DUPLICATE_BANNER_REFUND_CRYSTALS = 500;
+
 export interface WallpaperItem {
   id: string;
   name: string;
@@ -21,6 +23,8 @@ export interface WallpaperItem {
   isActive?: boolean;
   createdAt?: string;
   updatedAt?: string;
+  isDuplicate?: boolean;
+  refundCrystals?: number;
 }
 
 export function isValidImageUrl(url?: string | null): boolean {

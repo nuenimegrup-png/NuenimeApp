@@ -19,6 +19,7 @@ import { Image } from "expo-image";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { avatarUrl } from "@/lib/aniraku-avatars";
 import { AppIcon } from "@/components/app-icon";
+import { ChibiLoading } from "@/components/chibi-loading";
 import { hapticLight, hapticSuccess, hapticWarning } from "@/lib/haptics";
 import {
   AvatarBorder,
@@ -741,9 +742,7 @@ export default function AvatarDecorationsScreen() {
 
         {/* Loading Spinner & Status */}
         <View style={styles.loadingContainer}>
-          <View style={styles.loadingGlowBox}>
-            <ActivityIndicator size="large" color="#38BDF8" />
-          </View>
+          <ChibiLoading size={80} style={{ marginBottom: 14 }} />
           <Text style={styles.loadingTitle}>Memuat Katalog Border...</Text>
           <Text style={styles.loadingSubtitle}>
             Menyiapkan koleksi border avatar dan saldo Daylan Crystal...
@@ -1033,11 +1032,12 @@ export default function AvatarDecorationsScreen() {
           ) : (
             <Pressable
               accessibilityRole="button"
+              disabled={!canAfford}
               onPress={() => handleBuyPress(border)}
               style={({ pressed }) => [
                 styles.actionBtnBuy,
                 !canAfford && styles.actionBtnBuyInsufficient,
-                pressed && styles.btnPressed,
+                pressed && canAfford && styles.btnPressed,
               ]}
             >
               <Text
@@ -1046,7 +1046,7 @@ export default function AvatarDecorationsScreen() {
                   !canAfford && styles.actionTextBuyInsufficient,
                 ]}
               >
-                Beli
+                {!canAfford ? "Saldo Kurang" : "Beli"}
               </Text>
             </Pressable>
           )}
@@ -1983,12 +1983,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
   },
   loadingGlowBox: {
-    width: 68,
-    height: 68,
-    borderRadius: 22,
-    backgroundColor: "rgba(56, 189, 248, 0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(56, 189, 248, 0.25)",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 16,

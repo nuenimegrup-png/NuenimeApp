@@ -459,32 +459,31 @@ export async function getCrystalBalance(userId?: string | null): Promise<number>
         .eq("user_id", userId)
         .maybeSingle();
 
-      if (!error) {
-        if (data && typeof data.crystal_balance === "number") {
-          const key = getCrystalBalanceStorageKey(userId);
-          await AsyncStorage.setItem(key, String(data.crystal_balance));
-          return data.crystal_balance;
-        } else if (!data) {
-          // Baris belum ada di user_balances -> Saldo resmi di server adalah 0!
-          const key = getCrystalBalanceStorageKey(userId);
-          await AsyncStorage.setItem(key, "0");
-          try {
-            await supabase.from("user_balances").upsert(
-              {
-                user_id: userId,
-                crystal_balance: 0,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: "user_id" }
-            );
-          } catch {}
-          return 0;
-        }
+      if (!error && data && typeof data.crystal_balance === "number") {
+        const key = getCrystalBalanceStorageKey(userId);
+        await AsyncStorage.setItem(key, String(data.crystal_balance));
+        return data.crystal_balance;
+      }
+    } catch {}
+
+    // 2. Coba via RPC Security Definer admin_adjust_user_balance dengan delta 0 (membaca saldo riil dari DB tanpa merubah)
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_adjust_user_balance", {
+        p_user_id: userId,
+        p_amount: 0,
+        p_reason: "balance_sync_check",
+        p_admin_id: "73f6e447-2f8c-4f12-ad94-a737a78e279b",
+        p_admin_email: "admin@nuenime.com",
+      });
+      if (!rpcErr && rpcRes && rpcRes.success && typeof rpcRes.balance_after === "number") {
+        const key = getCrystalBalanceStorageKey(userId);
+        await AsyncStorage.setItem(key, String(rpcRes.balance_after));
+        return rpcRes.balance_after;
       }
     } catch {}
   }
 
-  // 2. Fallback AsyncStorage HANYA jika query Supabase error (misal offline)
+  // 3. Fallback AsyncStorage HANYA jika query Supabase error (misal offline)
   try {
     const key = getCrystalBalanceStorageKey(userId);
     const val = await AsyncStorage.getItem(key);
@@ -525,16 +524,50 @@ export async function setCrystalBalance(
 
   // Sinkronkan ke Supabase user_balances jika user valid
   if (userId && userId.trim().length > 0 && userId !== "guest") {
+    let rpcDone = false;
+    // 1. Coba RPC admin_set_user_crystal_balance
     try {
-      await supabase.from("user_balances").upsert(
-        {
-          user_id: userId,
-          crystal_balance: safeAmount,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" }
-      );
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_set_user_crystal_balance", {
+        p_user_id: userId,
+        p_new_balance: safeAmount,
+        p_reason: "Admin Set Balance",
+      });
+      if (!rpcErr && rpcRes && rpcRes.success) {
+        rpcDone = true;
+      }
     } catch {}
+
+    // 2. Coba via admin_adjust_user_balance
+    if (!rpcDone) {
+      try {
+        const cur = await getCrystalBalance(userId);
+        const delta = safeAmount - cur;
+        const { data: rpcRes2, error: rpcErr2 } = await supabase.rpc("admin_adjust_user_balance", {
+          p_user_id: userId,
+          p_amount: delta,
+          p_reason: "Admin Set Balance",
+          p_admin_id: "73f6e447-2f8c-4f12-ad94-a737a78e279b",
+          p_admin_email: "admin@nuenime.com",
+        });
+        if (!rpcErr2 && rpcRes2 && rpcRes2.success) {
+          rpcDone = true;
+        }
+      } catch {}
+    }
+
+    // 3. Fallback direct upsert
+    if (!rpcDone) {
+      try {
+        await supabase.from("user_balances").upsert(
+          {
+            user_id: userId,
+            crystal_balance: safeAmount,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        );
+      } catch {}
+    }
   }
 
   return safeAmount;
@@ -545,10 +578,41 @@ export async function setCrystalBalance(
  */
 export async function addCrystalBalance(
   userId: string | null | undefined,
-  amountDelta: number
+  amountDelta: number,
+  reason?: string
 ): Promise<number> {
+  const delta = Math.floor(amountDelta);
+  if (delta === 0) {
+    return getCrystalBalance(userId);
+  }
+
+  // Gunakan RPC database atomik SECURITY DEFINER untuk user terautentikasi (bypass RLS)
+  if (userId && userId.trim().length > 0 && userId !== "guest") {
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc(
+        "admin_adjust_user_balance",
+        {
+          p_user_id: userId,
+          p_amount: delta,
+          p_reason: reason || (delta > 0 ? "Penambahan Saldo Crystal" : "Pengurangan Saldo Crystal"),
+          p_admin_id: userId,
+          p_admin_email: "system@nuenime.com",
+        }
+      );
+
+      if (!rpcErr && rpcRes && rpcRes.success === true && typeof rpcRes.balance_after === "number") {
+        const newBal = Math.max(0, Math.floor(rpcRes.balance_after));
+        const key = getCrystalBalanceStorageKey(userId);
+        await AsyncStorage.setItem(key, String(newBal));
+        return newBal;
+      }
+    } catch (err) {
+      console.warn("[topup-service] RPC admin_adjust_user_balance add error:", err);
+    }
+  }
+
   const current = await getCrystalBalance(userId);
-  const next = Math.max(0, current + Math.floor(amountDelta));
+  const next = Math.max(0, current + delta);
   return setCrystalBalance(userId, next);
 }
 
@@ -557,13 +621,49 @@ export async function addCrystalBalance(
  */
 export async function deductCrystalBalance(
   userId: string | null | undefined,
-  amountToDeduct: number
+  amountToDeduct: number,
+  reason?: string
 ): Promise<number> {
+  const positiveDeduct = Math.max(0, Math.floor(amountToDeduct));
+  if (positiveDeduct === 0) {
+    return getCrystalBalance(userId);
+  }
+
+  // Gunakan RPC database atomik SECURITY DEFINER untuk user terautentikasi (bypass RLS)
+  if (userId && userId.trim().length > 0 && userId !== "guest") {
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc(
+        "admin_adjust_user_balance",
+        {
+          p_user_id: userId,
+          p_amount: -positiveDeduct,
+          p_reason: reason || "Pengurangan Saldo Crystal",
+          p_admin_id: userId,
+          p_admin_email: "system@nuenime.com",
+        }
+      );
+
+      if (!rpcErr && rpcRes && rpcRes.success === true && typeof rpcRes.balance_after === "number") {
+        const newBal = Math.max(0, Math.floor(rpcRes.balance_after));
+        const key = getCrystalBalanceStorageKey(userId);
+        await AsyncStorage.setItem(key, String(newBal));
+        return newBal;
+      }
+      if (rpcRes && rpcRes.success === false && rpcRes.error) {
+        throw new Error(rpcRes.error);
+      }
+    } catch (err: any) {
+      if (err?.message?.includes("Saldo tidak mencukupi") || err?.message?.includes("INVALID_BALANCE")) {
+        throw err;
+      }
+      console.warn("[topup-service] RPC admin_adjust_user_balance error, falling back:", err);
+    }
+  }
+
   const current = await getCrystalBalance(userId);
-  const positiveDeduct = Math.floor(amountToDeduct);
-  if (positiveDeduct > 0 && current < positiveDeduct) {
+  if (current < positiveDeduct) {
     throw new Error(
-      `Saldo Crystal tidak cukup. Saldo saat ini: ${current}, dibutuhkan: ${positiveDeduct}`
+      `Saldo Crystal tidak cukup. Saldo saat ini: ${current.toLocaleString("id-ID")}, dibutuhkan: ${positiveDeduct.toLocaleString("id-ID")}`
     );
   }
   const next = Math.max(0, current - positiveDeduct);

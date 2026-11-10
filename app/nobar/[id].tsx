@@ -29,6 +29,7 @@ import { UserVerificationBadge } from "@/components/user-verification-badge";
 import { isSpecialRole } from "@/lib/admin-service";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
+import { getAnimeById } from "@/lib/anilist";
 import { supabase } from "@/lib/supabase";
 import {
   getNobarRoomById,
@@ -216,6 +217,45 @@ export default function NobarWatchPartyScreen() {
   const [showEpisodeModal, setShowEpisodeModal] = useState(false);
   const [newEpisodeInput, setNewEpisodeInput] = useState("");
 
+  // Episode List Bar (Persis UI Image yang Dikirim User)
+  const [totalEpisodes, setTotalEpisodes] = useState<number>(12);
+  const episodeScrollRef = useRef<ScrollView | null>(null);
+
+  // Fetch metadata anime dari AniList untuk mendapatkan total episode yang akurat
+  useEffect(() => {
+    if (!room?.anime_id) return;
+    let isMounted = true;
+    void getAnimeById(room.anime_id)
+      .then((a) => {
+        if (!isMounted) return;
+        if (a?.episodes && a.episodes > 0) {
+          setTotalEpisodes(a.episodes);
+        } else {
+          setTotalEpisodes(Math.max(currentEpisode, room.episode || 1, 12));
+        }
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setTotalEpisodes(Math.max(currentEpisode, room.episode || 1, 12));
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [room?.anime_id, room?.episode, currentEpisode]);
+
+  const episodeList = useMemo(() => {
+    const count = Math.max(1, totalEpisodes);
+    return Array.from({ length: count }, (_, i) => i + 1);
+  }, [totalEpisodes]);
+
+  // Otomatis scroll ke posisi episode aktif
+  useEffect(() => {
+    if (episodeScrollRef.current && currentEpisode > 1) {
+      const xOffset = Math.max(0, (currentEpisode - 1) * 52 - 20);
+      episodeScrollRef.current.scrollTo({ x: xOffset, animated: true });
+    }
+  }, [currentEpisode]);
+
   // 1. Fetch Room Data
   useEffect(() => {
     let mounted = true;
@@ -326,6 +366,19 @@ export default function NobarWatchPartyScreen() {
 
   // 4. Real-time Supabase Channel
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const isChannelSubscribedRef = useRef(false);
+
+  const safeBroadcast = useCallback((event: string, payload: any) => {
+    if (channelRef.current && isChannelSubscribedRef.current) {
+      try {
+        void channelRef.current.send({
+          type: "broadcast",
+          event,
+          payload,
+        });
+      } catch {}
+    }
+  }, []);
 
   useEffect(() => {
     if (!roomId) return;
@@ -430,18 +483,14 @@ export default function NobarWatchPartyScreen() {
     // C. Host answers sync requests from new viewers
     channel.on("broadcast", { event: "request_sync" }, () => {
       if (isHostRef.current) {
-        channel.send({
-          type: "broadcast",
-          event: "nobar_sync",
-          payload: {
-            type: "INITIAL_SYNC",
-            currentTime: currentTimeRef.current,
-            isPlaying: isPlayingRef.current,
-            episode: currentEpisodeRef.current,
-            timestamp: Date.now(),
-            senderId: currentUserId,
-          } as NobarSyncPayload,
-        });
+        safeBroadcast("nobar_sync", {
+          type: "INITIAL_SYNC",
+          currentTime: currentTimeRef.current,
+          isPlaying: isPlayingRef.current,
+          episode: currentEpisodeRef.current,
+          timestamp: Date.now(),
+          senderId: currentUserId,
+        } as NobarSyncPayload);
       }
     });
 
@@ -505,18 +554,14 @@ export default function NobarWatchPartyScreen() {
       .on("presence", { event: "join" }, () => {
         if (isHostRef.current) {
           setTimeout(() => {
-            channel.send({
-              type: "broadcast",
-              event: "nobar_sync",
-              payload: {
-                type: "INITIAL_SYNC",
-                currentTime: currentTimeRef.current,
-                isPlaying: isPlayingRef.current,
-                episode: currentEpisodeRef.current,
-                timestamp: Date.now(),
-                senderId: currentUserId,
-              } as NobarSyncPayload,
-            });
+            safeBroadcast("nobar_sync", {
+              type: "INITIAL_SYNC",
+              currentTime: currentTimeRef.current,
+              isPlaying: isPlayingRef.current,
+              episode: currentEpisodeRef.current,
+              timestamp: Date.now(),
+              senderId: currentUserId,
+            } as NobarSyncPayload);
           }, 350);
         }
       })
@@ -539,6 +584,7 @@ export default function NobarWatchPartyScreen() {
       )
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
+          isChannelSubscribedRef.current = true;
           const amIHost =
             Boolean(isHostRef.current) ||
             (roomRef.current?.host_id ? roomRef.current.host_id === currentUserId : false);
@@ -554,31 +600,22 @@ export default function NobarWatchPartyScreen() {
           });
 
           if (!amIHost) {
-            channel.send({
-              type: "broadcast",
-              event: "request_sync",
-              payload: { viewerId: currentUserId },
-            });
+            safeBroadcast("request_sync", { viewerId: currentUserId });
           }
         }
       });
 
     return () => {
-      void channel.unsubscribe();
+      isChannelSubscribedRef.current = false;
+      void supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [roomId, currentUserId, currentUserName, currentUserAvatar, auth.profile?.role]);
+  }, [roomId, currentUserId, currentUserName, currentUserAvatar, auth.profile?.role, safeBroadcast]);
 
   // Sync Voice On-Mic status to all room participants
   useEffect(() => {
-    if (channelRef.current) {
-      void channelRef.current.send({
-        type: "broadcast",
-        event: "voice_state",
-        payload: { userId: currentUserId, isMicOn: voice.isMicOn },
-      });
-    }
-  }, [voice.isMicOn, currentUserId]);
+    safeBroadcast("voice_state", { userId: currentUserId, isMicOn: voice.isMicOn });
+  }, [voice.isMicOn, currentUserId, safeBroadcast]);
 
   // 5. Host Periodic Heartbeat Sync
   useEffect(() => {
@@ -588,18 +625,14 @@ export default function NobarWatchPartyScreen() {
       const now = Date.now();
       if (now - lastSyncSentAt.current > 3500) {
         lastSyncSentAt.current = now;
-        channelRef.current?.send({
-          type: "broadcast",
-          event: "nobar_sync",
-          payload: {
-            type: "HEARTBEAT",
-            currentTime: currentTimeRef.current,
-            isPlaying: isPlayingRef.current,
-            episode: currentEpisodeRef.current,
-            timestamp: now,
-            senderId: currentUserId,
-          } as NobarSyncPayload,
-        });
+        safeBroadcast("nobar_sync", {
+          type: "HEARTBEAT",
+          currentTime: currentTimeRef.current,
+          isPlaying: isPlayingRef.current,
+          episode: currentEpisodeRef.current,
+          timestamp: now,
+          senderId: currentUserId,
+        } as NobarSyncPayload);
 
         void supabase
           .from("nobar_rooms")
@@ -615,13 +648,32 @@ export default function NobarWatchPartyScreen() {
     return () => clearInterval(interval);
   }, [isHost, roomId, currentUserId]);
 
-  const triggerControls = () => {
-    setShowControls(true);
+  const resetControlsTimeout = useCallback(() => {
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    controlsTimeoutRef.current = setTimeout(() => {
-      if (isPlaying) setShowControls(false);
-    }, 4500);
-  };
+    if (isPlayingRef.current) {
+      controlsTimeoutRef.current = setTimeout(() => {
+        if (isPlayingRef.current) {
+          setShowControls(false);
+        }
+      }, 4500);
+    }
+  }, []);
+
+  const toggleControls = useCallback(() => {
+    hapticLight();
+    setShowControls((prev) => {
+      const next = !prev;
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+      if (next && isPlayingRef.current) {
+        controlsTimeoutRef.current = setTimeout(() => {
+          if (isPlayingRef.current) {
+            setShowControls(false);
+          }
+        }, 4500);
+      }
+      return next;
+    });
+  }, []);
 
   // Host Action: Play / Pause
   const handleHostTogglePlay = () => {
@@ -640,22 +692,21 @@ export default function NobarWatchPartyScreen() {
 
     if (nextPlay) {
       videoRef.current?.resume();
+      resetControlsTimeout();
     } else {
       videoRef.current?.pause();
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+      setShowControls(true);
     }
 
-    channelRef.current?.send({
-      type: "broadcast",
-      event: "nobar_sync",
-      payload: {
-        type: nextPlay ? "PLAY" : "PAUSE",
-        currentTime: currentTimeRef.current,
-        isPlaying: nextPlay,
-        episode: currentEpisode,
-        timestamp: Date.now(),
-        senderId: currentUserId,
-      } as NobarSyncPayload,
-    });
+    safeBroadcast("nobar_sync", {
+      type: nextPlay ? "PLAY" : "PAUSE",
+      currentTime: currentTimeRef.current,
+      isPlaying: nextPlay,
+      episode: currentEpisode,
+      timestamp: Date.now(),
+      senderId: currentUserId,
+    } as NobarSyncPayload);
 
     void supabase
       .from("nobar_rooms")
@@ -675,24 +726,21 @@ export default function NobarWatchPartyScreen() {
     }
 
     hapticLight();
+    resetControlsTimeout();
     const target = Math.max(0, Math.min(duration, currentTimeRef.current + deltaSeconds));
     setCurrentTime(target);
     currentTimeRef.current = target;
     lastSeekAtRef.current = Date.now();
     videoRef.current?.seek(target);
 
-    channelRef.current?.send({
-      type: "broadcast",
-      event: "nobar_sync",
-      payload: {
-        type: "SEEK",
-        currentTime: target,
-        isPlaying: isPlayingRef.current,
-        episode: currentEpisode,
-        timestamp: Date.now(),
-        senderId: currentUserId,
-      } as NobarSyncPayload,
-    });
+    safeBroadcast("nobar_sync", {
+      type: "SEEK",
+      currentTime: target,
+      isPlaying: isPlayingRef.current,
+      episode: currentEpisode,
+      timestamp: Date.now(),
+      senderId: currentUserId,
+    } as NobarSyncPayload);
 
     void supabase
       .from("nobar_rooms")
@@ -707,11 +755,7 @@ export default function NobarWatchPartyScreen() {
   // Penonton: Sinkronisasi manual ke Host
   const handleManualSyncToHost = () => {
     hapticLight();
-    channelRef.current?.send({
-      type: "broadcast",
-      event: "request_sync",
-      payload: { viewerId: currentUserId },
-    });
+    safeBroadcast("request_sync", { viewerId: currentUserId });
   };
 
   // Host Action: Ganti Episode
@@ -732,18 +776,24 @@ export default function NobarWatchPartyScreen() {
       isSystem: true,
     });
 
-    channelRef.current?.send({
-      type: "broadcast",
-      event: "nobar_sync",
-      payload: {
-        type: "CHANGE_EPISODE",
-        currentTime: 0,
-        isPlaying: true,
+    safeBroadcast("nobar_sync", {
+      type: "CHANGE_EPISODE",
+      currentTime: 0,
+      isPlaying: true,
+      episode: ep,
+      timestamp: Date.now(),
+      senderId: currentUserId,
+    } as NobarSyncPayload);
+
+    void supabase
+      .from("nobar_rooms")
+      .update({
         episode: ep,
-        timestamp: Date.now(),
-        senderId: currentUserId,
-      } as NobarSyncPayload,
-    });
+        playback_time: 0,
+        is_playing: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", roomId);
   };
 
   // Kirim Pesan Chat
@@ -770,11 +820,7 @@ export default function NobarWatchPartyScreen() {
     if (res.success && res.data) {
       hapticLight();
       setMessages((prev) => [...prev, res.data!]);
-      channelRef.current?.send({
-        type: "broadcast",
-        event: "nobar_chat",
-        payload: res.data,
-      });
+      safeBroadcast("nobar_chat", res.data);
 
       setTimeout(() => {
         chatFlatListRef.current?.scrollToEnd({ animated: true });
@@ -805,16 +851,12 @@ export default function NobarWatchPartyScreen() {
 
     try {
       // 1. Broadcast ROOM_CLOSED to all connected viewers so they exit immediately
-      channelRef.current?.send({
-        type: "broadcast",
-        event: "nobar_sync",
-        payload: {
-          type: "ROOM_CLOSED",
-          timestamp: Date.now(),
-          senderId: currentUserId,
-          reason: "Host telah keluar dan mengakhiri sesi nobar.",
-        } as NobarSyncPayload,
-      });
+      safeBroadcast("nobar_sync", {
+        type: "ROOM_CLOSED",
+        timestamp: Date.now(),
+        senderId: currentUserId,
+        reason: "Host telah keluar dan mengakhiri sesi nobar.",
+      } as NobarSyncPayload);
 
       // 2. Close & delete room from supabase
       await closeNobarRoom(roomId, currentUserId);
@@ -980,7 +1022,7 @@ export default function NobarWatchPartyScreen() {
             )}
           </View>
         ) : streamUri ? (
-          <Pressable onPress={triggerControls} style={StyleSheet.absoluteFillObject}>
+          <View style={StyleSheet.absoluteFillObject}>
             <Video
               ref={videoRef}
               source={videoSource}
@@ -1030,11 +1072,27 @@ export default function NobarWatchPartyScreen() {
               </View>
             )}
 
+            {/* Tap Detector Overlay: Sibling di atas Video SurfaceView agar event tap di Android TIDAK tertelan oleh ExoPlayer */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Buka atau tutup kontrol video"
+              onPress={toggleControls}
+              style={styles.tapGestureOverlay}
+            />
+
             {/* ── PLAYER CONTROLS OVERLAY (SILVER THEME) ── */}
             {showControls && (
-              <View style={styles.controlsOverlay}>
+              <View style={styles.controlsOverlay} pointerEvents="box-none">
+                {/* Backdrop transparan agar tap di area kosong menutup kontrol */}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Tutup kontrol video"
+                  onPress={toggleControls}
+                  style={StyleSheet.absoluteFillObject}
+                />
+
                 {/* Host vs Viewer Indicator Bar */}
-                <View style={styles.controlsTopRow}>
+                <View style={styles.controlsTopRow} pointerEvents="box-none">
                   {isHost ? (
                     <View style={styles.hostControlBadge}>
                       <AppIcon name="crown" size={12} color="#E2E8F0" />
@@ -1073,7 +1131,7 @@ export default function NobarWatchPartyScreen() {
                 </View>
 
                 {/* Center Action Buttons */}
-                <View style={styles.controlsCenterRow}>
+                <View style={styles.controlsCenterRow} pointerEvents="box-none">
                   {isHost ? (
                     <>
                       <Pressable
@@ -1121,7 +1179,7 @@ export default function NobarWatchPartyScreen() {
                 </View>
 
                 {/* Bottom Scrubber & Time Row */}
-                <View style={styles.controlsBottomRow}>
+                <View style={styles.controlsBottomRow} pointerEvents="box-none">
                   <Text style={styles.timeLabel}>
                     {formatTime(currentTime)} / {formatTime(duration)}
                   </Text>
@@ -1152,7 +1210,7 @@ export default function NobarWatchPartyScreen() {
                 </View>
               </View>
             )}
-          </Pressable>
+          </View>
         ) : null}
       </View>
 
@@ -1162,6 +1220,60 @@ export default function NobarWatchPartyScreen() {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.lowerSection}
         >
+          {/* ── EPISODE LIST (PERSIS GAMBAR UI USER) ── */}
+          <View style={styles.episodeListCard}>
+            <View style={styles.episodeListHeader}>
+              <Text style={styles.episodeListTitle}>Episode List</Text>
+              <View style={styles.episodeTotalBadge}>
+                <Text style={styles.episodeTotalText}>{totalEpisodes} Episode</Text>
+              </View>
+            </View>
+
+            <ScrollView
+              ref={episodeScrollRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.episodeScrollContent}
+            >
+              {episodeList.map((ep) => {
+                const isActive = ep === currentEpisode;
+                return (
+                  <Pressable
+                    key={ep}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Pilih Episode ${ep}`}
+                    onPress={() => {
+                      if (!isHost) {
+                        hapticLight();
+                        Alert.alert(
+                          "Mode Penonton",
+                          "Hanya Host yang dapat mengganti episode tayangan nobar."
+                        );
+                        return;
+                      }
+                      if (ep === currentEpisode) return;
+                      handleHostChangeEpisode(ep);
+                    }}
+                    style={({ pressed }) => [
+                      styles.episodeSquareBtn,
+                      isActive && styles.episodeSquareBtnActive,
+                      pressed && isHost && styles.btnPressed,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.episodeSquareText,
+                        isActive && styles.episodeSquareTextActive,
+                      ]}
+                    >
+                      {ep}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+
           {/* Sub Navigation Tabs (Persis tabPill di LibraryView) */}
           <View style={styles.sectionTabs}>
             <Pressable
@@ -1775,11 +1887,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  tapGestureOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+  },
   controlsOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0, 0, 0, 0.45)",
     justifyContent: "space-between",
     padding: 12,
+    zIndex: 5,
   },
   controlsTopRow: {
     flexDirection: "row",
@@ -1930,6 +2047,72 @@ const styles = StyleSheet.create({
     minHeight: 0,
     backgroundColor: "#0B0E17",
     overflow: "hidden",
+  },
+  // Episode List (Persis UI Image yang Dikirim User)
+  episodeListCard: {
+    marginHorizontal: 14,
+    marginTop: 8,
+    marginBottom: 6,
+    backgroundColor: "rgba(17, 24, 39, 0.7)",
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.12)",
+  },
+  episodeListHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  episodeListTitle: {
+    fontFamily: "Nunito-Black",
+    fontSize: 14,
+    color: "#FFFFFF",
+    letterSpacing: -0.2,
+  },
+  episodeTotalBadge: {
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.15)",
+  },
+  episodeTotalText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 10.5,
+    color: "#CBD5E1",
+  },
+  episodeScrollContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingRight: 6,
+  },
+  episodeSquareBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 9,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  episodeSquareBtnActive: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#FFFFFF",
+  },
+  episodeSquareText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 14,
+    color: "#94A3B8",
+  },
+  episodeSquareTextActive: {
+    fontFamily: "Nunito-Black",
+    fontSize: 15,
+    color: "#0B0E17",
   },
   flexList: {
     flex: 1,
