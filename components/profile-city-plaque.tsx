@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { hapticLight } from '@/lib/haptics';
+import { clanProfileCache } from '@/lib/global-chat-service';
 
 export interface ProfileCityPlaqueProps {
   userId?: string | null;
@@ -181,6 +182,9 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
   hideNoClanBadge = false,
   onPress,
 }) => {
+  // Gunakan data sinkron jika telah di-cache/batch oleh global-chat-service
+  const cachedInitialData = userId && clanProfileCache.has(userId) ? clanProfileCache.get(userId) : undefined;
+
   // Query keanggotaan klan user dari Supabase
   const { data: clanData } = useQuery({
     queryKey: ['user-clan-profile-banner', userId],
@@ -191,6 +195,11 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
         targetUserId = authData.user?.id || null;
       }
       if (!targetUserId) return null;
+
+      // Cek memori cache global terlebih dahulu untuk hindari query redundan
+      if (clanProfileCache.has(targetUserId)) {
+        return clanProfileCache.get(targetUserId);
+      }
 
       try {
         // 1. Cek dari keanggotaan klan aktif (rpg_clan_members WHERE status = 'active')
@@ -219,10 +228,12 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
         const joinedClan = Array.isArray(rawClan) ? rawClan[0] : rawClan;
 
         if (joinedClan && joinedClan.status !== 'disbanded') {
-          return {
+          const res = {
             clan: joinedClan,
             role: memberData?.role,
           };
+          clanProfileCache.set(targetUserId, res);
+          return res;
         }
 
         // 2. Fallback: Cek apakah user adalah pembuat/pemimpin klan langsung di rpg_clans yang belum dibubarkan
@@ -234,20 +245,24 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
           .maybeSingle();
 
         if (leaderClan) {
-          return {
+          const res = {
             clan: leaderClan,
             role: 'Pemimpin Klan',
           };
+          clanProfileCache.set(targetUserId, res);
+          return res;
         }
 
+        clanProfileCache.set(targetUserId, null);
         return null;
       } catch (err) {
         console.warn('Error fetching user clan for plaque:', err);
         return null;
       }
     },
-    staleTime: 1000 * 60 * 10, // 10 menit in-memory TanStack cache
-    gcTime: 1000 * 60 * 30, // 30 menit
+    initialData: cachedInitialData,
+    staleTime: 1000 * 60 * 30, // 30 menit in-memory TanStack cache
+    gcTime: 1000 * 60 * 60, // 60 menit
   });
 
   const clanInfo = clanData?.clan;
@@ -450,7 +465,7 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
       ) : !hideIfNoClan && !hideNoClanBadge ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Anda belum ada klan — Ketuk untuk cari klan"
+          accessibilityLabel="Belum ada klan — Ketuk untuk cari klan"
           disabled={!isClickable}
           onPress={handlePress}
           // @ts-ignore
@@ -472,7 +487,7 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
             ]}
             numberOfLines={1}
           >
-            {compact ? 'Anda belum ada klan' : 'Belum Punya Klan (Cari Klan)'}
+            Belum ada klan
           </Text>
         </Pressable>
       ) : null}

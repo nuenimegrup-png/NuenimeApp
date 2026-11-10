@@ -36,6 +36,7 @@ import {
   sendGlobalMessage,
   subscribeGlobalMessages,
   purgeGlobalChatMockCache,
+  getCachedGlobalMessagesSync,
 } from "@/lib/global-chat-service";
 import {
   isStickerMessage,
@@ -491,8 +492,12 @@ export default function ChatGlobalScreen() {
   const currentUserId = auth.user?.id;
 
   const [activeRoom, setActiveRoom] = useState<GlobalRoom>("ngobrol_1");
-  const [messages, setMessages] = useState<GlobalChatMessage[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [messages, setMessages] = useState<GlobalChatMessage[]>(() =>
+    getCachedGlobalMessagesSync("ngobrol_1")
+  );
+  const [loading, setLoading] = useState<boolean>(
+    () => getCachedGlobalMessagesSync("ngobrol_1").length === 0
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<GlobalChatMessage | null>(null);
@@ -689,33 +694,19 @@ export default function ChatGlobalScreen() {
     try {
       const data = await getGlobalMessages(activeRoom);
       setMessages(data);
-      // Posisikan seketika ke pesan paling baru saat data selesai dimuat
-      userHasScrolledUpRef.current = false;
-      isNearBottomRef.current = true;
-      isInitialLoadRef.current = true;
-
-      const performScroll = () => {
-        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) {
-          scrollToLatest(false);
-        }
-      };
-
-      requestAnimationFrame(performScroll);
-      setTimeout(performScroll, 25);
-      setTimeout(performScroll, 75);
-      setTimeout(performScroll, 180);
-      setTimeout(performScroll, 400);
-      setTimeout(performScroll, 800);
-      setTimeout(() => {
-        isInitialLoadRef.current = false;
-      }, 1200);
+      // Posisikan seketika ke pesan paling baru saat data awal selesai dimuat
+      if (isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+        requestAnimationFrame(() => {
+          flatListRef.current?.scrollToEnd({ animated: false });
+        });
+      }
     } catch (err) {
       console.warn("[chat-global] load error:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [activeRoom, scrollToLatest]);
+  }, [activeRoom]);
 
   // Saat pertama kali buka layar ATAU saat masuk kembali setelah keluar room / diskusi
   useFocusEffect(
@@ -727,59 +718,16 @@ export default function ChatGlobalScreen() {
       setShowNewMessageBadge(false);
       setShowScrollBottomBtn(false);
       setUnreadCountWhileScrolled(0);
-      void purgeGlobalChatMockCache();
       void loadMessages();
-
-      const scrollIfInitial = () => {
-        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) {
-          scrollToLatest(false);
-        }
-      };
-
-      const t1 = setTimeout(scrollIfInitial, 30);
-      const t2 = setTimeout(scrollIfInitial, 100);
-      const t3 = setTimeout(scrollIfInitial, 250);
-      const t4 = setTimeout(scrollIfInitial, 500);
-      const t5 = setTimeout(scrollIfInitial, 850);
-      const tClose = setTimeout(() => {
-        isInitialLoadRef.current = false;
-      }, 1400);
-
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-        clearTimeout(t3);
-        clearTimeout(t4);
-        clearTimeout(t5);
-        clearTimeout(tClose);
-      };
-    }, [loadMessages, scrollToLatest])
+    }, [loadMessages])
   );
 
-  // Otomatis posisikan ke pesan paling akhir saat layar/room dibuka
+  // Otomatis posisikan ke pesan paling akhir saat layar/room pertama kali dimuat
   useEffect(() => {
-    if (!loading && messages.length > 0 && !userHasScrolledUpRef.current) {
+    if (!loading && messages.length > 0 && !userHasScrolledUpRef.current && isInitialLoadRef.current) {
       scrollToLatest(false);
-      const t1 = setTimeout(() => {
-        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) scrollToLatest(false);
-      }, 30);
-      const t2 = setTimeout(() => {
-        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) scrollToLatest(false);
-      }, 120);
-      const t3 = setTimeout(() => {
-        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) scrollToLatest(false);
-      }, 280);
-      const t4 = setTimeout(() => {
-        if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) scrollToLatest(false);
-      }, 600);
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-        clearTimeout(t3);
-        clearTimeout(t4);
-      };
     }
-  }, [loading, activeRoom, messages.length, scrollToLatest]);
+  }, [loading, activeRoom, scrollToLatest]);
 
   // ─── 2. REALTIME SUBSCRIPTION ───
   useEffect(() => {
@@ -1136,9 +1084,9 @@ export default function ChatGlobalScreen() {
               showsVerticalScrollIndicator={false}
               testID="global-chat-list"
               nativeID="global-chat-scroll-container"
-              initialNumToRender={20}
-              maxToRenderPerBatch={8}
-              windowSize={5}
+              initialNumToRender={18}
+              maxToRenderPerBatch={10}
+              windowSize={7}
               updateCellsBatchingPeriod={50}
               removeClippedSubviews={Platform.OS !== "web"}
               onScrollToIndexFailed={(info) => {
@@ -1147,16 +1095,11 @@ export default function ChatGlobalScreen() {
                   animated: true,
                 });
               }}
-              onLayout={() => {
-                if (!userHasScrolledUpRef.current && !isUserInteractingRef.current) {
-                  scrollToLatest(false);
-                }
-              }}
               onContentSizeChange={(_w, h) => {
-                // Posisikan ke bawah seketika saat pertama kali layar dibuka (sebelum user scroll manual)
-                if (h > 0 && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
-                  scrollToLatest(false);
-                  requestAnimationFrame(() => scrollToLatest(false));
+                // Posisikan ke bawah seketika hanya pada pemuatan awal (sebelum user scroll manual)
+                if (h > 0 && isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
+                  flatListRef.current?.scrollToEnd({ animated: false });
+                  isInitialLoadRef.current = false;
                 }
               }}
               onScrollBeginDrag={() => {

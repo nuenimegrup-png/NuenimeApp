@@ -53,7 +53,13 @@ function formatMemberNumber(num: any): string {
 }
 
 // In-memory cache profile untuk mengurangi network overhead
-const profileCache = new Map<string, any>();
+export const profileCache = new Map<string, any>();
+export const clanProfileCache = new Map<string, any>();
+const memGlobalChatCache = new Map<GlobalRoom, GlobalChatMessage[]>();
+
+export function getCachedGlobalMessagesSync(room: GlobalRoom): GlobalChatMessage[] {
+  return memGlobalChatCache.get(room) || [];
+}
 
 async function fetchSenderProfile(userId: string) {
   if (profileCache.has(userId)) {
@@ -150,6 +156,53 @@ export async function getGlobalMessages(room: GlobalRoom): Promise<GlobalChatMes
       }
     }
 
+    // ── BATCH FETCH DATA KLAN UNTUK SELURUH SENDER DALAM 1 QUERY SAJA ──
+    // Mencegah 80 query individual yang sebelumnya membebani CPU & jaringan di Android
+    const missingClanIds = uniqueSenderIds.filter((id) => !clanProfileCache.has(id));
+    if (missingClanIds.length > 0) {
+      try {
+        const { data: clanMembers } = await supabase
+          .from("rpg_clan_members")
+          .select(`
+            user_id,
+            role,
+            status,
+            rpg_clans (
+              id,
+              name,
+              tag,
+              city_id,
+              logo_url,
+              level,
+              total_exp,
+              status
+            )
+          `)
+          .in("user_id", missingClanIds)
+          .eq("status", "active");
+
+        if (clanMembers) {
+          clanMembers.forEach((m: any) => {
+            const rawClan = m.rpg_clans;
+            const joinedClan = Array.isArray(rawClan) ? rawClan[0] : rawClan;
+            if (joinedClan && joinedClan.status !== "disbanded") {
+              clanProfileCache.set(m.user_id, {
+                clan: joinedClan,
+                role: m.role,
+              });
+            }
+          });
+        }
+        missingClanIds.forEach((id) => {
+          if (!clanProfileCache.has(id)) {
+            clanProfileCache.set(id, null);
+          }
+        });
+      } catch (err) {
+        console.warn("[global-chat] batch clan fetch error:", err);
+      }
+    }
+
     const messages: GlobalChatMessage[] = rows.map((r) => {
       const p = profileCache.get(r.sender_id) || {};
       const cleanMsg = filterAndCensorMessage(r.message || "").processedText;
@@ -186,6 +239,7 @@ export async function getGlobalMessages(room: GlobalRoom): Promise<GlobalChatMes
     // Urutkan dari terlama ke terbaru untuk FlatList chat
     const sorted = messages.reverse();
 
+    memGlobalChatCache.set(room, sorted);
     void AsyncStorage.setItem(cacheKey, JSON.stringify(sorted)).catch(() => {});
     return sorted;
   } catch (err) {
