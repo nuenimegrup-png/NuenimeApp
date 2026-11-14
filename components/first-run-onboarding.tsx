@@ -12,7 +12,10 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import Constants from "expo-constants";
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { AppIcon } from "@/components/app-icon";
+import { LegalModal } from "@/components/legal-modal";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
@@ -35,6 +38,8 @@ if (Platform.OS === "web" && typeof document !== "undefined") {
 
 const ONBOARDING_KEY = "nuenime.onboarding.v2";
 const LEGACY_KEY = "aniraku.onboarding.v1";
+const WELCOME_BANNER_IMG = require("@/assets/images/welcome-nuenime-banner.png");
+const SIAP_MULAI_BANNER_IMG = require("@/assets/images/siap-mulai-banner.png");
 
 // Google multi-colored G logo
 function GoogleLogo({ size = 20 }: { size?: number }) {
@@ -128,15 +133,84 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
   const insets = useSafeAreaInsets();
   const [signingIn, setSigningIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [activeLegalDoc, setActiveLegalDoc] = useState<"terms" | "privacy" | null>(null);
 
   // Animation values for Page Transitions
   const translateY = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
+  // Visual polish loop animations for Slide 0
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  const swipeBounceAnim = useRef(new Animated.Value(0)).current;
+  const glowPulseAnim = useRef(new Animated.Value(0.7)).current;
+
   // App version display
   const versionString = `v${Constants.expoConfig?.version || "0.0.1"} · build ${
     Constants.expoConfig?.android?.versionCode || 1
   }`;
+
+  // Continuous subtle micro-animations (float emblem, gentle swipe bounce, breathing ambient aura)
+  useEffect(() => {
+    const floatLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, {
+          toValue: -5,
+          duration: 1800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: Platform.OS !== "web",
+        }),
+        Animated.timing(floatAnim, {
+          toValue: 5,
+          duration: 1800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: Platform.OS !== "web",
+        }),
+      ])
+    );
+    floatLoop.start();
+
+    const bounceLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(swipeBounceAnim, {
+          toValue: -5,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: Platform.OS !== "web",
+        }),
+        Animated.timing(swipeBounceAnim, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: Platform.OS !== "web",
+        }),
+      ])
+    );
+    bounceLoop.start();
+
+    const glowLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowPulseAnim, {
+          toValue: 1,
+          duration: 2600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: Platform.OS !== "web",
+        }),
+        Animated.timing(glowPulseAnim, {
+          toValue: 0.55,
+          duration: 2600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: Platform.OS !== "web",
+        }),
+      ])
+    );
+    glowLoop.start();
+
+    return () => {
+      floatLoop.stop();
+      bounceLoop.stop();
+      glowLoop.stop();
+    };
+  }, [floatAnim, swipeBounceAnim, glowPulseAnim]);
 
   // Reset to first page ('WELCOME) whenever user is signed out
   useEffect(() => {
@@ -235,6 +309,20 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
 
   return (
     <View style={styles.overlay} {...panResponder.panHandlers}>
+      {/* ─── PURE BLACK BACKGROUND & AMBIENT GLOW ─── */}
+      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "#000000" }]} />
+        {/* Soft Ambient Light Halo behind center */}
+        <Animated.View
+          style={[
+            styles.ambientAuraHalo,
+            {
+              opacity: glowPulseAnim,
+            },
+          ]}
+        />
+      </View>
+
       {/* ─── VERTICAL FROSTED GLASS INDICATOR (RIGHT EDGE) ─── */}
       <View style={styles.indicatorContainer} pointerEvents="box-none">
         <View style={styles.indicatorGlassTrack}>
@@ -267,34 +355,83 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
           },
         ]}
       >
-        {/* SLIDE 0: 'WELCOME */}
+        {/* SLIDE 0: HERO ONBOARDING (Desain Baru: Layout Persis Screenshot, Dark Theme, Center Art Dulu + Baru, Tombol Silver Liquid Glass, Version Bawah) */}
         {currentPage === 0 && (
-          <View style={styles.pageContainer}>
-            {/* Top Version */}
-            <View style={styles.glassVersionPill}>
-              <Text style={styles.topVersionText}>{versionString}</Text>
-            </View>
+          <View style={styles.heroPageContainer}>
+            {/* Top Area Spacing */}
+            <View style={{ height: 4 }} />
 
-            {/* Center Welcome (No Box) */}
-            <View style={styles.centerBlock}>
-              <Text style={styles.welcomeTitle}>’WELCOME</Text>
-              <Text style={styles.welcomeSubtitle}>
-                Platform anime & movie{"\n"}untuk komunitas Nuenime.
+            {/* Center Artwork Block: Banner Metalik Gothic Chrome dengan Floating Micro-animation */}
+            <Animated.View
+              style={[
+                styles.heroCenterArtworkBlock,
+                {
+                  transform: [{ translateY: floatAnim }],
+                },
+              ]}
+            >
+              {/* Banner Metalik Gothic Chrome 'Welcome Nuenime' */}
+              <Image
+                source={WELCOME_BANNER_IMG}
+                style={styles.heroBannerImg}
+                contentFit="contain"
+                priority="high"
+                transition={200}
+              />
+            </Animated.View>
+
+            {/* Bottom Hero Section (Persis Layout Contoh: Title Kiri, Underline Bar, Subtitle, Tombol Silver Liquid Glass, Version) */}
+            <View style={styles.heroBottomSection}>
+              {/* Teks Judul Kiri + Underline Bar + Subtitle */}
+              <View style={styles.heroTextGroup}>
+                <Text style={styles.heroBrandTitle}>Nuenime</Text>
+                <LinearGradient
+                  colors={["#FFFFFF", "#CBD5E1", "#64748B"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.heroUnderlineBar}
+                />
+                <Text style={styles.heroSubtitle}>Nonton anime favoritmu tanpa batas</Text>
+              </View>
+
+              {/* Tombol Utama: Silver Liquid Glass 'Mulai Menonton' */}
+              <Pressable
+                onPress={() => goToPage(1)}
+                style={({ pressed }) => [
+                  styles.silverGlassButtonOuter,
+                  pressed && styles.buttonPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Mulai Menonton"
+              >
+                <LinearGradient
+                  colors={["#FFFFFF", "#E2E8F0", "#CBD5E1", "#94A3B8"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.silverGlassButton}
+                >
+                  {/* Kilauan Specular Liquid Glass Bagian Atas */}
+                  <LinearGradient
+                    colors={["rgba(255, 255, 255, 0.8)", "rgba(255, 255, 255, 0.08)"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0, y: 1 }}
+                    style={styles.silverGlassHighlight}
+                  />
+
+                  <View style={styles.silverButtonInner}>
+                    <Text style={styles.silverButtonText}>Mulai Menonton</Text>
+                    <View style={styles.silverIconCircle}>
+                      <AppIcon name="chevron-right" size={16} color="#0F172A" />
+                    </View>
+                  </View>
+                </LinearGradient>
+              </Pressable>
+
+              {/* Teks Versi di Bawah Tombol (Persis seperti Version 1.3.14 di contoh) */}
+              <Text style={styles.heroVersionFooter}>
+                Version {Constants.expoConfig?.version || "0.0.6"}
               </Text>
             </View>
-
-            {/* Bottom Liquid Glass Swipe Prompt (Clean Glass Pill without top lines) */}
-            <Pressable
-              onPress={() => goToPage(1)}
-              style={({ pressed }) => [
-                styles.swipeGlassPill,
-                pressed && styles.buttonPressed,
-              ]}
-              hitSlop={20}
-            >
-              <AppIcon name="chevron-up" size={18} color="#CBD5E1" />
-              <Text style={styles.swipePromptText}>Geser ke atas</Text>
-            </Pressable>
           </View>
         )}
 
@@ -373,12 +510,15 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
             {/* Top spacing */}
             <View style={{ height: 10 }} />
 
-            {/* Center Ready (No Box) */}
+            {/* Center Ready (Grafis Metalik 'Siap Mulai') */}
             <View style={styles.centerBlock}>
-              <Text style={styles.readyTitle}>SIAP MULAI</Text>
-              <Text style={styles.readySubtitle}>
-                Masuk untuk sinkronisasi riwayat{"\n"}dan preferensi tontonan kamu.
-              </Text>
+              <Image
+                source={SIAP_MULAI_BANNER_IMG}
+                style={styles.readyBannerImg}
+                contentFit="contain"
+                priority="high"
+                transition={200}
+              />
             </View>
 
             {/* Bottom Action Area */}
@@ -413,12 +553,56 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
                 Aplikasi ini tidak mengunggah atau mendistribusikan konten media.
               </Text>
 
+              {/* Legal Policy Links */}
+              <View style={styles.legalLinksRow}>
+                <Pressable
+                  onPress={() => {
+                    hapticLight();
+                    setActiveLegalDoc("terms");
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 10, right: 8 }}
+                  style={({ pressed }) => [
+                    styles.legalLinkItem,
+                    pressed && styles.legalLinkPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Buka Terms of Service"
+                >
+                  <Text style={styles.legalLinkText}>Terms of Service</Text>
+                </Pressable>
+
+                <Text style={styles.legalLinkDot}>•</Text>
+
+                <Pressable
+                  onPress={() => {
+                    hapticLight();
+                    setActiveLegalDoc("privacy");
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 10 }}
+                  style={({ pressed }) => [
+                    styles.legalLinkItem,
+                    pressed && styles.legalLinkPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Buka Privacy Policy"
+                >
+                  <Text style={styles.legalLinkText}>Privacy Policy</Text>
+                </Pressable>
+              </View>
+
               {/* Version at bottom */}
               <Text style={styles.bottomVersionText}>v{Constants.expoConfig?.version || "0.0.1"}</Text>
             </View>
           </View>
         )}
       </Animated.View>
+
+      {/* ─── LEGAL DOCUMENT MODAL ─── */}
+      <LegalModal
+        visible={activeLegalDoc !== null}
+        initialDoc={activeLegalDoc || "terms"}
+        onClose={() => setActiveLegalDoc(null)}
+      />
     </View>
   );
 }
@@ -426,7 +610,7 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#0E0E11", // Sleek dark grey background
+    backgroundColor: "#000000", // Murni hitam pekat
     zIndex: 99999,
     ...(Platform.OS === "web"
       ? ({
@@ -448,8 +632,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
 
+  // ─── AMBIENT ATMOSPHERIC HALO ───
+  ambientAuraHalo: {
+    position: "absolute",
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    alignSelf: "center",
+    top: "30%",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    ...(Platform.OS === "web"
+      ? ({
+          filter: "blur(60px)",
+        } as any)
+      : {
+          shadowColor: "#000000",
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.2,
+          shadowRadius: 60,
+          elevation: 2,
+        }),
+  },
+
   // ─── TOP VERSION BADGE ───
   glassVersionPill: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.10)",
@@ -464,6 +672,18 @@ const styles = StyleSheet.create({
         } as any)
       : {}),
   },
+  liveIndicatorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#10B981",
+    marginRight: 7,
+    shadowColor: "#10B981",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 5,
+    elevation: 2,
+  },
   topVersionText: {
     fontFamily: "Nunito-Bold",
     color: "#94A3B8",
@@ -471,26 +691,190 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
 
-  // ─── CENTER BLOCKS (CLEAN FLOATING TEXT, NO BOX) ───
+  // ─── HERO STEP 1 (MODERN SCREENSHOT LAYOUT) ───
+  heroPageContainer: {
+    flex: 1,
+    justifyContent: "space-between",
+    width: "100%",
+    paddingHorizontal: 26,
+    paddingTop: 8,
+  },
+  heroCenterArtworkBlock: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    paddingVertical: 12,
+  },
+  heroLogoImg: {
+    width: 220,
+    height: 64,
+    marginBottom: 8,
+  },
+  heroBannerImg: {
+    width: "100%",
+    maxWidth: 360,
+    aspectRatio: 1024 / 380,
+  },
+  heroBottomSection: {
+    width: "100%",
+    paddingBottom: 6,
+  },
+  heroTextGroup: {
+    marginBottom: 20,
+    alignSelf: "flex-start",
+    width: "100%",
+  },
+  heroBrandTitle: {
+    fontFamily: "Nunito-Black",
+    color: "#FFFFFF",
+    fontSize: 34,
+    letterSpacing: -0.5,
+  },
+  heroUnderlineBar: {
+    width: 48,
+    height: 4,
+    borderRadius: 2,
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  heroSubtitle: {
+    fontFamily: "Nunito-SemiBold",
+    color: "#94A3B8",
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  silverGlassButtonOuter: {
+    width: "100%",
+    borderRadius: 28,
+    shadowColor: "#E2E8F0",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  silverGlassButton: {
+    borderRadius: 28,
+    paddingVertical: 15,
+    paddingHorizontal: 24,
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.65)",
+    overflow: "hidden",
+    position: "relative",
+  },
+  silverGlassHighlight: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "50%",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+  },
+  silverButtonInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  silverButtonText: {
+    fontFamily: "Nunito-Black",
+    color: "#0F172A",
+    fontSize: 16,
+    letterSpacing: 0.3,
+  },
+  silverIconCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(15, 23, 42, 0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroVersionFooter: {
+    fontFamily: "Nunito-SemiBold",
+    color: "#64748B",
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: 14,
+    letterSpacing: 0.3,
+  },
+
+  // ─── CENTER BLOCKS (CLEAN FLOATING TEXT & EMBLEM) ───
   centerBlock: {
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
+    width: "100%",
+  },
+  welcomeBannerImg: {
+    width: "100%",
+    maxWidth: 360,
+    aspectRatio: 1024 / 380,
+  },
+  welcomeLogoImg: {
+    width: 205,
+    height: 68,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  sparkleTopRight: {
+    position: "absolute",
+    top: 6,
+    right: 22,
+    opacity: 0.65,
+  },
+  sparkleBottomLeft: {
+    position: "absolute",
+    bottom: 24,
+    left: 20,
+    opacity: 0.55,
   },
   welcomeTitle: {
     fontFamily: "Nunito-Black",
     color: "#FFFFFF",
-    fontSize: 46,
+    fontSize: 44,
     letterSpacing: -0.5,
     textAlign: "center",
   },
   welcomeSubtitle: {
     fontFamily: "Nunito-SemiBold",
-    color: "#64748B",
+    color: "#94A3B8",
     fontSize: 14.5,
     lineHeight: 22,
     textAlign: "center",
-    marginTop: 16,
+    marginTop: 12,
     maxWidth: 320,
+  },
+  featurePillRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 18,
+    flexWrap: "wrap",
+  },
+  featurePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: 18,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+  },
+  featureDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  featurePillText: {
+    fontFamily: "Nunito-Bold",
+    color: "#CBD5E1",
+    fontSize: 11.5,
+    letterSpacing: 0.2,
   },
 
   // ─── BOTTOM FROSTED GLASS SWIPE PROMPT (UNIFORM GLASS PILL, NO TOP LINE) ───
@@ -609,7 +993,12 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // ─── SLIDE 2: READY TITLE ───
+  // ─── SLIDE 2: READY BANNER ───
+  readyBannerImg: {
+    width: "100%",
+    maxWidth: 360,
+    aspectRatio: 1024 / 380,
+  },
   readyTitle: {
     fontFamily: "Nunito-Black",
     color: "#E2E8F0",
@@ -737,6 +1126,32 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 14,
     maxWidth: 320,
+  },
+  legalLinksRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 8,
+  },
+  legalLinkItem: {
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  legalLinkText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11.5,
+    color: "#38BDF8",
+    textDecorationLine: "underline",
+    textDecorationColor: "rgba(56, 189, 248, 0.45)",
+  },
+  legalLinkDot: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11,
+    color: "#475569",
+  },
+  legalLinkPressed: {
+    opacity: 0.6,
   },
   bottomVersionText: {
     fontFamily: "Nunito-SemiBold",

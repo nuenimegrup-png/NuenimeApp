@@ -180,9 +180,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   // Daftarkan token push ke Google FCM dan simpan ke Supabase agar tetap menerima notifikasi saat APK mati
   useEffect(() => {
-    if (user?.id) {
-      registerAndSavePushToken(user.id).catch(() => {});
-    }
+    // Daftarkan perangkat ke Supabase (baik guest maupun user login)
+    registerAndSavePushToken(user?.id || null).catch(() => {});
   }, [user?.id]);
 
   useEffect(() => {

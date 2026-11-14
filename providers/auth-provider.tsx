@@ -229,25 +229,70 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
       if (mounted) setLoading(true);
       try {
-        // getUser always asks Supabase Auth for the present user record. This
-        // deliberately rejects a cached token after an account was deleted.
+        let activeUser = candidate.user;
+        let activeSession = candidate;
+
+        // getUser asks Supabase Auth for the present user record.
         const { data, error } = await supabase.auth.getUser();
         if (!mounted || validationId !== sessionValidation.current) return;
-        if (error || !serverUserCanStartSession(candidate, data.user)) {
+
+        if (error) {
+          const errMsg = error.message?.toLowerCase() || "";
+          const isNetworkError =
+            errMsg.includes("network") ||
+            errMsg.includes("fetch") ||
+            errMsg.includes("timeout") ||
+            (error as any)?.status === 0 ||
+            (error as any)?.status >= 500;
+
+          // If token expired, attempt to refresh session before deciding
+          if (errMsg.includes("jwt") || errMsg.includes("expired") || (error as any)?.status === 401) {
+            const { data: refData, error: refErr } = await supabase.auth
+              .refreshSession()
+              .catch(() => ({ data: null, error: null } as any));
+            if (!mounted || validationId !== sessionValidation.current) return;
+            if (refData?.session && !refErr) {
+              activeSession = refData.session;
+              activeUser = refData.session.user;
+            } else if (!isNetworkError) {
+              await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+              clearSessionState();
+              return;
+            }
+          } else if (isNetworkError) {
+            // Keep candidate session on network glitch / offline
+            setSession(candidate);
+            void loadProfile(candidate.user).finally(() => {
+              if (mounted && validationId === sessionValidation.current) setLoading(false);
+            });
+            return;
+          } else {
+            await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+            clearSessionState();
+            return;
+          }
+        } else if (data.user) {
+          activeUser = data.user;
+        }
+
+        if (!serverUserCanStartSession(activeSession, activeUser)) {
           await supabase.auth.signOut({ scope: "local" }).catch(() => {});
           clearSessionState();
           return;
         }
-        const next = { ...candidate, user: data.user };
+
+        const next = { ...activeSession, user: activeUser };
         setSession(next);
-        void loadProfile(data.user).finally(() => {
+        void loadProfile(activeUser).finally(() => {
           if (mounted && validationId === sessionValidation.current) setLoading(false);
         });
       } catch {
         if (!mounted || validationId !== sessionValidation.current) return;
-        // Offline or malformed stored sessions must not grant app access.
-        await supabase.auth.signOut({ scope: "local" }).catch(() => {});
-        clearSessionState();
+        // On offline or transient errors, retain candidate session
+        setSession(candidate);
+        void loadProfile(candidate.user).finally(() => {
+          if (mounted && validationId === sessionValidation.current) setLoading(false);
+        });
       }
     };
     if (Platform.OS === "web" && typeof window !== "undefined") {

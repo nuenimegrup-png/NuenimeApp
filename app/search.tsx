@@ -541,8 +541,15 @@ export default function SearchScreen() {
           }
         />
       ) : media.length === 0 ? (
-        <View style={styles.emptyWrap}>
+        <ScrollView
+          style={styles.emptyScrollView}
+          contentContainerStyle={styles.emptyScrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           <EmptyState
+            style={styles.searchEmptyState}
+            imageSize={125}
             label={
               isCategoryMode
                 ? `Tidak ditemukan anime ${categoryLabel}.`
@@ -561,7 +568,7 @@ export default function SearchScreen() {
                 : undefined
             }
           />
-          <View style={styles.sectionBlock}>
+          <View style={[styles.sectionBlock, styles.emptyGenreSection]}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Coba Genre Lain</Text>
             </View>
@@ -582,7 +589,7 @@ export default function SearchScreen() {
               ))}
             </View>
           </View>
-        </View>
+        </ScrollView>
       ) : (
         <View style={styles.resultsWrap}>
           <View style={styles.resultsHead}>
@@ -953,11 +960,23 @@ const styles = StyleSheet.create({
     gap: 4,
   },
 
-  emptyWrap: {
+  emptyScrollView: {
     flex: 1,
+  },
+  emptyScrollContent: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    gap: 28,
+    paddingBottom: 40,
+  },
+  searchEmptyState: {
+    flex: 0,
+    minHeight: undefined,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  emptyGenreSection: {
+    marginTop: 10,
   },
   loadMore: {
     minHeight: 46,

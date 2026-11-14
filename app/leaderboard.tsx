@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -81,7 +81,7 @@ const PodiumCard = React.memo(function PodiumCard({
   const isFirst = entry.rank === 1;
   const clr = rankColor(entry.rank);
   const avatarSize = isFirst ? 68 : 54;
-  const { currentTier } = getTierForLevel(entry.level);
+  const { currentTier, isInfinity } = getTierForLevel(entry.level, entry.role);
 
   // Periksa apakah ini akun user yang sedang aktif
   const isMe =
@@ -175,7 +175,7 @@ const PodiumCard = React.memo(function PodiumCard({
           transition={200}
         />
         <Text style={[styles.podiumTierText, { color: currentTier.color }]}>
-          Lv.{entry.level.toLocaleString()}
+          {isInfinity ? "∞" : `Lv.${entry.level.toLocaleString()}`}
         </Text>
       </View>
 
@@ -206,7 +206,7 @@ const LeaderRow = React.memo(function LeaderRow({
   onPress,
 }: LeaderRowProps) {
   const clr = rankColor(entry.rank);
-  const { currentTier } = getTierForLevel(entry.level);
+  const { currentTier, isInfinity } = getTierForLevel(entry.level, entry.role);
 
   const isMe =
     (Boolean(currentUserId) && currentUserId === entry.userId) ||
@@ -277,7 +277,7 @@ const LeaderRow = React.memo(function LeaderRow({
               transition={200}
             />
             <Text style={[styles.rowTierText, { color: currentTier.color }]}>
-              {currentTier.name} • Lv.{entry.level.toLocaleString()}
+              {isInfinity ? `${currentTier.name} • ∞` : `${currentTier.name} • Lv.${entry.level.toLocaleString()}`}
             </Text>
           </View>
         </View>
@@ -439,7 +439,9 @@ export default function LeaderboardScreen() {
     retry: 2,
   });
 
-  const entries = data ?? [];
+  const entries = useMemo(() => {
+    return (data ?? []).filter((e) => !isSpecialRole(e.role));
+  }, [data]);
   const top3 = entries.slice(0, 3);
 
   // Re-order podium: 2nd (kiri) | 1st (tengah lebih tinggi) | 3rd (kanan)
@@ -614,7 +616,8 @@ export default function LeaderboardScreen() {
 
             {/* Friend Header Preview */}
             {selectedEntry && (() => {
-              const seTier = getTierForLevel(selectedEntry.level).currentTier;
+              const seTierInfo = getTierForLevel(selectedEntry.level, selectedEntry.role);
+              const seTier = seTierInfo.currentTier;
               const seSpecial = isSpecialRole(selectedEntry.role);
               const seCleanNum =
                 selectedEntry.memberNumber != null
@@ -653,7 +656,7 @@ export default function LeaderboardScreen() {
                           />
                         )}
                         <Text style={styles.sheetLevelPillText}>
-                          Lvl {selectedEntry.level.toLocaleString("id-ID")}
+                          {seTierInfo.isInfinity ? "∞" : `Lvl ${selectedEntry.level.toLocaleString("id-ID")}`}
                         </Text>
                       </View>
                       <View style={styles.sheetTierPill}>

@@ -18,9 +18,10 @@ const EXPO_PROJECT_ID = "e96fc02e-d968-4f13-a688-0d553d855df7";
 /**
  * Mendaftarkan perangkat ke Google FCM / Expo Push Service dan menyimpan tokennya ke Supabase
  * agar HP tetap bisa menerima notifikasi secara real-time meskipun APK sedang mati total.
+ * Bekerja baik untuk pengguna yang sudah login maupun tamu (guest).
  */
-export async function registerAndSavePushToken(userId: string): Promise<string | null> {
-  if (Platform.OS === "web" || !userId) return null;
+export async function registerAndSavePushToken(userId?: string | null): Promise<string | null> {
+  if (Platform.OS === "web") return null;
 
   try {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -37,16 +38,35 @@ export async function registerAndSavePushToken(userId: string): Promise<string |
     const pushToken = tokenResponse?.data;
     if (!pushToken) return null;
 
-    // Simpan ke Supabase untuk user aktif jika token belum tersimpan
-    const userSavedKey = `${STORAGE_SAVED_TOKEN}_${userId}`;
-    const userSavedToken = await AsyncStorage.getItem(userSavedKey);
-    if (userSavedToken !== pushToken) {
+    // 1. Simpan token ke global device registry (system_configs) agar perangkat tamu pun bisa menerima siaran massal
+    try {
+      const { data: cfg } = await supabase
+        .from("system_configs")
+        .select("value")
+        .eq("key", "device_push_tokens")
+        .maybeSingle();
+
+      const currentTokens: string[] = Array.isArray(cfg?.value) ? (cfg.value as string[]) : [];
+      if (!currentTokens.includes(pushToken)) {
+        currentTokens.push(pushToken);
+        await supabase.from("system_configs").upsert({
+          key: "device_push_tokens",
+          value: currentTokens.slice(-500),
+          updated_at: new Date().toISOString(),
+        });
+      }
+    } catch (cfgErr) {
+      console.warn("[PushService] Failed updating device_push_tokens in system_configs:", cfgErr);
+    }
+
+    // 2. Simpan ke tabel profiles jika pengguna sudah login
+    if (userId) {
       const { error: updErr } = await supabase
         .from("profiles")
         .update({ push_token: pushToken })
         .eq("id", userId);
       if (!updErr) {
-        await AsyncStorage.setItem(userSavedKey, pushToken);
+        await AsyncStorage.setItem(`${STORAGE_SAVED_TOKEN}_${userId}`, pushToken);
         await AsyncStorage.setItem(STORAGE_SAVED_TOKEN, pushToken);
       }
     }
@@ -137,14 +157,28 @@ export async function sendPushToAllUsers(
   payload: PushNotificationPayload
 ): Promise<boolean> {
   try {
-    const { data, error } = await supabase
+    // 1. Ambil dari profiles (pengguna yang sudah login)
+    const { data: profData } = await supabase
       .from("profiles")
       .select("push_token")
       .not("push_token", "is", null);
 
-    if (error || !data || data.length === 0) return false;
+    // 2. Ambil dari global device registry (system_configs) untuk semua perangkat terinstal
+    const { data: cfgData } = await supabase
+      .from("system_configs")
+      .select("value")
+      .eq("key", "device_push_tokens")
+      .maybeSingle();
 
-    const allTokens = data.map((d) => d.push_token).filter(Boolean) as string[];
+    const profTokens = (profData || []).map((d) => d.push_token).filter(Boolean) as string[];
+    const deviceTokens = Array.isArray(cfgData?.value) ? (cfgData.value as string[]) : [];
+
+    const allTokens = Array.from(new Set([...profTokens, ...deviceTokens])).filter(
+      (t) => typeof t === "string" && (t.startsWith("ExponentPushToken") || t.startsWith("ExpoPushToken"))
+    );
+
+    if (allTokens.length === 0) return false;
+
     return await sendExpoPush(allTokens, payload);
   } catch (err) {
     console.warn("[PushService] Failed to broadcast push:", err);

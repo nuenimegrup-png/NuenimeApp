@@ -84,6 +84,12 @@ function getUsernameColor(name: string): string {
  */
 function getTierPillColors(tierName: string) {
   switch (tierName.toLowerCase()) {
+    case "infinity":
+      return {
+        bg: "rgba(239, 68, 68, 0.16)",
+        border: "rgba(239, 68, 68, 0.45)",
+        text: "#FCA5A5",
+      };
     case "eternal":
       return {
         bg: "rgba(168, 85, 247, 0.16)",
@@ -161,7 +167,10 @@ const ChatMessageItem = React.memo(
     onReply,
     onQuotePress,
   }: ChatMessageItemProps) {
-    const tierInfo = useMemo(() => getTierForLevel(item.senderLevel || 1), [item.senderLevel]);
+    const tierInfo = useMemo(
+      () => getTierForLevel(item.senderLevel || 1, item.senderRole),
+      [item.senderLevel, item.senderRole]
+    );
     const activeTier = tierInfo?.currentTier;
     const nameColor = useMemo(() => getUsernameColor(item.senderName), [item.senderName]);
     const tierPillColors = useMemo(
@@ -260,7 +269,15 @@ const ChatMessageItem = React.memo(
                 </View>
               ) : null}
 
-              <View style={styles.levelPill}>
+              <View
+                style={[
+                  styles.levelPill,
+                  tierInfo?.isInfinity && {
+                    backgroundColor: "rgba(239, 68, 68, 0.12)",
+                    borderColor: "rgba(239, 68, 68, 0.35)",
+                  },
+                ]}
+              >
                 {activeTier?.imageUrl && (
                   <Image
                     source={{ uri: activeTier.imageUrl }}
@@ -269,8 +286,19 @@ const ChatMessageItem = React.memo(
                     cachePolicy="memory-disk"
                   />
                 )}
-                <Text style={styles.levelPillText}>
-                  Lvl {Number(item.senderLevel || 1).toLocaleString("id-ID")}
+                <Text
+                  style={[
+                    styles.levelPillText,
+                    tierInfo?.isInfinity && {
+                      color: "#EF4444",
+                      fontSize: 13,
+                      fontFamily: "Nunito-Black",
+                    },
+                  ]}
+                >
+                  {tierInfo?.isInfinity
+                    ? "∞"
+                    : `Lvl ${Number(item.senderLevel || 1).toLocaleString("id-ID")}`}
                 </Text>
               </View>
             </View>

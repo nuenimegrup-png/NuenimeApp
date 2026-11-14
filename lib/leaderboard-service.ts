@@ -3,6 +3,7 @@
 // ==============================================================================
 
 import { supabase } from "@/lib/supabase";
+import { isSpecialRole } from "@/lib/admin-service";
 
 export type LeaderboardPeriod = "daily" | "weekly" | "monthly" | "alltime";
 
@@ -54,21 +55,34 @@ export async function getLeaderboard(
   const now = new Date();
   const periodStart = getPeriodStart(period);
 
-  // ── ALL-TIME: langsung dari profiles ──────────────────────────────────────
+  // ── ALL-TIME: langsung dari profiles (khusus member biasa centang biru) ────
   if (period === "alltime") {
-    const { data, error } = await supabase
+    const fetchLimit = Math.max(limit * 2, limit + 30);
+    let { data, error } = await supabase
       .from("profiles")
       .select("id, username, display_name, avatar_url, member_number, level, exp, is_vip, equipped_border, role")
+      .or("role.is.null,role.ilike.member")
       .order("exp", { ascending: false })
-      .limit(limit);
+      .limit(fetchLimit);
 
     if (error) {
-      console.warn("[Leaderboard] alltime error:", error.message);
-      return [];
+      // Fallback jika query .or ditolak
+      const fb = await supabase
+        .from("profiles")
+        .select("id, username, display_name, avatar_url, member_number, level, exp, is_vip, equipped_border, role")
+        .order("exp", { ascending: false })
+        .limit(fetchLimit);
+      data = fb.data;
     }
+
     if (!data || data.length === 0) return [];
 
-    return data.map((p: any, i) => ({
+    // Filter ketat: Dilarang admin / role khusus centang merah masuk leaderboard
+    const eligibleMembers = data
+      .filter((p: any) => !isSpecialRole(p?.role))
+      .slice(0, limit);
+
+    return eligibleMembers.map((p: any, i) => ({
       rank: i + 1,
       userId: p.id,
       username: p.username ?? "Nuenime Member",
@@ -109,19 +123,19 @@ export async function getLeaderboard(
     userXpMap[tx.user_id] = (userXpMap[tx.user_id] ?? 0) + (tx.total_xp ?? 0);
   }
 
-  // Step 3: sort & ambil top N user_ids
-  const sortedUserIds = Object.entries(userXpMap)
+  // Step 3: sort & ambil candidate user_ids (ambil lebih banyak agar cukup setelah filter admin)
+  const candidateUserIds = Object.entries(userXpMap)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
+    .slice(0, Math.max(limit * 3, limit + 50))
     .map(([uid]) => uid);
 
-  if (sortedUserIds.length === 0) return [];
+  if (candidateUserIds.length === 0) return [];
 
   // Step 4: fetch profiles untuk user tersebut
   const { data: profileData, error: profError } = await supabase
     .from("profiles")
     .select("id, username, display_name, avatar_url, member_number, level, is_vip, equipped_border, role")
-    .in("id", sortedUserIds);
+    .in("id", candidateUserIds);
 
   if (profError) {
     console.warn("[Leaderboard] profile fetch error:", profError.message);
@@ -129,7 +143,15 @@ export async function getLeaderboard(
 
   const profileMap = new Map((profileData ?? []).map((p: any) => [p.id, p]));
 
-  return sortedUserIds.map((uid, i) => {
+  // Step 5: Filter ketat khusus member biasa (centang biru), role admin / centang merah dilarang masuk
+  const eligibleUserIds = candidateUserIds
+    .filter((uid) => {
+      const p: any = profileMap.get(uid);
+      return !isSpecialRole(p?.role);
+    })
+    .slice(0, limit);
+
+  return eligibleUserIds.map((uid, i) => {
     const p: any = profileMap.get(uid);
     return {
       rank: i + 1,

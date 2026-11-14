@@ -60,6 +60,12 @@ function getUsernameColor(username: string, role?: string | null): string {
 
 function getTierPillColors(tierName: string) {
   switch (tierName.toLowerCase()) {
+    case "infinity":
+      return {
+        bg: "rgba(239, 68, 68, 0.16)",
+        border: "rgba(239, 68, 68, 0.45)",
+        text: "#FCA5A5",
+      };
     case "eternal":
       return {
         bg: "rgba(168, 85, 247, 0.16)",
@@ -163,7 +169,7 @@ function CommentAuthor({ comment }: { comment: SharedComment }) {
     : null;
   const level = (isMe && auth.profile?.level) || comment.author?.level || 1;
 
-  const tierInfo = getTierForLevel(level);
+  const tierInfo = getTierForLevel(level, role);
   const activeTier = tierInfo?.currentTier;
   const tierPillColors = getTierPillColors(activeTier?.name || "Stone");
   const nameColor = getUsernameColor(name, role);
@@ -237,7 +243,15 @@ function CommentAuthor({ comment }: { comment: SharedComment }) {
           ) : null}
 
           {/* Level Pill dengan Icon Sayap / Tier */}
-          <View style={styles.levelPill}>
+          <View
+            style={[
+              styles.levelPill,
+              tierInfo?.isInfinity && {
+                backgroundColor: "rgba(239, 68, 68, 0.12)",
+                borderColor: "rgba(239, 68, 68, 0.35)",
+              },
+            ]}
+          >
             {activeTier?.imageUrl && (
               <Image
                 source={{ uri: activeTier.imageUrl }}
@@ -246,8 +260,19 @@ function CommentAuthor({ comment }: { comment: SharedComment }) {
                 cachePolicy="memory-disk"
               />
             )}
-            <Text style={styles.levelPillText}>
-              Lvl {Number(level).toLocaleString("id-ID")}
+            <Text
+              style={[
+                styles.levelPillText,
+                tierInfo?.isInfinity && {
+                  color: "#EF4444",
+                  fontSize: 12,
+                  fontFamily: "Nunito-Black",
+                },
+              ]}
+            >
+              {tierInfo?.isInfinity
+                ? "∞"
+                : `Lvl ${Number(level).toLocaleString("id-ID")}`}
             </Text>
           </View>
 

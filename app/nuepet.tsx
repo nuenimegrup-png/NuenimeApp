@@ -24,16 +24,41 @@ const DEFAULT_NUEPET_URL =
 export default function NuePetZooScreen() {
   const insets = useSafeAreaInsets();
   const auth = useAnirakuAuth();
-  const routeParams = useLocalSearchParams<{ tab?: string }>();
+  const routeParams = useLocalSearchParams<{
+    tab?: string;
+    targetUserId?: string;
+    targetName?: string;
+    targetAvatar?: string;
+    isVisitor?: string;
+  }>();
   const initialTab = routeParams.tab;
+
+  // Mode Pengunjung: Jika mengunjungi pet dari profil pengguna lain
+  const isVisiting = Boolean(
+    routeParams.isVisitor === "1" ||
+      (routeParams.targetUserId && routeParams.targetUserId !== auth.user?.id)
+  );
+  const targetOwnerId =
+    isVisiting && routeParams.targetUserId
+      ? routeParams.targetUserId
+      : auth.user?.id || "guest";
+  const targetOwnerName =
+    isVisiting && routeParams.targetName
+      ? routeParams.targetName
+      : auth.profile?.display_name || auth.profile?.username || "Pengasuh";
+  const targetOwnerAvatar =
+    isVisiting && routeParams.targetAvatar
+      ? routeParams.targetAvatar
+      : auth.profile?.avatar_url || "";
 
   const [hasError, setHasError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Saldo Crystal Nuenime untuk Gacha & Upgrade di NuePet
+  // Saldo Crystal Nuenime untuk Gacha & Upgrade di NuePet (hanya berlaku untuk pemilik)
   const [userCrystals, setUserCrystals] = useState<number>(0);
 
   useEffect(() => {
+    if (isVisiting) return;
     let mounted = true;
     getCrystalBalance(auth.user?.id)
       .then((bal) => {
@@ -43,11 +68,11 @@ export default function NuePetZooScreen() {
     return () => {
       mounted = false;
     };
-  }, [auth.user?.id]);
+  }, [auth.user?.id, isVisiting]);
 
-  // Handle postMessage dari NuePet Zoo webview/iframe jika ada konsumsi atau penukaran saldo crystal
+  // Handle postMessage dari NuePet Zoo webview/iframe jika ada konsumsi atau penukaran saldo crystal (hanya untuk pemilik)
   useEffect(() => {
-    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    if (Platform.OS !== "web" || typeof window === "undefined" || isVisiting) return;
 
     const handleWebMessage = async (event: MessageEvent) => {
       try {
@@ -74,11 +99,11 @@ export default function NuePetZooScreen() {
 
     window.addEventListener("message", handleWebMessage);
     return () => window.removeEventListener("message", handleWebMessage);
-  }, [auth.user?.id]);
+  }, [auth.user?.id, isVisiting]);
 
   // Identitas profil pengguna
   const userLevel = Number(auth.profile?.level) || 1;
-  const tierInfo = getTierForLevel(userLevel);
+  const tierInfo = getTierForLevel(userLevel, auth.profile?.role);
   const rankName = tierInfo?.currentTier?.name?.toUpperCase() || "STONE";
   const displayName = auth.profile?.display_name || auth.profile?.username || "Pengasuh";
   const avatarUrl = auth.profile?.avatar_url || "";
@@ -123,12 +148,17 @@ export default function NuePetZooScreen() {
     const userExp = Number(auth.profile?.exp) || 0;
     const initialCrystals = initialCrystalsRef.current ?? userCrystals;
     const params = new URLSearchParams({
-      uid: userId,
-      name: displayName,
+      uid: targetOwnerId,
+      targetUid: targetOwnerId,
+      targetName: targetOwnerName,
+      isVisitor: isVisiting ? "1" : "0",
+      visitorUid: userId,
+      visitorName: displayName,
+      name: targetOwnerName,
       level: String(userLevel),
       exp: String(userExp),
       rank: rankName,
-      avatar: avatarUrl,
+      avatar: isVisiting ? targetOwnerAvatar : avatarUrl,
       border: resolvedBorderUrl || equippedBorder,
       vip: isVip ? "1" : "0",
       crystals: String(initialCrystals || 0),
@@ -136,6 +166,10 @@ export default function NuePetZooScreen() {
     });
     return `${baseUrl}/?${params.toString()}`;
   }, [
+    targetOwnerId,
+    targetOwnerName,
+    isVisiting,
+    targetOwnerAvatar,
     userId,
     displayName,
     userLevel,
@@ -181,7 +215,14 @@ export default function NuePetZooScreen() {
         <View style={styles.headerTitleWrap}>
           <View style={styles.titleRow}>
             <Text style={styles.headerIcon}>🐾</Text>
-            <Text style={styles.headerTitle}>NuePet Zoo</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {isVisiting ? `Wilayah ${targetOwnerName}` : "NuePet Zoo"}
+            </Text>
+            {isVisiting && (
+              <View style={styles.visitorHeaderBadge}>
+                <Text style={styles.visitorHeaderBadgeText}>PENGUNJUNG</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -233,6 +274,7 @@ export default function NuePetZooScreen() {
             url={targetUrl}
             onError={() => setHasError(true)}
             onMessage={(data) => {
+              if (isVisiting) return;
               if (data && data.type === "UPDATE_CRYSTALS" && typeof data.crystals === "number") {
                 setUserCrystals(data.crystals);
               } else if (data && data.type === "ADD_CRYSTALS") {
@@ -306,6 +348,55 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+  },
+  visitorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(14, 165, 233, 0.12)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(56, 189, 248, 0.25)",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    gap: 8,
+  },
+  visitorBannerText: {
+    flex: 1,
+    fontSize: 12.5,
+    color: "#E2E8F0",
+    fontWeight: "600",
+  },
+  visitorBannerHighlight: {
+    color: "#38BDF8",
+    fontWeight: "800",
+  },
+  visitorHeaderBadge: {
+    backgroundColor: "rgba(56, 189, 248, 0.2)",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.45)",
+    marginLeft: 4,
+  },
+  visitorHeaderBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#38BDF8",
+    letterSpacing: 0.5,
+  },
+  visitorBadge: {
+    backgroundColor: "rgba(56, 189, 248, 0.2)",
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.45)",
+  },
+  visitorBadgeText: {
+    fontSize: 9.5,
+    fontWeight: "800",
+    color: "#38BDF8",
+    letterSpacing: 0.5,
   },
   webviewContainer: {
     flex: 1,

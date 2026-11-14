@@ -1,7 +1,28 @@
-export type SessionIdentity = { id?: string; email_confirmed_at?: string | null; app_metadata?: { provider?: string } };
+export type SessionIdentity = {
+  id?: string;
+  email_confirmed_at?: string | null;
+  confirmed_at?: string | null;
+  app_metadata?: { provider?: string; providers?: string[] };
+  identities?: Array<{ provider?: string }>;
+};
 
 export function sessionIsVerified(session: { user?: SessionIdentity | null } | null | undefined) {
-  return Boolean(session?.user?.email_confirmed_at || session?.user?.app_metadata?.provider === "anonymous");
+  if (!session?.user) return false;
+  const u = session.user;
+
+  // Confirmed via timestamp
+  if (u.email_confirmed_at || u.confirmed_at) return true;
+
+  // Anonymous or OAuth providers (Google, Apple, etc.) are verified by external provider
+  const provider = u.app_metadata?.provider;
+  if (provider && provider !== "email") return true;
+
+  // Check identities array for OAuth providers
+  if (Array.isArray(u.identities) && u.identities.some((i) => i.provider && i.provider !== "email")) {
+    return true;
+  }
+
+  return false;
 }
 
 /**

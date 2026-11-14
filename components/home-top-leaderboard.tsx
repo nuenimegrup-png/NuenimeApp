@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -16,6 +16,7 @@ import { getTierForLevel } from "@/components/level-progress-modal";
 import { getLeaderboard, formatXp, type LeaderboardEntry } from "@/lib/leaderboard-service";
 import { supabase } from "@/lib/supabase";
 import { hapticLight } from "@/lib/haptics";
+import { isSpecialRole } from "@/lib/admin-service";
 
 const GOLD = "#F59E0B";
 const SILVER = "#CBD5E1";
@@ -40,7 +41,7 @@ function HomePodiumItem({ entry }: { entry: LeaderboardEntry }) {
   const isFirst = entry.rank === 1;
   const clr = rankColor(entry.rank);
   const avatarSize = isFirst ? 52 : 42;
-  const { currentTier } = getTierForLevel(entry.level);
+  const { currentTier, isInfinity } = getTierForLevel(entry.level, (entry as any).role);
 
   return (
     <View
@@ -117,7 +118,7 @@ function HomePodiumItem({ entry }: { entry: LeaderboardEntry }) {
           transition={150}
         />
         <Text style={[styles.tierText, { color: currentTier.color }]}>
-          Lv.{entry.level}
+          {isInfinity ? "∞" : `Lv.${entry.level}`}
         </Text>
       </View>
 
@@ -176,7 +177,9 @@ export function HomeTopLeaderboard() {
     };
   }, [queryClient]);
 
-  const entries = data ?? [];
+  const entries = useMemo(() => {
+    return (data ?? []).filter((e) => !isSpecialRole((e as any).role));
+  }, [data]);
   const top3 = entries.slice(0, 3);
 
   // Urutan podium: 2nd (kiri) | 1st (tengah lebih tinggi) | 3rd (kanan)

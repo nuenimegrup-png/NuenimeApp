@@ -143,7 +143,8 @@ export default function LelangScreen() {
   const userExp = Math.max(0, Number(auth.profile?.exp || 0));
   const levelInfo = useMemo(() => getLevelProgressInfo(userExp), [userExp]);
   const userLevel = auth.profile?.level ?? levelInfo.level;
-  const activeTier = useMemo(() => getTierForLevel(userLevel).currentTier, [userLevel]);
+  const tierInfo = useMemo(() => getTierForLevel(userLevel, auth.profile?.role), [userLevel, auth.profile?.role]);
+  const activeTier = tierInfo.currentTier;
   const initialLetter = (userName || "N").charAt(0).toUpperCase();
   const isSpecial = auth.profile?.role && isSpecialRole(auth.profile.role);
   const userRole = auth.profile?.role
@@ -2839,7 +2840,14 @@ export default function LelangScreen() {
                           ) : (
                             <AppIcon name="shield-star" size={12} color="#38BDF8" />
                           )}
-                          <Text style={styles.profileLevelPillText}>Lv. {userLevel}</Text>
+                          <Text
+                            style={[
+                              styles.profileLevelPillText,
+                              tierInfo.isInfinity && { color: "#EF4444", fontFamily: "Nunito-Black" },
+                            ]}
+                          >
+                            {tierInfo.isInfinity ? "∞" : `Lv. ${userLevel}`}
+                          </Text>
                         </Pressable>
 
                         {isSpecial ? (
@@ -3344,6 +3352,7 @@ export default function LelangScreen() {
         onClose={() => setShowLevelModal(false)}
         userLevel={userLevel}
         totalXP={userExp}
+        role={auth.profile?.role}
       />
     </SafeAreaView>
   );

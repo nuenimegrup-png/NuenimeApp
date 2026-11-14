@@ -1,13 +1,19 @@
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { Image } from "expo-image";
 import { AppIcon } from "@/components/app-icon";
 import { ChibiLoading } from "@/components/chibi-loading";
 
 const EMPTY_ILLUSTRATION = require("@/assets/images/empty-state.png");
 
-export function LoadingState({ label = "Memuat data anime..." }: { label?: string }) {
+export function LoadingState({
+  label = "Memuat data anime...",
+  style,
+}: {
+  label?: string;
+  style?: StyleProp<ViewStyle>;
+}) {
   return (
-    <View style={styles.loadingContainer}>
+    <View style={[styles.loadingContainer, style]}>
       <ChibiLoading size={76} />
       {label ? <Text style={styles.loadingText}>{label}</Text> : null}
     </View>
@@ -19,11 +25,13 @@ export function ErrorState({
   onRetry,
   retryLabel = "COBA LAGI",
   retryDisabled = false,
+  style,
 }: {
   message: string;
   onRetry: () => void;
   retryLabel?: string;
   retryDisabled?: boolean;
+  style?: StyleProp<ViewStyle>;
 }) {
   const anilistOutage = /AniList is temporarily unavailable due to an upstream stability issue/i.test(message);
   const friendlyMessage = /api\.aniraku|backend|graphql|network request|failed to fetch/i.test(message)
@@ -31,7 +39,7 @@ export function ErrorState({
     : message;
 
   return (
-    <View accessibilityRole="alert" style={styles.stateContainer}>
+    <View accessibilityRole="alert" style={[styles.stateContainer, style]}>
       <View style={[styles.iconCard, styles.errorIconCard]}>
         <AppIcon name="alert-circle-outline" size={28} color="#EF4444" />
       </View>
@@ -64,14 +72,16 @@ export function EmptyState({
   action,
   imageSource,
   imageSize = 140,
+  style,
 }: {
   label: string;
   action?: { label: string; onPress: () => void };
   imageSource?: any;
   imageSize?: number;
+  style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <View style={styles.stateContainer}>
+    <View style={[styles.stateContainer, style]}>
       <Image
         source={imageSource ?? EMPTY_ILLUSTRATION}
         style={[styles.emptyIllustration, { width: imageSize, height: imageSize }]}

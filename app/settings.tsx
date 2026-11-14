@@ -521,14 +521,28 @@ export default function SettingsScreen() {
                 }}
                 style={({ pressed }) => [styles.levelBadgePill, pressed && styles.btnPressed]}
               >
-                <Image
-                  source={{ uri: getTierForLevel(userLevel).currentTier.imageUrl }}
-                  style={{ width: 17, height: 17 }}
-                  contentFit="contain"
-                  transition={150}
-                  cachePolicy="memory-disk"
-                />
-                <Text style={styles.levelBadgeText}>Lvl. {userLevel}</Text>
+                {(() => {
+                  const tierInfo = getTierForLevel(userLevel, auth.profile?.role);
+                  return (
+                    <>
+                      <Image
+                        source={{ uri: tierInfo.currentTier.imageUrl }}
+                        style={{ width: 17, height: 17 }}
+                        contentFit="contain"
+                        transition={150}
+                        cachePolicy="memory-disk"
+                      />
+                      <Text
+                        style={[
+                          styles.levelBadgeText,
+                          tierInfo.isInfinity && { color: "#EF4444", fontFamily: "Nunito-Black" },
+                        ]}
+                      >
+                        {tierInfo.isInfinity ? "∞" : `Lvl. ${userLevel}`}
+                      </Text>
+                    </>
+                  );
+                })()}
               </Pressable>
             </View>
 
@@ -615,7 +629,7 @@ export default function SettingsScreen() {
               <View style={styles.rowRightWrap}>
                 <Text style={styles.actionEditText}>Gacha</Text>
                 <AppIcon
-                  name="chevron-forward"
+                  name="chevron-right"
                   size={14}
                   color="#38BDF8"
                 />

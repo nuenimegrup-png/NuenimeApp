@@ -1,6 +1,6 @@
 {
   "name": "nuenime",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "private": true,
   "main": "expo-router/entry",
   "expo": {
@@ -12,6 +12,8 @@
   },
   "scripts": {
     "dev": "bun ./node_modules/concurrently/dist/bin/concurrently.js -k -n \"SERVER,METRO,DUNIA\" -c \"magenta,cyan,yellow\" \"bun run dev:server\" \"bun run dev:metro\" \"bun run dev:dunia\"",
+    "dev:project": "bun ./node_modules/concurrently/dist/bin/concurrently.js -k -n \"SERVER,METRO\" -c \"magenta,cyan\" \"bun run dev:server\" \"bun run dev:metro\"",
+    "dev:all": "bun ./node_modules/concurrently/dist/bin/concurrently.js -k -n \"SERVER,METRO,DUNIA,NUEPET\" -c \"magenta,cyan,yellow,green\" \"bun run dev:server\" \"bun run dev:metro\" \"bun run dev:dunia\" \"bun run dev:nuepet\"",
     "dev:server": "cross-env NODE_ENV=development bun --watch server/_core/index.ts",
     "dev:metro": "cross-env EXPO_USE_METRO_WORKSPACE_ROOT=1 bun x expo start --web --port 8081",
     "dev:dunia": "bun run --cwd dunia-Nuenime dev",

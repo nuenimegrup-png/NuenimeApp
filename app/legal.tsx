@@ -4,6 +4,11 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-n
 import { AppIcon } from "@/components/app-icon";
 import { nothing } from "@/components/nothing-ui";
 import { NativeScreen } from "@/components/screen";
+import {
+  TERMS_OF_SERVICE,
+  PRIVACY_POLICY,
+  LegalDocument,
+} from "@/constants/legal-content";
 
 type LegalPage = "privacy" | "terms" | "dmca" | "licenses";
 
@@ -14,24 +19,37 @@ const sections: { key: LegalPage; label: string; detail: string; icon: string }[
   { key: "licenses", label: "Open Source Licenses", detail: "Perangkat lunak pihak ketiga dan lisensinya.", icon: "open-in-new" },
 ];
 
-function PrivacyPolicy() {
+function DocumentRenderer({ doc }: { doc: LegalDocument }) {
   return (
     <View style={styles.legalContent}>
-      <Text style={styles.legalHeading}>Privacy Policy</Text>
-      <Text style={styles.legalDate}>Berlaku sejak: Oktober 2026</Text>
-      <Text style={styles.legalBody}>{`Nuenime ("kami") mengoperasikan aplikasi streaming dan penemuan anime Nuenime. Kebijakan ini menjelaskan apa yang digunakan, mengapa, dan di mana datamu tersimpan.\n\n1. INFORMASI YANG KAMI KUMPULKAN\n\n• Akun: alamat email dan status verifikasi untuk masuk dan pemulihan.\n• Sesi: token terenkripsi di keychain/keystore perangkat, dihapus saat keluar.\n• Perpustakaan: progres tontonan, bookmark, rating, komentar, notifikasi, dan profil, disinkronkan ke akunmu.\n• Hanya di perangkat: preferensi NSFW dengan afirmasi 18+ sekali pakai, riwayat pencarian, dan opsi notifikasi — tidak pernah dikirim ke server.\n• Metadata: judul anime dan data provider dari AniList dan Nuenime API; hanya cache sementara.\n• Kami tidak mengumpulkan identifier iklan atau analitik perilaku.\n\n2. CARA KAMI MENGGUNAKANNYA\n\n• Untuk menyediakan penemuan konten, koordinasi pemutaran, dan sinkronisasi antar perangkat.\n• Untuk menampilkan status pemulihan yang dapat dipahami saat terjadi kesalahan.\n• Kami tidak menjual data pribadi.\n\n3. KEAMANAN\n\n• Lalu lintas data dienkripsi saat transit (TLS).\n• Token provider tetap di sisi server dan tidak pernah masuk ke aplikasi.\n• Catatan akun dibatasi untuk pengguna yang masuk.\n\n4. HAK KAMU\n\n• Hapus riwayat tontonan dan bookmark di Pengaturan.\n• Hapus akunmu di Pengaturan — menghapus catatanmu terlebih dahulu, kemudian login itu sendiri. Tidak dapat dibatalkan.\n• Minta salinan datamu: privacy@nuenime.app\n\n5. ANAK-ANAK DAN KONTEN DEWASA\n\n• Tidak untuk anak-anak di bawah 13 tahun.\n• Judul dewasa tetap tersembunyi sampai kamu menegaskan berusia 18 tahun atau lebih.\n\n6. PERUBAHAN\n\nPerubahan material akan dikomunikasikan melalui pemberitahuan dalam aplikasi.\n\n7. KONTAK\n\nprivacy@nuenime.app`}</Text>
+      <Text style={styles.legalHeading}>{doc.title}</Text>
+      <Text style={styles.legalDate}>Terakhir diperbarui: {doc.lastUpdated}</Text>
+      <View style={styles.summaryBox}>
+        <Text style={styles.summaryText}>{doc.summary}</Text>
+      </View>
+      {doc.sections.map((sec, idx) => (
+        <View key={sec.title + idx} style={{ marginTop: 14 }}>
+          <Text style={styles.sectionSubtitle}>
+            {idx + 1}. {sec.title.toUpperCase()}
+          </Text>
+          <Text style={styles.legalBody}>{sec.content}</Text>
+        </View>
+      ))}
+      <View style={styles.contactFooterBox}>
+        <Text style={styles.contactFooterText}>
+          Kontak Layanan: {doc.contactEmail}
+        </Text>
+      </View>
     </View>
   );
 }
 
+function PrivacyPolicy() {
+  return <DocumentRenderer doc={PRIVACY_POLICY} />;
+}
+
 function TermsOfService() {
-  return (
-    <View style={styles.legalContent}>
-      <Text style={styles.legalHeading}>Terms of Service</Text>
-      <Text style={styles.legalDate}>Berlaku sejak: Oktober 2026</Text>
-      <Text style={styles.legalBody}>{`Dengan menggunakan Nuenime, kamu menyetujui ketentuan ini.\n\n1. LAYANAN\n\nNuenime adalah antarmuka penemuan dan koordinasi pemutaran anime gratis. Kami tidak meng-host video dan tidak memberikan hak atas konten pihak ketiga. Kualitas, subtitle, jadwal, dan ketersediaan berasal dari pihak ketiga dan dapat berubah sewaktu-waktu.\n\n2. KELAYAKAN\n\nKamu harus berusia minimal 13 tahun. Judul dewasa memerlukan afirmasi eksplisit berusia 18 tahun atau lebih dan harus sesuai hukum di wilayahmu.\n\n3. AKUN\n\nEmail terverifikasi diperlukan untuk fitur terproteksi. Kamu bertanggung jawab atas kredensial dan aktivitas akunmu. Jangan bypass autentikasi, mengumpulkan data, mengganggu layanan, atau menyalahgunakan penghapusan dan pelaporan.\n\n4. PENGGUNAAN YANG DAPAT DITERIMA\n\nKamu setuju untuk tidak:\n• Menggunakan aplikasi untuk tujuan ilegal.\n• Memposting konten melanggar hukum, kasar, melanggar hak cipta, spam, atau menipu.\n• Mengganggu atau mengeksploitasi layanan.\n• Mendistribusikan ulang atau menjual kembali konten yang diakses melalui aplikasi.\n\n5. KEKAYAAN INTELEKTUAL\n\nAplikasi Nuenime dirilis di bawah Lisensi MIT. Konten anime adalah milik pemiliknya masing-masing. Masalah hak cipta mengikuti bagian DMCA / Hak Cipta.\n\n6. PENGHENTIAN\n\nKamu dapat berhenti menggunakan aplikasi atau menghapus akunmu (Pengaturan) kapan saja. Kami dapat membatasi atau menghentikan akses untuk pelanggaran, termasuk pelanggaran hak cipta berulang.\n\n7. PENAFIAN DAN TANGGUNG JAWAB\n\nDisediakan "sebagaimana adanya" dan "sebagaimana tersedia" tanpa jaminan. Sejauh yang diizinkan hukum, kami tidak bertanggung jawab atas kerugian tidak langsung atau konsekuensial.\n\n8. PERUBAHAN\n\nPerubahan material akan dikomunikasikan melalui pemberitahuan dalam aplikasi. Penggunaan berkelanjutan dianggap sebagai penerimaan.\n\n9. KONTAK\n\nlegal@nuenime.app`}</Text>
-    </View>
-  );
+  return <DocumentRenderer doc={TERMS_OF_SERVICE} />;
 }
 
 function DMCAPolicy() {
@@ -377,6 +395,40 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#CBD5E1",
     lineHeight: 21,
+  },
+  sectionSubtitle: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 14,
+    color: "#F8FAFC",
+    marginBottom: 6,
+  },
+  summaryBox: {
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
+    borderLeftWidth: 3,
+    borderLeftColor: "#38BDF8",
+    padding: 12,
+    borderRadius: 8,
+    marginVertical: 8,
+  },
+  summaryText: {
+    fontFamily: "Nunito-Medium",
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: "#E2E8F0",
+  },
+  contactFooterBox: {
+    marginTop: 24,
+    padding: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  contactFooterText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12.5,
+    color: "#38BDF8",
+    textAlign: "center",
   },
   licenseRow: {
     paddingVertical: 10,

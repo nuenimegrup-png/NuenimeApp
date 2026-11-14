@@ -3401,18 +3401,316 @@ export default function WatchScreen() {
     {/* ── Modal Pickers ── */}
     <Modal visible={activePanel === "speed"} transparent animationType="fade"><Pressable style={styles.modalBackdrop} onPress={() => setActivePanel(null)}><View style={styles.modalSheet}><Text style={styles.modalTitle}>{t("player.playbackSpeed")}</Text>{[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((val) => <Pressable key={val} style={[styles.modalItem, speed === val && styles.modalItemActive]} onPress={() => { setSpeed(val); lockedSpeed.current = val; setActivePanel(null); }}><Text style={[styles.modalItemText, speed === val && styles.modalItemTextActive]}>{val === 1.0 ? "1.0x (Normal)" : `${val}x`}</Text>{speed === val && <Check size={20} color={nothing.red} weight="bold" />}</Pressable>)}</View></Pressable></Modal>
 
-    {/* Server Dropdown Picker (Server 1, Server 2, Server 3, etc.) */}
-    <Modal visible={activePanel === "server"} transparent animationType="fade"><Pressable style={styles.modalBackdrop} onPress={() => setActivePanel(null)}><View style={styles.modalSheet}><Text style={styles.modalTitle}>PILIH SERVER</Text>
-      {selectableProviders.length ? selectableProviders.map(({ provider, index }) => <Pressable key={provider.id} onPress={() => { selectServer(index); setActivePanel(null); }} style={[styles.modalItem, index === serverIndex && styles.modalItemActive]}><View style={{ flex: 1, gap: 2 }}><Text style={[styles.modalItemText, index === serverIndex && styles.modalItemTextActive]}>{`Server ${index + 1}`}</Text><Text style={styles.modalItemSub}>{index === serverIndex ? "Sedang Digunakan · Kualitas Cepat" : "Streaming Server Alternatif"}</Text></View>{index === serverIndex && <Check size={20} color={nothing.red} weight="bold" />}</Pressable>) : <Text style={styles.modalItemSub}>Mencari server aktif…</Text>}</View></Pressable></Modal>
+    {/* Server Dropdown Picker (Server 1, Server 2, Server 3, etc.) - Half Screen Liquid Glass */}
+    <Modal
+      visible={activePanel === "server"}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setActivePanel(null)}
+    >
+      <Pressable style={styles.serverModalBackdrop} onPress={() => setActivePanel(null)}>
+        <Pressable
+          style={styles.serverModalSheet}
+          onPress={(e) => {
+            // Prevent dismiss when tapping inside the modal sheet
+            e.stopPropagation?.();
+          }}
+        >
+          {/* Sheet Handle */}
+          <View style={styles.serverSheetHandle} />
 
-    {/* Audio / Language Dropdown Picker */}
-    <Modal visible={activePanel === "language"} transparent animationType="fade"><Pressable style={styles.modalBackdrop} onPress={() => setActivePanel(null)}><View style={styles.modalSheet}><Text style={styles.modalTitle}>PILIH AUDIO / BAHASA</Text>
-      {(["sub", "dub"] as Language[]).map((item) => { const active = language === item; const count = providers[item]?.length ?? 0; return <Pressable key={item} onPress={() => { selectLanguage(item); setActivePanel(null); }} style={[styles.modalItem, active && styles.modalItemActive]}><View style={{ flex: 1, gap: 2 }}><Text style={[styles.modalItemText, active && styles.modalItemTextActive]}>{item === "sub" ? "SUB (Subtitle Indonesia)" : "DUB (Dubbing / Audio Asli)"}</Text><Text style={styles.modalItemSub}>{`${count} Server Tersedia`}</Text></View>{active && <Check size={20} color={nothing.red} weight="bold" />}</Pressable>; })}</View></Pressable></Modal>
+          {/* Header */}
+          <View style={styles.serverSheetHeader}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <View style={styles.serverTitleRow}>
+                <HardDrives size={16} color="#E2E8F0" weight="bold" />
+                <Text style={styles.serverSheetTitle}>PILIH SERVER</Text>
+              </View>
+              <Text style={styles.serverSheetSubtitle}>
+                {selectableProviders.length
+                  ? `${selectableProviders.length} Server Tersedia · Pilih alternatif jika buffering`
+                  : "Mencari server aktif…"}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => setActivePanel(null)}
+              hitSlop={12}
+              style={({ pressed }) => [
+                styles.serverCloseBtn,
+                pressed && { opacity: 0.6 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Tutup Pilihan Server"
+            >
+              <X size={16} color="#94A3B8" weight="bold" />
+            </Pressable>
+          </View>
 
-    {/* Download quality picker: backend per-quality file links for this language */}
-    <Modal visible={activePanel === "download"} transparent animationType="fade"><Pressable style={styles.modalBackdrop} onPress={() => setActivePanel(null)}><View style={styles.modalSheet}><Text style={styles.modalTitle}>DOWNLOAD · {language.toUpperCase()} · EP {episode}</Text>
-      {backendDownloadOptions.map((option) => <Pressable key={option.url} onPress={() => { void openBackendDownload(option); }} style={styles.modalItem}><View style={{ flex: 1 }}><Text style={styles.modalItemText}>{option.quality ?? option.label}</Text>{option.quality ? <Text style={styles.modalItemSub}>{option.label}</Text> : null}</View><Download size={18} color={nothing.muted} weight="bold" /></Pressable>)}
-    </View></Pressable></Modal>
+          {/* Scrollable Server List (Half Screen, Vertical Scroll) */}
+          <ScrollView
+            style={styles.serverScrollList}
+            contentContainerStyle={styles.serverScrollContent}
+            showsVerticalScrollIndicator={true}
+            nestedScrollEnabled={true}
+            bounces={true}
+          >
+            {selectableProviders.length ? (
+              selectableProviders.map(({ provider, index }) => {
+                const isActive = index === serverIndex;
+                const numStr = index + 1 < 10 ? `0${index + 1}` : `${index + 1}`;
+                return (
+                  <Pressable
+                    key={provider.id}
+                    onPress={() => {
+                      selectServer(index);
+                      setActivePanel(null);
+                    }}
+                    style={({ pressed }) => [
+                      styles.serverItemCard,
+                      isActive && styles.serverItemCardActive,
+                      pressed && styles.serverItemCardPressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Pilih Server ${index + 1}`}
+                  >
+                    <View style={styles.serverItemLeft}>
+                      {/* Number Text (No Background Box, Clean Silver Typography) */}
+                      <Text
+                        style={[
+                          styles.serverNumText,
+                          isActive && styles.serverNumTextActive,
+                        ]}
+                      >
+                        {numStr}
+                      </Text>
+
+                      {/* Text info */}
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text
+                          style={[
+                            styles.serverItemTitle,
+                            isActive && styles.serverItemTitleActive,
+                          ]}
+                        >
+                          {`Server ${index + 1}`}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.serverItemSub,
+                            isActive && styles.serverItemSubActive,
+                          ]}
+                        >
+                          {isActive
+                            ? "Sedang Digunakan · Kualitas Cepat"
+                            : "Streaming Server Alternatif"}
+                        </Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })
+            ) : (
+              <View style={styles.serverEmptyBox}>
+                <Text style={styles.serverEmptyText}>Mencari server aktif…</Text>
+              </View>
+            )}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+
+    {/* Audio / Language Dropdown Picker - Half Screen Liquid Glass */}
+    <Modal
+      visible={activePanel === "language"}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setActivePanel(null)}
+    >
+      <Pressable style={styles.serverModalBackdrop} onPress={() => setActivePanel(null)}>
+        <Pressable
+          style={styles.serverModalSheet}
+          onPress={(e) => {
+            e.stopPropagation?.();
+          }}
+        >
+          {/* Sheet Handle */}
+          <View style={styles.serverSheetHandle} />
+
+          {/* Header */}
+          <View style={styles.serverSheetHeader}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <View style={styles.serverTitleRow}>
+                <Subtitles size={16} color="#E2E8F0" weight="bold" />
+                <Text style={styles.serverSheetTitle}>PILIH AUDIO / BAHASA</Text>
+              </View>
+              <Text style={styles.serverSheetSubtitle}>
+                {language === "sub"
+                  ? "Subtitle Indonesia Aktif"
+                  : "Dubbing / Audio Asli Aktif"}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => setActivePanel(null)}
+              hitSlop={12}
+              style={({ pressed }) => [
+                styles.serverCloseBtn,
+                pressed && { opacity: 0.6 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Tutup Pilihan Audio"
+            >
+              <X size={16} color="#94A3B8" weight="bold" />
+            </Pressable>
+          </View>
+
+          {/* Language Options List */}
+          <ScrollView
+            style={styles.serverScrollList}
+            contentContainerStyle={styles.serverScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {(["sub", "dub"] as Language[]).map((item) => {
+              const active = language === item;
+              const count = providers[item]?.length ?? 0;
+              return (
+                <Pressable
+                  key={item}
+                  onPress={() => {
+                    selectLanguage(item);
+                    setActivePanel(null);
+                  }}
+                  style={({ pressed }) => [
+                    styles.serverItemCard,
+                    active && styles.serverItemCardActive,
+                    pressed && styles.serverItemCardPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={item === "sub" ? "Pilih Subtitle Indonesia" : "Pilih Dubbing Audio Asli"}
+                >
+                  <View style={styles.serverItemLeft}>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text
+                        style={[
+                          styles.serverItemTitle,
+                          active && styles.serverItemTitleActive,
+                        ]}
+                      >
+                        {item === "sub"
+                          ? "SUB (Subtitle Indonesia)"
+                          : "DUB (Dubbing / Audio Asli)"}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.serverItemSub,
+                          active && styles.serverItemSubActive,
+                        ]}
+                      >
+                        {`${count} Server Tersedia`}
+                      </Text>
+                    </View>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+
+    {/* Download quality picker: backend per-quality file links - Half Screen Liquid Glass */}
+    <Modal
+      visible={activePanel === "download"}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setActivePanel(null)}
+    >
+      <Pressable style={styles.serverModalBackdrop} onPress={() => setActivePanel(null)}>
+        <Pressable
+          style={styles.serverModalSheet}
+          onPress={(e) => {
+            e.stopPropagation?.();
+          }}
+        >
+          {/* Sheet Handle */}
+          <View style={styles.serverSheetHandle} />
+
+          {/* Header */}
+          <View style={styles.serverSheetHeader}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <View style={styles.serverTitleRow}>
+                <DownloadSimple size={16} color="#E2E8F0" weight="bold" />
+                <Text style={styles.serverSheetTitle}>
+                  {`DOWNLOAD · ${language.toUpperCase()} · EP ${episode}`}
+                </Text>
+              </View>
+              <Text style={styles.serverSheetSubtitle}>
+                {backendDownloadOptions.length
+                  ? `${backendDownloadOptions.length} Resolusi Tersedia · Unduh untuk offline`
+                  : "Mencari tautan unduhan…"}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => setActivePanel(null)}
+              hitSlop={12}
+              style={({ pressed }) => [
+                styles.serverCloseBtn,
+                pressed && { opacity: 0.6 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Tutup Pilihan Download"
+            >
+              <X size={16} color="#94A3B8" weight="bold" />
+            </Pressable>
+          </View>
+
+          {/* Download Options List */}
+          <ScrollView
+            style={styles.serverScrollList}
+            contentContainerStyle={styles.serverScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {backendDownloadOptions.length ? (
+              backendDownloadOptions.map((option) => (
+                <Pressable
+                  key={option.url}
+                  onPress={() => {
+                    void openBackendDownload(option);
+                  }}
+                  style={({ pressed }) => [
+                    styles.serverItemCard,
+                    pressed && styles.serverItemCardPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Download kualitas ${option.quality ?? option.label}`}
+                >
+                  <View style={styles.serverItemLeft}>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={styles.serverItemTitleActive}>
+                        {option.quality ?? option.label}
+                      </Text>
+                      {option.quality ? (
+                        <Text style={styles.serverItemSubActive}>
+                          {option.label}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                  <View style={styles.downloadIconWrap}>
+                    <Download size={16} color="#E2E8F0" weight="bold" />
+                  </View>
+                </Pressable>
+              ))
+            ) : (
+              <View style={styles.serverEmptyBox}>
+                <Text style={styles.serverEmptyText}>
+                  Tidak ada tautan download langsung untuk episode ini.
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
 
     {/* Chapter List Modal */}
     <Modal visible={activePanel === "chapters" && !playerLocked} transparent animationType="fade"><Pressable style={styles.modalBackdrop} onPress={() => setActivePanel(null)}><View style={styles.chapterModalSheet}>
@@ -3573,6 +3871,151 @@ const styles = StyleSheet.create({
   lockedPillArmed: { borderColor: nothing.red },
   bufferingVeil: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", zIndex: 2 },
   lockedText: { color: "#FFF", fontSize: 11, fontWeight: "600" },
+  serverModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.72)",
+    justifyContent: "flex-end",
+  },
+  serverModalSheet: {
+    backgroundColor: "rgba(14, 18, 27, 0.96)",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    maxHeight: "52%",
+    paddingTop: 10,
+    paddingBottom: Platform.OS === "ios" ? 28 : 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    elevation: 20,
+    ...(Platform.OS === "web"
+      ? ({
+          backdropFilter: "blur(24px) saturate(180%)",
+          WebkitBackdropFilter: "blur(24px) saturate(180%)",
+        } as any)
+      : {}),
+  },
+  serverSheetHandle: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255, 255, 255, 0.22)",
+    alignSelf: "center",
+    marginBottom: 10,
+  },
+  serverSheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.06)",
+  },
+  serverTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  serverSheetTitle: {
+    color: "#FFFFFF",
+    fontFamily: "Nunito-ExtraBold",
+    fontSize: 13.5,
+    letterSpacing: 0.6,
+  },
+  serverSheetSubtitle: {
+    color: "#94A3B8",
+    fontFamily: "Nunito-SemiBold",
+    fontSize: 11,
+  },
+  serverCloseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  serverScrollList: {
+    flexShrink: 1,
+  },
+  serverScrollContent: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 7,
+  },
+  serverItemCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  serverItemCardActive: {
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+  },
+  serverItemCardPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.99 }],
+  },
+  serverItemLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    flex: 1,
+  },
+  serverNumText: {
+    fontFamily: "Nunito-ExtraBold",
+    fontSize: 14,
+    color: "#64748B",
+    minWidth: 24,
+  },
+  serverNumTextActive: {
+    color: "#FFFFFF",
+    fontFamily: "Nunito-Black",
+  },
+  serverItemTitle: {
+    color: "#94A3B8",
+    fontFamily: "Nunito-Bold",
+    fontSize: 13.5,
+  },
+  serverItemTitleActive: {
+    color: "#FFFFFF",
+    fontFamily: "Nunito-ExtraBold",
+  },
+  serverItemSub: {
+    color: "#475569",
+    fontFamily: "Nunito-Medium",
+    fontSize: 11,
+  },
+  serverItemSubActive: {
+    color: "#CBD5E1",
+  },
+  serverEmptyBox: {
+    paddingVertical: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  serverEmptyText: {
+    color: "#64748B",
+    fontFamily: "Nunito-SemiBold",
+    fontSize: 12,
+  },
+  downloadIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "flex-end" },
   modalSheet: { backgroundColor: "rgba(9,9,9,0.96)", borderTopLeftRadius: 2, borderTopRightRadius: 2, padding: 14, gap: 1, borderWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
   modalTitle: { color: "#FFF", fontSize: 12, fontWeight: "800", letterSpacing: 0.3, marginBottom: 4, textTransform: "uppercase" },

@@ -9,7 +9,7 @@ on:
       tag:
         description: "Release tag to build (must match the version in app.config.ts)"
         required: false
-        default: "v0.0.7"
+        default: "v0.0.8"
 
 env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
@@ -192,11 +192,11 @@ jobs:
           body: |
             ## Nuenime ${{ env.RELEASE_TAG }}
 
-            - **Chat Global Super Cepat & Ringan**: Pengetikan instan 0ms delay, auto-scroll langsung ke pesan terbaru, dan klik kotak kutipan balasan (reply) langsung menuju ke pesan asal dengan highlight menyala.
-            - **Plakat Kota & Klan Terpadu**: Tampilan 3 baris seragam pada kolom komentar dan chat global dengan status kota, klan, maupun gelandangan.
-            - **Fitur Lelang & Penawaran Realtime**: Sistem bidding item lelang eksklusif dengan anti-snipe dan sinkronisasi saldo kristal otomatis.
-            - **Fitur Mailbox & Notifikasi Cerdas**: Kotak masuk hadiah sistem dan notifikasi rilis episode baru via Android AlarmManager (tetap muncul saat aplikasi ditutup).
-            - **Perbaikan Banner Gacha & Audit Moderasi**: Sinkronisasi edit banner admin ke Supabase RPC terverifikasi.
+            - **UI Onboarding & Welcome Baru**: Latar belakang hitam pekat murni (Pure Black) dengan banner metalik gothic chrome, judul bersih, garis aksen silver, dan tombol utama **Silver Liquid Glass ("Mulai Menonton")**.
+            - **Perbaikan Masalah Auto-Logout (100% Stabil)**: Sesi token Google OAuth kini tersimpan aman via AsyncStorage (mengatasi limit Keystore Android 2KB), tidak ada lagi logout paksa saat sinyal drop atau offline sesaat, dan auto-refresh token JWT 1 jam.
+            - **NuePet Zoo Visitor Mode**: Kunjungan wilayah pet teman/profil pengguna lain dengan tampilan ringkas satu baris tanpa tumpang tindih teks, mode pengunjung tanpa tombol kelola/koin, dan animasi 60 FPS halus.
+            - **PowerShell Launcher & Automation**: Script `run-app.ps1`, `build-dunia.ps1`, dan `build-nuepet.ps1` untuk kemudahan menjalankan dan mendeploy semua service.
+            - **Filter Ketat Leaderboard**: Pengecualian role admin / verifikasi centang merah dari papan peringkat level member biasa.
 
             Download file APK di bawah ini dan pasang di perangkat Android Anda.
           files: ./artifacts/*.apk

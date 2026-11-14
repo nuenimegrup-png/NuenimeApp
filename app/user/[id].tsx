@@ -43,7 +43,7 @@ import { avatarUrl } from "@/lib/aniraku-avatars";
 import { getEquippedBorderId } from "@/lib/avatar-borders";
 
 const DEFAULT_BANNER =
-  "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1200";
+  "https://imagepaste.org/i/jqbvxwm5.png";
 
 type UserProfileTab = "komentar" | "favorit" | "histori";
 
@@ -538,7 +538,7 @@ export default function PublicUserProfileScreen() {
     );
   }
 
-  const tierInfo = getTierForLevel(targetUser.level || 1);
+  const tierInfo = getTierForLevel(targetUser.level || 1, targetUser.role);
   const activeTier = tierInfo?.currentTier;
   const isSpecial = isSpecialRole(targetUser.role);
 
@@ -623,6 +623,14 @@ export default function PublicUserProfileScreen() {
           {/* User Name, Verified Badge, & Clean Member Tag */}
           <View style={styles.nameBlock}>
             <View style={styles.nameRow}>
+              {isSpecial && (
+                <Image
+                  source={{ uri: "https://imagepaste.org/i/j4wuxvxq.png" }}
+                  style={styles.nameInfinityIcon}
+                  contentFit="contain"
+                  cachePolicy="memory-disk"
+                />
+              )}
               <Text style={styles.displayNameText} numberOfLines={1}>
                 {targetUser.displayName}
               </Text>
@@ -635,7 +643,15 @@ export default function PublicUserProfileScreen() {
             {/* Level Pill, Role Tag, & Teman Pill */}
             <View style={styles.pillRow}>
               {/* Level Pill */}
-              <View style={styles.levelPill}>
+              <View
+                style={[
+                  styles.levelPill,
+                  tierInfo?.isInfinity && {
+                    backgroundColor: "rgba(239, 68, 68, 0.12)",
+                    borderColor: "rgba(239, 68, 68, 0.35)",
+                  },
+                ]}
+              >
                 {activeTier?.imageUrl && (
                   <Image
                     source={{ uri: activeTier.imageUrl }}
@@ -644,7 +660,22 @@ export default function PublicUserProfileScreen() {
                     cachePolicy="memory-disk"
                   />
                 )}
-                <Text style={styles.levelPillText}>Lvl {targetUser.level.toLocaleString("id-ID")}</Text>
+                <Text
+                  style={[
+                    styles.levelPillText,
+                    tierInfo?.isInfinity && {
+                      color: "#EF4444",
+                      fontSize: 12.5,
+                      fontFamily: "Nunito-Black",
+                    },
+                  ]}
+                >
+                  {isSpecial
+                    ? "Admin ∞"
+                    : tierInfo?.isInfinity
+                    ? "∞"
+                    : `Lvl ${targetUser.level.toLocaleString("id-ID")}`}
+                </Text>
               </View>
 
               {/* Tag Role Khusus (Jika BUKAN Member biasa) */}
@@ -744,11 +775,16 @@ export default function PublicUserProfileScreen() {
         <View style={styles.actionsWrap}>
           {isOwnProfile ? (
             <Pressable
-              onPress={() => router.push("/settings" as never)}
-              style={({ pressed }) => [styles.liquidGlassBtn, pressed && styles.btnPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Pengaturan Akun Saya"
+              onPress={() => {
+                hapticLight();
+                router.push("/settings" as never);
+              }}
+              style={({ pressed }) => [styles.ownProfileSettingsBtn, pressed && styles.btnPressed]}
             >
-              <AppIcon name="cog-outline" size={17} color="#FFFFFF" />
-              <Text style={styles.liquidGlassText}>Pengaturan Akun Saya</Text>
+              <AppIcon name="cog-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.ownProfileSettingsText}>Pengaturan Akun Saya</Text>
             </Pressable>
           ) : (
             <View style={styles.actionRowWithCircleChat}>
@@ -844,7 +880,15 @@ export default function PublicUserProfileScreen() {
             <Pressable
               onPress={() => {
                 hapticLight();
-                router.push("/nuepet" as any);
+                router.push({
+                  pathname: "/nuepet",
+                  params: {
+                    targetUserId: targetUser.id,
+                    targetName: targetUser.displayName || targetUser.username || "Pengguna",
+                    targetAvatar: targetUser.avatarUrl || "",
+                    isVisitor: isOwnProfile ? "0" : "1",
+                  },
+                } as any);
               }}
               style={({ pressed }) => [styles.featureCardBtn, pressed && styles.btnPressed]}
             >
@@ -1482,6 +1526,10 @@ const styles = StyleSheet.create({
     gap: 6,
     flexWrap: "wrap",
   },
+  nameInfinityIcon: {
+    width: 25,
+    height: 25,
+  },
   displayNameText: {
     fontFamily: "Nunito-Black",
     fontSize: 20,
@@ -1634,11 +1682,45 @@ const styles = StyleSheet.create({
       } as any)
       : {}),
   },
+  ownProfileSettingsBtn: {
+    width: "100%",
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.16,
+    shadowRadius: 6,
+    elevation: 2,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        cursor: "pointer",
+      } as any)
+      : {}),
+  },
+  ownProfileSettingsText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 14,
+    color: "#FFFFFF",
+    letterSpacing: 0.2,
+    includeFontPadding: false,
+    textAlignVertical: "center",
+  },
   liquidGlassText: {
     fontFamily: "Nunito-Bold",
     fontSize: 14,
     color: "#FFFFFF",
     letterSpacing: 0.2,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   chatCircleBtn: {
     width: 46,

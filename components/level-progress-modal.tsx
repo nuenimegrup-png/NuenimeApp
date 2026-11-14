@@ -15,6 +15,7 @@ import { AppIcon } from "@/components/app-icon";
 import { getLevelProgressInfo } from "@/lib/user-level";
 import { supabase } from "@/lib/supabase";
 import { useAnirakuAuth } from "@/providers/auth-provider";
+import { isSpecialRole } from "@/lib/admin-service";
 
 export type LevelTier = {
   id: number;
@@ -112,18 +113,31 @@ export const LEVEL_TIERS: readonly LevelTier[] = [
     id: 10,
     name: "Eternal",
     minLevel: 150,
-    maxLevel: Infinity,
-    rangeLabel: "Level 150+",
+    maxLevel: 199,
+    rangeLabel: "Level 150 - 199",
     color: "#F8FAFC",
     imageUrl: "https://i.ibb.co.com/sdyN9q4j/10.png",
   },
+  {
+    id: 11,
+    name: "Infinity",
+    minLevel: 200,
+    maxLevel: Infinity,
+    rangeLabel: "Level ∞",
+    color: "#EF4444",
+    imageUrl: "https://imagepaste.org/i/j4wuxvxq.png",
+  },
 ];
 
-export function getTierForLevel(level: number) {
-  const currentTier =
-    LEVEL_TIERS.find(
-      (t) => level >= t.minLevel && (level <= t.maxLevel || t.maxLevel === Infinity)
-    ) || LEVEL_TIERS[0];
+export function getTierForLevel(level: number, role?: string | null) {
+  const isSpecial = Boolean(role && isSpecialRole(role));
+  const infinityTier = LEVEL_TIERS[LEVEL_TIERS.length - 1]; // id: 11 (Infinity)
+
+  const currentTier = isSpecial
+    ? infinityTier
+    : LEVEL_TIERS.find(
+        (t) => level >= t.minLevel && (level <= t.maxLevel || t.maxLevel === Infinity)
+      ) || LEVEL_TIERS[0];
 
   const currentTierIndex = LEVEL_TIERS.findIndex((t) => t.id === currentTier.id);
   const nextTier = LEVEL_TIERS[currentTierIndex + 1] || null;
@@ -131,7 +145,10 @@ export function getTierForLevel(level: number) {
   let progressPercent = 0;
   let levelsRemaining = 0;
 
-  if (nextTier) {
+  if (isSpecial || currentTier.id === 11 || !nextTier) {
+    progressPercent = 100;
+    levelsRemaining = 0;
+  } else {
     const range = nextTier.minLevel - currentTier.minLevel;
     const progress = Math.max(0, level - currentTier.minLevel);
     progressPercent =
@@ -139,16 +156,18 @@ export function getTierForLevel(level: number) {
         ? Math.min(100, Math.max(0, Math.floor((progress / range) * 100)))
         : 100;
     levelsRemaining = Math.max(0, nextTier.minLevel - level);
-  } else {
-    progressPercent = 100;
-    levelsRemaining = 0;
   }
+
+  const isInfinity = isSpecial || currentTier.id === 11 || level >= 200;
+  const levelText = isInfinity ? "∞" : `Lvl ${level}`;
 
   return {
     currentTier,
     nextTier,
     progressPercent,
     levelsRemaining,
+    isInfinity,
+    levelText,
   };
 }
 
@@ -158,6 +177,7 @@ export type LevelProgressModalProps = {
   userLevel: number;
   totalXP: number;
   totalMinutesWatched?: number;
+  role?: string | null;
 };
 
 function formatRelativeTime(dateStr?: string | null): string {
@@ -180,11 +200,13 @@ export const LevelProgressModal = memo(function LevelProgressModal({
   userLevel,
   totalXP,
   totalMinutesWatched = 0,
+  role,
 }: LevelProgressModalProps) {
-  const { user } = useAnirakuAuth();
+  const { user, profile } = useAnirakuAuth();
   const [activeTab, setActiveTab] = useState<"tiers" | "history">("tiers");
 
-  const { currentTier } = getTierForLevel(userLevel);
+  const effectiveRole = role || profile?.role;
+  const { currentTier, isInfinity } = getTierForLevel(userLevel, effectiveRole);
   const levelInfo = getLevelProgressInfo(totalXP);
 
   // Format EXP with Indonesian number separator (dots)
@@ -253,7 +275,7 @@ export const LevelProgressModal = memo(function LevelProgressModal({
           <View style={styles.header}>
             <Text style={styles.title}>Level Progress</Text>
             <Text style={styles.subtitle}>
-              Level {userLevel} · {currentTier.name}
+              {isInfinity ? `Level ∞ · ${currentTier.name}` : `Level ${userLevel} · ${currentTier.name}`}
             </Text>
           </View>
 
@@ -267,7 +289,7 @@ export const LevelProgressModal = memo(function LevelProgressModal({
                   contentFit="contain"
                 />
                 <Text style={[styles.progressTierName, { color: currentTier.color }]}>
-                  Level {userLevel}
+                  {isInfinity ? "Level ∞" : `Level ${userLevel}`}
                 </Text>
               </View>
               <Text style={styles.progressExpRatio}>
@@ -281,7 +303,7 @@ export const LevelProgressModal = memo(function LevelProgressModal({
                 style={[
                   styles.progressBarFillOuter,
                   {
-                    width: `${Math.max(4, Math.min(100, levelInfo.progressPercent))}%`,
+                    width: `${isInfinity ? 100 : Math.max(4, Math.min(100, levelInfo.progressPercent))}%`,
                     backgroundColor: currentTier.color || "#38BDF8",
                   },
                 ]}
@@ -290,9 +312,13 @@ export const LevelProgressModal = memo(function LevelProgressModal({
 
             <View style={styles.progressBottomRow}>
               <Text style={styles.progressRemainingLabel}>
-                Sisa {levelInfo.xpRemaining.toLocaleString("id-ID")} EXP menuju Level {levelInfo.level + 1}
+                {isInfinity
+                  ? "Tier Tertinggi Tercapai (Maksimal)"
+                  : `Sisa ${levelInfo.xpRemaining.toLocaleString("id-ID")} EXP menuju Level ${levelInfo.level + 1}`}
               </Text>
-              <Text style={styles.progressPercentLabel}>{levelInfo.progressPercent}%</Text>
+              <Text style={styles.progressPercentLabel}>
+                {isInfinity ? "100%" : `${levelInfo.progressPercent}%`}
+              </Text>
             </View>
           </View>
 
@@ -343,10 +369,13 @@ export const LevelProgressModal = memo(function LevelProgressModal({
               showsVerticalScrollIndicator={false}
             >
               {LEVEL_TIERS.map((tier) => {
-                const isPassed = userLevel > tier.maxLevel;
-                const isActive =
-                  userLevel >= tier.minLevel &&
-                  (userLevel <= tier.maxLevel || tier.maxLevel === Infinity);
+                const isPassed = isInfinity
+                  ? tier.id < 11
+                  : userLevel > tier.maxLevel;
+                const isActive = isInfinity
+                  ? tier.id === 11
+                  : userLevel >= tier.minLevel &&
+                    (userLevel <= tier.maxLevel || tier.maxLevel === Infinity);
 
                 return (
                   <View

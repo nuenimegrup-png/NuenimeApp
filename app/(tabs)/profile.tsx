@@ -51,7 +51,7 @@ import { loadAccountSettings } from "@/lib/user-settings";
 import { ProfileCityPlaque } from "@/components/profile-city-plaque";
 
 const DEFAULT_BANNER =
-  "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1200";
+  "https://imagepaste.org/i/jqbvxwm5.png";
 
 const BORDER_IMAGES: Record<string, any> = {
   white_mage: require("@/assets/images/inventory/border-white-mage.png"),
@@ -163,7 +163,7 @@ export default function ProfileScreen() {
     if (auth.user?.id) {
       getFriends(auth.user.id)
         .then((list) => setFriendCount(list.length))
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [auth.user?.id]);
 
@@ -209,7 +209,7 @@ export default function ProfileScreen() {
         setAvatarPreviewFailed(false);
         hapticLight();
       }
-    } catch {}
+    } catch { }
   };
 
   const handleSaveAvatar = async () => {
@@ -269,7 +269,7 @@ export default function ProfileScreen() {
     const syncBorder = () => {
       getEquippedBorderId(auth.user?.id)
         .then((id) => setEquippedBorderId(id))
-        .catch(() => {});
+        .catch(() => { });
     };
     syncBorder();
     const unsubFocus = navigation.addListener("focus" as any, syncBorder);
@@ -315,7 +315,7 @@ export default function ProfileScreen() {
   // Sinkronisasi otomatis data komentar & jumlah like saat membuka tab Profil
   useEffect(() => {
     const unsub = navigation.addListener("focus" as any, () => {
-      userCommentsQuery.refetch().catch(() => {});
+      userCommentsQuery.refetch().catch(() => { });
     });
     return unsub;
   }, [navigation]);
@@ -451,7 +451,7 @@ export default function ProfileScreen() {
       };
 
       setRepliesList((prev) => [...prev, newReplyItem]);
-      replyCountsQuery.refetch().catch(() => {});
+      replyCountsQuery.refetch().catch(() => { });
     } catch (err: any) {
       hapticWarning();
       Alert.alert("Gagal Mengirim", err?.message || "Tidak dapat mengirim balasan saat ini.");
@@ -580,7 +580,8 @@ export default function ProfileScreen() {
   const userExp = Math.max(0, Number(auth.profile?.exp || 0));
   const levelInfo = getLevelProgressInfo(userExp);
   const userLevel = auth.profile?.level ?? levelInfo.level;
-  const activeTier = getTierForLevel(userLevel).currentTier;
+  const tierInfo = getTierForLevel(userLevel, userRole);
+  const activeTier = tierInfo.currentTier;
 
   // Stats values
   const joinDuration = formatJoinDuration(auth.user?.created_at);
@@ -645,6 +646,14 @@ export default function ProfileScreen() {
                 ]}
                 hitSlop={{ top: 8, bottom: 4, left: 4, right: 24 }}
               >
+                {isSpecial && (
+                  <Image
+                    source={{ uri: "https://imagepaste.org/i/j4wuxvxq.png" }}
+                    style={styles.nameInfinityIconCompact}
+                    contentFit="contain"
+                    cachePolicy="memory-disk"
+                  />
+                )}
                 <Text
                   style={[styles.socialDisplayName, { pointerEvents: "none" } as any]}
                   numberOfLines={1}
@@ -699,10 +708,18 @@ export default function ProfileScreen() {
                     </Text>
                   )}
                   <Text
-                    style={[styles.socialLevelText, { pointerEvents: "none" } as any]}
+                    style={[
+                      styles.socialLevelText,
+                      tierInfo.isInfinity && {
+                        color: "#EF4444",
+                        fontSize: 12,
+                        fontFamily: "Nunito-Black",
+                      },
+                      { pointerEvents: "none" } as any,
+                    ]}
                     pointerEvents="none"
                   >
-                    Lvl. {userLevel}
+                    {isSpecial ? "Admin ∞" : tierInfo.isInfinity ? "∞" : `Lvl. ${userLevel}`}
                   </Text>
                 </Pressable>
 
@@ -1038,6 +1055,7 @@ export default function ProfileScreen() {
           userLevel={userLevel}
           totalXP={userExp}
           totalMinutesWatched={stats.totalMinutesWatched || 0}
+          role={userRole}
         />
       </SafeAreaView>
     );
@@ -1196,6 +1214,14 @@ export default function ProfileScreen() {
           {/* User Name, Verified Badge & Tag */}
           <View style={styles.nameBlock}>
             <View style={styles.nameRow}>
+              {isSpecial && (
+                <Image
+                  source={{ uri: "https://imagepaste.org/i/j4wuxvxq.png" }}
+                  style={styles.nameInfinityIcon}
+                  contentFit="contain"
+                  cachePolicy="memory-disk"
+                />
+              )}
               <Text style={styles.displayNameText} numberOfLines={1}>
                 {displayName}
               </Text>
@@ -1222,6 +1248,10 @@ export default function ProfileScreen() {
                 }}
                 style={({ pressed }) => [
                   styles.levelPill,
+                  tierInfo.isInfinity && {
+                    backgroundColor: "rgba(239, 68, 68, 0.12)",
+                    borderColor: "rgba(239, 68, 68, 0.35)",
+                  },
                   pressed && styles.btnPressed,
                   Platform.OS === "web" && ({ cursor: "pointer" } as any),
                 ]}
@@ -1233,7 +1263,22 @@ export default function ProfileScreen() {
                   contentFit="contain"
                   cachePolicy="memory-disk"
                 />
-                <Text style={styles.levelPillText}>Lvl {userLevel.toLocaleString("id-ID")}</Text>
+                <Text
+                  style={[
+                    styles.levelPillText,
+                    tierInfo.isInfinity && {
+                      color: "#EF4444",
+                      fontSize: 12.5,
+                      fontFamily: "Nunito-Black",
+                    },
+                  ]}
+                >
+                  {isSpecial
+                    ? "Admin ∞"
+                    : tierInfo.isInfinity
+                    ? "∞"
+                    : `Lvl ${userLevel.toLocaleString("id-ID")}`}
+                </Text>
               </Pressable>
 
               {/* Tag Role Khusus (Hanya jika BUKAN Member) */}
@@ -1657,6 +1702,7 @@ export default function ProfileScreen() {
         userLevel={userLevel}
         totalXP={userExp}
         totalMinutesWatched={stats.totalMinutesWatched || 0}
+        role={userRole}
       />
 
       {/* ─── AVATAR SELECTION & CHANGE MODAL ─── */}
@@ -1686,8 +1732,8 @@ export default function ProfileScreen() {
                   {avatarMode === "choice"
                     ? "Ganti Avatar Profil"
                     : avatarMode === "google"
-                    ? "Cari Gambar di Google"
-                    : "Tautan Gambar Avatar"}
+                      ? "Cari Gambar di Google"
+                      : "Tautan Gambar Avatar"}
                 </Text>
               </View>
               {avatarMode !== "choice" && (
@@ -1824,8 +1870,8 @@ export default function ProfileScreen() {
                       {avatarPreviewFailed
                         ? "Gambar tidak dapat dimuat atau bukan link langsung"
                         : avatarUrlInput.trim()
-                        ? "Pratinjau Avatar (Mendukung GIF Animasi)"
-                        : "Pratinjau avatar akan muncul di sini"}
+                          ? "Pratinjau Avatar (Mendukung GIF Animasi)"
+                          : "Pratinjau avatar akan muncul di sini"}
                     </Text>
                   </View>
 
@@ -1896,7 +1942,7 @@ export default function ProfileScreen() {
                           !avatarCooldown.canChange ||
                           !avatarUrlInput.trim() ||
                           avatarPreviewFailed) &&
-                          styles.modalBtnDisabled,
+                        styles.modalBtnDisabled,
                         pressed && styles.btnPressed,
                       ]}
                     >
@@ -1931,8 +1977,8 @@ export default function ProfileScreen() {
                       {avatarPreviewFailed
                         ? "Gambar tidak dapat dimuat atau format tidak didukung"
                         : avatarUrlInput.trim()
-                        ? "Pratinjau Avatar (Mendukung GIF Animasi)"
-                        : "Pratinjau avatar akan muncul di sini"}
+                          ? "Pratinjau Avatar (Mendukung GIF Animasi)"
+                          : "Pratinjau avatar akan muncul di sini"}
                     </Text>
                   </View>
 
@@ -2004,7 +2050,7 @@ export default function ProfileScreen() {
                           !avatarCooldown.canChange ||
                           !avatarUrlInput.trim() ||
                           avatarPreviewFailed) &&
-                          styles.modalBtnDisabled,
+                        styles.modalBtnDisabled,
                         pressed && styles.btnPressed,
                       ]}
                     >
@@ -2270,6 +2316,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
+  nameInfinityIconCompact: {
+    width: 18,
+    height: 18,
+  },
   socialDisplayName: {
     fontFamily: "Nunito-Bold",
     fontSize: 15.5,
@@ -2334,10 +2384,10 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     ...(Platform.OS === "web"
       ? ({
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
-          boxShadow: "0 4px 14px rgba(0, 0, 0, 0.25)",
-        } as any)
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        boxShadow: "0 4px 14px rgba(0, 0, 0, 0.25)",
+      } as any)
       : {}),
   },
   inventoryImg: {
@@ -2423,10 +2473,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     ...(Platform.OS === "web"
       ? ({
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          boxShadow: "0 6px 20px rgba(0, 0, 0, 0.35)",
-        } as any)
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        boxShadow: "0 6px 20px rgba(0, 0, 0, 0.35)",
+      } as any)
       : {}),
   },
   featureCardHeader: {
@@ -2522,8 +2572,8 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     ...(Platform.OS === "web"
       ? ({
-          cursor: "pointer",
-        } as any)
+        cursor: "pointer",
+      } as any)
       : {}),
   },
   duniaFabBadge: {
@@ -2558,8 +2608,8 @@ const styles = StyleSheet.create({
     zIndex: 50,
     ...(Platform.OS === "web"
       ? ({
-          cursor: "pointer",
-        } as any)
+        cursor: "pointer",
+      } as any)
       : {}),
   },
   loadingContainer: {
@@ -2732,6 +2782,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
     flexWrap: "wrap",
+  },
+  nameInfinityIcon: {
+    width: 25,
+    height: 25,
   },
   displayNameText: {
     fontFamily: "Nunito-Black",

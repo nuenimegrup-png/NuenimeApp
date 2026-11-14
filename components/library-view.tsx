@@ -8,6 +8,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
@@ -150,6 +151,16 @@ export function LibraryView({
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [removingKey, setRemovingKey] = useState<string | null>(null);
   const [cachedResumeRows, setCachedResumeRows] = useState<ResumeRow[] | null>(null);
+
+  const { width: windowWidth } = useWindowDimensions();
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  const effectiveWidth = containerWidth > 0 ? containerWidth : windowWidth;
+  const gridCardWidth = useMemo(() => {
+    // 32 = 16px left + 16px right padding; 12 = gap between 2 cards
+    const availableWidth = effectiveWidth - 32;
+    return Math.max(120, Math.floor((availableWidth - 12) / 2));
+  }, [effectiveWidth]);
 
   useEffect(() => {
     if (params.tab && (params.tab === "history" || params.tab === "bookmarks" || params.tab === "alerts")) {
@@ -514,7 +525,11 @@ export function LibraryView({
         accessibilityRole={Platform.OS === "web" ? undefined : "button"}
         onPress={() => openBookmark(item)}
         onLongPress={() => openStatusPicker(item)}
-        style={({ pressed }) => [styles.gridCard, pressed && styles.btnPressed]}
+        style={({ pressed }) => [
+          styles.gridCard,
+          { width: gridCardWidth, maxWidth: gridCardWidth },
+          pressed && styles.btnPressed,
+        ]}
       >
         <View style={styles.gridImageWrapper}>
           {uri ? (
@@ -928,7 +943,17 @@ export function LibraryView({
       ) : null}
 
       {/* 6. Main List / Grid Content */}
-      <View style={styles.contentWrap}>{content}</View>
+      <View
+        style={styles.contentWrap}
+        onLayout={(e) => {
+          const w = e.nativeEvent.layout.width;
+          if (w > 0 && Math.abs(w - containerWidth) > 1) {
+            setContainerWidth(w);
+          }
+        }}
+      >
+        {content}
+      </View>
     </View>
   );
 }
@@ -1265,7 +1290,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   gridRow: {
+    flexDirection: "row",
     gap: 12,
+    justifyContent: "flex-start",
   },
 
   // Liquid Glass Row Card
@@ -1393,13 +1420,14 @@ const styles = StyleSheet.create({
 
   // Grid Card
   gridCard: {
-    flex: 1,
     backgroundColor: "rgba(22, 27, 38, 0.72)",
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.11)",
     padding: 8,
     gap: 6,
+    flexGrow: 0,
+    flexShrink: 0,
     ...(Platform.OS === "web"
       ? ({
           backdropFilter: "blur(18px)",

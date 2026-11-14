@@ -166,7 +166,7 @@ export default function DuniaNuenimeScreen() {
 
   // Susun URL dengan identitas akun Nuenime terintegrasi
   const userLevel = Number(auth.profile?.level) || 1;
-  const tierInfo = getTierForLevel(userLevel);
+  const tierInfo = getTierForLevel(userLevel, auth.profile?.role);
   const rankName = tierInfo?.currentTier?.name?.toUpperCase() || "STONE";
   const displayName = auth.profile?.display_name || auth.profile?.username || "Petualang";
   const avatarUrl = auth.profile?.avatar_url || "";

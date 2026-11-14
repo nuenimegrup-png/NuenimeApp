@@ -211,7 +211,7 @@ export default function ConnectionsScreen() {
             }}
             style={({ pressed }) => [styles.headerBtn, pressed && styles.btnPressed]}
           >
-            <AppIcon name="forum" size={21} color="#38BDF8" />
+            <AppIcon name="chat" size={21} color="#38BDF8" />
           </Pressable>
 
           {/* Info Modal Button */}
@@ -329,7 +329,7 @@ export default function ConnectionsScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#38BDF8" />}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => {
-            const tierInfo = getTierForLevel(item.level || 1);
+            const tierInfo = getTierForLevel(item.level || 1, item.role);
             const activeTier = tierInfo?.currentTier;
             const tierName = activeTier?.name || "Member";
             const isSpecial = isSpecialRole(item.role);
@@ -375,7 +375,7 @@ export default function ConnectionsScreen() {
                         />
                       )}
                       <Text style={styles.levelPillText}>
-                        Lvl {item.level.toLocaleString("id-ID")}
+                        {tierInfo?.isInfinity ? "∞" : `Lvl ${item.level.toLocaleString("id-ID")}`}
                       </Text>
                     </View>
 
@@ -421,7 +421,7 @@ export default function ConnectionsScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#38BDF8" />}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => {
-            const tierInfo = getTierForLevel(item.level || 1);
+            const tierInfo = getTierForLevel(item.level || 1, item.role);
             const activeTier = tierInfo?.currentTier;
             const tierName = activeTier?.name || "Member";
             const isSpecial = isSpecialRole(item.role);
@@ -463,7 +463,7 @@ export default function ConnectionsScreen() {
                           />
                         )}
                         <Text style={styles.levelPillText}>
-                          Lvl {item.level.toLocaleString("id-ID")}
+                          {tierInfo?.isInfinity ? "∞" : `Lvl ${item.level.toLocaleString("id-ID")}`}
                         </Text>
                       </View>
                       <View style={styles.tierPill}>
@@ -585,7 +585,7 @@ export default function ConnectionsScreen() {
             renderItem={({ item }) => {
               const isSent = requestSentIds.has(item.id);
               const isAlreadyFriend = friends.some((f) => f.id === item.id);
-              const srTierInfo = getTierForLevel(item.level || 1);
+              const srTierInfo = getTierForLevel(item.level || 1, item.role);
               const srActiveTier = srTierInfo?.currentTier;
               const srTierName = srActiveTier?.name || "Member";
               const srIsSpecial = isSpecialRole(item.role);
@@ -626,7 +626,7 @@ export default function ConnectionsScreen() {
                             />
                           )}
                           <Text style={styles.levelPillText}>
-                            Lvl {item.level.toLocaleString("id-ID")}
+                            {srTierInfo?.isInfinity ? "∞" : `Lvl ${item.level.toLocaleString("id-ID")}`}
                           </Text>
                         </View>
                         <View style={styles.tierPill}>
@@ -705,7 +705,8 @@ export default function ConnectionsScreen() {
 
             {/* Friend Header Preview */}
             {selectedFriend && (() => {
-              const sfTier = getTierForLevel(selectedFriend.level).currentTier;
+              const sfTierInfo = getTierForLevel(selectedFriend.level, selectedFriend.role);
+              const sfTier = sfTierInfo.currentTier;
               const sfSpecial = isSpecialRole(selectedFriend.role);
               const sfCleanNum =
                 "#" + (String(selectedFriend.memberNumber).replace(/[^0-9]/g, "").replace(/^0+/, "") || "1");
