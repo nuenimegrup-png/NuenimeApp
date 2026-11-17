@@ -9,7 +9,7 @@ on:
       tag:
         description: "Release tag to build (must match the version in app.config.ts)"
         required: false
-        default: "v0.0.8"
+        default: "v0.0.9"
 
 env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
@@ -192,11 +192,12 @@ jobs:
           body: |
             ## Nuenime ${{ env.RELEASE_TAG }}
 
-            - **UI Onboarding & Welcome Baru**: Latar belakang hitam pekat murni (Pure Black) dengan banner metalik gothic chrome, judul bersih, garis aksen silver, dan tombol utama **Silver Liquid Glass ("Mulai Menonton")**.
-            - **Perbaikan Masalah Auto-Logout (100% Stabil)**: Sesi token Google OAuth kini tersimpan aman via AsyncStorage (mengatasi limit Keystore Android 2KB), tidak ada lagi logout paksa saat sinyal drop atau offline sesaat, dan auto-refresh token JWT 1 jam.
-            - **NuePet Zoo Visitor Mode**: Kunjungan wilayah pet teman/profil pengguna lain dengan tampilan ringkas satu baris tanpa tumpang tindih teks, mode pengunjung tanpa tombol kelola/koin, dan animasi 60 FPS halus.
-            - **PowerShell Launcher & Automation**: Script `run-app.ps1`, `build-dunia.ps1`, dan `build-nuepet.ps1` untuk kemudahan menjalankan dan mendeploy semua service.
-            - **Filter Ketat Leaderboard**: Pengecualian role admin / verifikasi centang merah dari papan peringkat level member biasa.
+            - **Fitur Baru Floating Mini Video Player**: Video dan audio tetap berputar lancar saat bernavigasi ke halaman lain. Dioptimalkan dengan *Zero Render Loop* (`useRef`), bebas lag, hemat CPU & baterai, serta *instant resume* tanpa jeda loading.
+            - **Perombakan Sistem Chat Global**: Tampilan dibatasi maksimal 30 pesan terbaru, otomatis langsung berada di pesan terbawah saat layar dibuka tanpa animasi scroll, smart auto-scroll natural, serta sorotan quote replay bersih 1 lapis border cyan.
+            - **Papan Menu Cepat Profil Simetris**: Penataan presisi 2 baris menu (Tas & Inventory, Nobar Anime, Lelang Anime, dan Fitur Penjelajah Dunia Nuenime RPG).
+            - **Perbaikan Safe WakeLock**: Siklus hidup Wake Lock terlindungi dengan Page Visibility API di Web untuk mencegah `NotAllowedError` saat tab di background.
+            - **Stabilitas Realtime Supabase**: Channel pooling, pencegahan subscription ganda, deduplikasi pesan ketat, dan auto-reconnect yang aman.
+            - **Optimasi Kompatibilitas Platform**: Penyesuaian `useNativeDriver`, pembersihan `shadow*` deprecation di web, dan pemisahan tombol bersarang (*nested button*) pada mini player.
 
             Download file APK di bawah ini dan pasang di perangkat Android Anda.
           files: ./artifacts/*.apk

@@ -62,7 +62,6 @@ const INVENTORY_STAR_IMG = require("@/assets/images/inventory/crystal-star.png")
 const BORDER_WHITE_MAGE_IMG = require("@/assets/images/inventory/border-white-mage.png");
 const GACHA_BOOK_IMG = require("@/assets/images/inventory/border-magic-book.png");
 const DUNIA_EMBLEM_IMG = require("@/assets/images/dunia-nuenime-emblem.png");
-const LELANG_BANNER_IMG = require("@/assets/images/lelang-banner.jpg");
 
 function formatJoinDuration(createdAt?: string | null): string {
   if (!createdAt) return "1 bulan";
@@ -730,7 +729,8 @@ export default function ProfileScreen() {
                   </View>
                 )}
 
-                {isPrivateAccount && (
+                {/* Badge Privat di-hide dari UI header profil sesuai permintaan (fitur tetap aktif di settings/background) */}
+                {false && isPrivateAccount && (
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Profil Privat"
@@ -806,202 +806,143 @@ export default function ProfileScreen() {
           contentContainerStyle={styles.socialScrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* A. COMPACT INVENTORY INFO BANNER */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Buka Tas dan Inventory"
-            onPress={() => {
-              hapticLight();
-              router.push("/inventory" as never);
-            }}
-            // @ts-ignore
-            onClick={() => {
-              hapticLight();
-              router.push("/inventory" as never);
-            }}
-            style={({ pressed }) => [
-              styles.inventoryInfoBanner,
-              pressed && styles.btnPressed,
-              Platform.OS === "web" && ({ cursor: "pointer" } as any),
-            ]}
-          >
-            <Image
-              source={INVENTORY_STAR_IMG}
-              style={styles.inventoryImg}
-              contentFit="contain"
-            />
-            <View style={styles.inventoryTextCol}>
-              <View style={styles.inventoryTitleRow}>
-                <Text style={styles.inventoryTitle}>Tas & Inventory</Text>
-                <View style={styles.inventoryBadge}>
-                  <Text style={styles.inventoryBadgeText}>Koleksi</Text>
-                </View>
-              </View>
-              <Text style={styles.inventorySubtitle} numberOfLines={1}>
-                Kelola koleksi border, banner & item eksklusif
+          {/* A. QUICK ACTION GRID: ROW 1 (TAS & INVENTORY + NOBAR ANIME) */}
+          <View style={[styles.profileQuickRow, { marginBottom: 10 }]}>
+            {/* Box 1: Tas & Inventory */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Buka Tas dan Inventory"
+              onPress={() => {
+                hapticLight();
+                router.push("/inventory" as never);
+              }}
+              // @ts-ignore
+              onClick={() => {
+                hapticLight();
+                router.push("/inventory" as never);
+              }}
+              style={({ pressed }) => [
+                styles.profileQuickCard,
+                pressed && styles.btnPressed,
+                Platform.OS === "web" && ({ cursor: "pointer" } as any),
+              ]}
+            >
+              <Image
+                source={INVENTORY_STAR_IMG}
+                style={styles.profileQuickImg}
+                contentFit="contain"
+              />
+              <Text style={styles.profileQuickTitle} numberOfLines={1}>
+                Tas & Inventory
               </Text>
-            </View>
-            <View style={styles.inventoryActionBtn}>
-              <Text style={styles.inventoryActionText}>Buka</Text>
-              <AppIcon name="chevron-right" size={16} color="#CBD5E1" />
-            </View>
-          </Pressable>
+            </Pressable>
 
-          {/* NOBAR ANIME BANNER */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Buka Nobar Anime"
-            onPress={() => {
-              hapticLight();
-              router.push("/nobar" as never);
-            }}
-            // @ts-ignore
-            onClick={() => {
-              hapticLight();
-              router.push("/nobar" as never);
-            }}
-            style={({ pressed }) => [
-              styles.nobarAnimeBanner,
-              pressed && styles.btnPressed,
-              Platform.OS === "web" && ({ cursor: "pointer" } as any),
-            ]}
-          >
-            <View style={styles.nobarIconCircle}>
-              <AppIcon name="television-play" size={22} color="#E2E8F0" />
-            </View>
-            <View style={styles.nobarTextCol}>
-              <View style={styles.nobarTitleRow}>
-                <Text style={styles.nobarTitle}>NOBAR ANIME</Text>
-                <View style={styles.nobarLiveBadge}>
-                  <View style={styles.nobarLiveDot} />
-                  <Text style={styles.nobarLiveBadgeText}>LIVE</Text>
-                </View>
+            {/* Box 2: Nobar Anime */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Buka Nobar Anime"
+              onPress={() => {
+                hapticLight();
+                router.push("/nobar" as never);
+              }}
+              // @ts-ignore
+              onClick={() => {
+                hapticLight();
+                router.push("/nobar" as never);
+              }}
+              style={({ pressed }) => [
+                styles.profileQuickCard,
+                pressed && styles.btnPressed,
+                Platform.OS === "web" && ({ cursor: "pointer" } as any),
+              ]}
+            >
+              <View style={styles.profileQuickIconCircle}>
+                <AppIcon name="television-play" size={18} color="#E2E8F0" />
               </View>
-              <Text style={styles.nobarSubtitle} numberOfLines={1}>
-                Nonton bareng komunitas • Room Publik & Privat
+              <Text style={styles.profileQuickTitle} numberOfLines={1}>
+                NOBAR ANIME
               </Text>
-            </View>
-            <View style={styles.nobarActionBtn}>
-              <Text style={styles.nobarActionText}>Masuk</Text>
-              <AppIcon name="chevron-right" size={16} color="#CBD5E1" />
-            </View>
-          </Pressable>
+            </Pressable>
+          </View>
 
-          {/* B. SECTION: TOKO BORDER & GACHA BANNER */}
+          {/* ROW 2: LELANG ANIME + FITUR PENJELAJAH (2 KOTAK PRESISI) */}
+          <View style={styles.profileQuickRow}>
+            {/* Box 3: Lelang Anime */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Buka Lelang Anime"
+              onPress={() => {
+                hapticLight();
+                router.push("/lelang" as never);
+              }}
+              // @ts-ignore
+              onClick={() => {
+                hapticLight();
+                router.push("/lelang" as never);
+              }}
+              style={({ pressed }) => [
+                styles.profileQuickCard,
+                pressed && styles.btnPressed,
+                Platform.OS === "web" && ({ cursor: "pointer" } as any),
+              ]}
+            >
+              <View style={styles.profileQuickIconCircle}>
+                <AppIcon name="gavel" size={18} color="#E2E8F0" />
+              </View>
+              <Text style={styles.profileQuickTitle} numberOfLines={1}>
+                LELANG ANIME
+              </Text>
+            </Pressable>
+
+            {/* Box 4: Fitur Penjelajah */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Buka Fitur Penjelajah Dunia Nuenime"
+              onPress={() => {
+                hapticLight();
+                router.push("/dunia" as never);
+              }}
+              // @ts-ignore
+              onClick={() => {
+                hapticLight();
+                router.push("/dunia" as never);
+              }}
+              style={({ pressed }) => [
+                styles.profileQuickCard,
+                pressed && styles.btnPressed,
+                Platform.OS === "web" && ({ cursor: "pointer" } as any),
+              ]}
+            >
+              <View style={styles.profileQuickIconCircle}>
+                <Image
+                  source={DUNIA_EMBLEM_IMG}
+                  style={{ width: 22, height: 22 }}
+                  contentFit="contain"
+                />
+              </View>
+              <Text style={styles.profileQuickTitle} numberOfLines={1}>
+                PENJELAJAH
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* B. SECTION: PAPAN INFORMASI DARI ADMIN */}
           <View style={styles.socialSectionHeader}>
-            <Text style={styles.socialSectionTitle}>Koleksi & Kustomisasi</Text>
-            <Text style={styles.socialSectionSubtitle}>Hias profilmu dengan item langka</Text>
+            <Text style={styles.socialSectionTitle}>Papan Informasi</Text>
+            <Text style={styles.socialSectionSubtitle}>Informasi & pengumuman resmi dari admin</Text>
           </View>
 
-          <View style={styles.featureCardsGrid}>
-            {/* 1. Beli Border Avatar Card */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Beli Border Avatar"
-              onPress={() => {
-                hapticLight();
-                router.push("/avatar-decorations" as never);
-              }}
-              // @ts-ignore
-              onClick={() => {
-                hapticLight();
-                router.push("/avatar-decorations" as never);
-              }}
-              style={({ pressed }) => [
-                styles.featureCard,
-                pressed && styles.btnPressed,
-                Platform.OS === "web" && ({ cursor: "pointer" } as any),
-              ]}
-            >
-              <View style={styles.featureCardHeader}>
-                <Image
-                  source={BORDER_WHITE_MAGE_IMG}
-                  style={styles.featureCardImg}
-                  contentFit="contain"
-                />
-                <View style={styles.featureCardBadge}>
-                  <Text style={styles.featureCardBadgeText}>STORE</Text>
-                </View>
-              </View>
+          {/* Kartu Papan Informasi (Disiapkan untuk fitur backend admin) */}
+          <View style={styles.infoBoardCard}>
+            <View style={styles.infoBoardHeader}>
+              <Text style={styles.infoBoardTagText}>PENGUMUMAN</Text>
+            </View>
 
-              <Text style={styles.featureCardTitle}>Beli Border Avatar</Text>
-              <Text style={styles.featureCardDesc}>
-                Koleksi border anime Mythic, Legends & Epic untuk bingkai profilmu.
-              </Text>
-
-              <View style={styles.featureCardFooter}>
-                <Text style={styles.featureCardCta}>Lihat Toko Border</Text>
-                <AppIcon name="arrow-right" size={15} color="#E2E8F0" />
-              </View>
-            </Pressable>
-
-            {/* 2. Gacha Banner Keren Card */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Gacha Banner Keren"
-              onPress={() => {
-                hapticLight();
-                router.push("/gacha" as never);
-              }}
-              // @ts-ignore
-              onClick={() => {
-                hapticLight();
-                router.push("/gacha" as never);
-              }}
-              style={({ pressed }) => [
-                styles.featureCard,
-                pressed && styles.btnPressed,
-                Platform.OS === "web" && ({ cursor: "pointer" } as any),
-              ]}
-            >
-              <View style={styles.featureCardHeader}>
-                <Image
-                  source={GACHA_BOOK_IMG}
-                  style={styles.featureCardImg}
-                  contentFit="contain"
-                />
-                <View style={styles.featureCardBadge}>
-                  <Text style={styles.featureCardBadgeText}>SUMMON</Text>
-                </View>
-              </View>
-
-              <Text style={styles.featureCardTitle}>Gacha Banner Keren</Text>
-              <Text style={styles.featureCardDesc}>
-                Dapatkan banner anime eksklusif, wallpaper profil & aura visual langka!
-              </Text>
-
-              <View style={styles.featureCardFooter}>
-                <Text style={styles.featureCardCta}>Mulai Gacha</Text>
-                <AppIcon name="arrow-right" size={15} color="#E2E8F0" />
-              </View>
-            </Pressable>
+            <Text style={styles.infoBoardTitle}>Pusat Informasi & Pembaruan</Text>
+            <Text style={styles.infoBoardDesc}>
+              Informasi resmi dari admin, event komunitas, dan jadwal update aplikasi akan disiarkan di papan ini.
+            </Text>
           </View>
-
-          {/* C. SECTION: BANNER LELANG EXCLUSIVE (DI BAWAH FITUR GACHA) */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Buka Lelang Exclusive Banner & Border"
-            onPress={() => {
-              hapticLight();
-              router.push("/lelang" as never);
-            }}
-            // @ts-ignore
-            onClick={() => {
-              hapticLight();
-              router.push("/lelang" as never);
-            }}
-            style={({ pressed }) => [
-              styles.lelangExclusiveBanner,
-              pressed && styles.btnPressed,
-              Platform.OS === "web" && ({ cursor: "pointer" } as any),
-            ]}
-          >
-            <Image
-              source={LELANG_BANNER_IMG}
-              style={styles.lelangBannerImg}
-              contentFit="cover"
-            />
-          </Pressable>
         </ScrollView>
 
         {/* 2. FLOATING ACTION BUTTON (DUNIA NUENIME) - DI ATAS ICON PERTEMANAN */}
@@ -2372,6 +2313,57 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 130,
   },
+  profileQuickRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 16,
+  },
+  profileQuickCard: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(22, 27, 38, 0.72)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        boxShadow: "0 4px 14px rgba(0, 0, 0, 0.25)",
+      } as any)
+      : {}),
+  },
+  profileQuickImg: {
+    width: 28,
+    height: 28,
+  },
+  profileQuickIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.2)",
+  },
+  profileQuickTitle: {
+    flex: 1,
+    fontFamily: "Nunito-Bold",
+    fontSize: 12.5,
+    color: "#F8FAFC",
+    letterSpacing: 0.2,
+  },
   inventoryInfoBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -2458,6 +2450,50 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#64748B",
     marginTop: 1,
+  },
+  infoBoardCard: {
+    backgroundColor: "rgba(22, 27, 38, 0.72)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.11)",
+    padding: 16,
+    marginBottom: 18,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        boxShadow: "0 4px 14px rgba(0, 0, 0, 0.25)",
+      } as any)
+      : {}),
+  },
+  infoBoardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    marginBottom: 8,
+  },
+  infoBoardTagText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 10,
+    color: "#FFFFFF",
+    letterSpacing: 0.6,
+  },
+  infoBoardTitle: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 14.5,
+    color: "#F8FAFC",
+    marginBottom: 4,
+  },
+  infoBoardDesc: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 12,
+    color: "#94A3B8",
+    lineHeight: 18,
   },
   featureCardsGrid: {
     gap: 12,
@@ -3902,20 +3938,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.11)",
-  },
-  lelangExclusiveBanner: {
-    borderRadius: 14,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    backgroundColor: "#0B0E14",
-    marginBottom: 20,
-  },
-  lelangBannerImg: {
-    width: "100%",
-    aspectRatio: 1024 / 380,
-    maxHeight: 140,
-    borderRadius: 13,
   },
   nobarIconCircle: {
     width: 42,

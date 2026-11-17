@@ -14,6 +14,7 @@ export interface ProfileCityPlaqueProps {
   inlineClan?: boolean;
   hideIfNoClan?: boolean;
   hideNoClanBadge?: boolean;
+  podium?: boolean;
   onPress?: (() => void) | null;
 }
 
@@ -180,8 +181,12 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
   inlineClan = false,
   hideIfNoClan = false,
   hideNoClanBadge = false,
+  podium = false,
   onPress,
 }) => {
+  const isCompact = compact || podium;
+  const emblemSize = podium ? 20 : isCompact ? 22 : 38;
+
   // Gunakan data sinkron jika telah di-cache/batch oleh global-chat-service
   const cachedInitialData = userId && clanProfileCache.has(userId) ? clanProfileCache.get(userId) : undefined;
 
@@ -308,7 +313,8 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
     <View
       style={[
         styles.outerContainer,
-        inlineClan && styles.outerContainerInline,
+        inlineClan && !podium && styles.outerContainerInline,
+        podium && styles.outerContainerPodium,
         style,
       ]}
     >
@@ -322,23 +328,25 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
         onClick={handlePress}
         style={({ pressed }) => [
           styles.plaqueRow,
-          compact && styles.plaqueRowCompact,
+          isCompact && styles.plaqueRowCompact,
+          podium && styles.plaqueRowPodium,
           pressed && isClickable && styles.pressed,
           Platform.OS === 'web' && isClickable && ({ cursor: 'pointer' } as any),
         ]}
-        hitSlop={compact ? 4 : 6}
+        hitSlop={isCompact ? 4 : 6}
       >
         {/* Metallic City Emblem Shield Badge */}
         <View
           style={[
             styles.emblemWrapper,
             { shadowColor: accentColor },
-            compact && styles.emblemWrapperCompact,
+            isCompact && styles.emblemWrapperCompact,
+            podium && styles.emblemWrapperPodium,
           ]}
         >
           <CityEmblemSvg
             cityId={cityId}
-            size={compact ? 22 : 38}
+            size={emblemSize}
             accent={accentColor}
           />
         </View>
@@ -351,14 +359,16 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
               borderTopColor: accentColor,
               borderBottomColor: `${accentColor}88`,
             },
-            compact && styles.plaqueBodyCompact,
+            isCompact && styles.plaqueBodyCompact,
+            podium && styles.plaqueBodyPodium,
           ]}
         >
           {/* City Name */}
           <Text
             style={[
               styles.cityNameText,
-              compact && styles.cityNameTextCompact,
+              isCompact && styles.cityNameTextCompact,
+              podium && styles.cityNameTextPodium,
             ]}
             numberOfLines={1}
           >
@@ -372,14 +382,16 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
               {
                 borderColor: `${accentColor}66`,
               },
-              compact && styles.levelBadgeCompact,
+              isCompact && styles.levelBadgeCompact,
+              podium && styles.levelBadgePodium,
             ]}
           >
             <Text
               style={[
                 styles.levelText,
                 { color: theme.secondary },
-                compact && styles.levelTextCompact,
+                isCompact && styles.levelTextCompact,
+                podium && styles.levelTextPodium,
               ]}
             >
               Lv.{cityLevel}
@@ -390,10 +402,10 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
           <View
             style={[
               styles.chevronTip,
-              compact && styles.chevronTipCompact,
+              isCompact && styles.chevronTipCompact,
             ]}
           >
-            {compact ? (
+            {isCompact ? (
               <Svg width={6} height={18} viewBox="0 0 6 18" fill="none">
                 <Path
                   d="M0 0 L4 9 L0 18 Z"
@@ -427,8 +439,9 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
           onClick={handlePress}
           style={({ pressed }) => [
             styles.clanBadgeBelow,
-            inlineClan && styles.clanBadgeInline,
-            compact && styles.clanBadgeCompact,
+            inlineClan && !podium && styles.clanBadgeInline,
+            isCompact && styles.clanBadgeCompact,
+            podium && styles.clanBadgePodium,
             pressed && isClickable && styles.pressed,
             Platform.OS === 'web' && isClickable && ({ cursor: 'pointer' } as any),
           ]}
@@ -438,14 +451,16 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
               style={[
                 styles.clanTagPill,
                 { borderColor: `${accentColor}88` },
-                compact && styles.clanTagPillCompact,
+                isCompact && styles.clanTagPillCompact,
+                podium && styles.clanTagPillPodium,
               ]}
             >
               <Text
                 style={[
                   styles.clanTagText,
                   { color: accentColor },
-                  compact && styles.clanTagTextCompact,
+                  isCompact && styles.clanTagTextCompact,
+                  podium && styles.clanTagTextPodium,
                 ]}
               >
                 [{clanTag}]
@@ -455,9 +470,11 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
           <Text
             style={[
               styles.clanNameText,
-              compact && styles.clanNameTextCompact,
+              isCompact && styles.clanNameTextCompact,
+              podium && styles.clanNameTextPodium,
             ]}
             numberOfLines={1}
+            ellipsizeMode="tail"
           >
             {clanName || 'Klan Anggota'}
           </Text>
@@ -472,17 +489,19 @@ export const ProfileCityPlaque: React.FC<ProfileCityPlaqueProps> = React.memo(({
           onClick={handlePress}
           style={({ pressed }) => [
             styles.noClanBadgeBelow,
-            inlineClan && styles.clanBadgeInline,
+            inlineClan && !podium && styles.clanBadgeInline,
             compact && styles.clanBadgeCompact,
+            podium && styles.clanBadgePodium,
             pressed && isClickable && styles.pressed,
             Platform.OS === 'web' && isClickable && ({ cursor: 'pointer' } as any),
           ]}
         >
-          <View style={styles.noClanDot} />
+          <View style={[styles.noClanDot, podium && styles.noClanDotPodium]} />
           <Text
             style={[
               styles.clanNameText,
               compact && styles.clanNameTextCompact,
+              podium && styles.clanNameTextPodium,
               { color: '#94A3B8' },
             ]}
             numberOfLines={1}
@@ -692,5 +711,72 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: '#94A3B8',
     letterSpacing: 0.2,
+  },
+
+  // ─── PODIUM SPECIFIC STYLES (SEMPURNA & PERSIS KAYA YANG LAIN) ───
+  outerContainerPodium: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    gap: 3,
+  },
+  plaqueRowPodium: {
+    height: 18,
+    alignSelf: 'center',
+  },
+  emblemWrapperPodium: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    elevation: 3,
+  },
+  plaqueBodyPodium: {
+    height: 18,
+    marginLeft: -5,
+    paddingLeft: 7,
+    paddingRight: 6,
+    gap: 3.5,
+    elevation: 2,
+  },
+  cityNameTextPodium: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 8.8,
+    letterSpacing: 0.4,
+  },
+  levelBadgePodium: {
+    paddingHorizontal: 2.5,
+    paddingVertical: 0.5,
+    borderRadius: 3,
+  },
+  levelTextPodium: {
+    fontSize: 7.5,
+  },
+  clanBadgePodium: {
+    height: 18,
+    marginTop: 0,
+    marginLeft: 0,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    gap: 3,
+    borderRadius: 4,
+    maxWidth: '100%',
+    alignSelf: 'center',
+  },
+  clanTagPillPodium: {
+    paddingHorizontal: 2.5,
+    paddingVertical: 0,
+    borderRadius: 2.5,
+  },
+  clanTagTextPodium: {
+    fontSize: 7.5,
+  },
+  clanNameTextPodium: {
+    fontSize: 8,
+    flexShrink: 1,
+  },
+  noClanDotPodium: {
+    width: 4.5,
+    height: 4.5,
+    borderRadius: 2.5,
   },
 });

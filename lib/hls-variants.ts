@@ -22,7 +22,10 @@ const STREAM_INF_ATTRIBUTES = /([A-Z0-9-]+)=("[^"]*"|[^,]*)/g;
 export function originalStreamUrl(playbackUrl: string) {
   if (!isAnirakuProxyUrl(playbackUrl)) return playbackUrl;
   try {
-    const parsed = new URL(playbackUrl);
+    const fullUrl = playbackUrl.startsWith("/")
+      ? `https://nuenime-api.local${playbackUrl}`
+      : playbackUrl;
+    const parsed = new URL(fullUrl);
     const embedded = parsed.searchParams.get("url");
     return embedded ? decodeURIComponent(embedded) : playbackUrl;
   } catch {

@@ -37,6 +37,8 @@ export interface GlobalChatMessage {
   createdAt: string;
 }
 
+export const MAX_GLOBAL_CHAT_MESSAGES = 30;
+
 const GLOBAL_CHAT_CACHE_PREFIX = "@nuenime_global_chat_v1:";
 const LAST_SENT_TIMESTAMP_KEY = "@nuenime_global_last_sent";
 
@@ -58,7 +60,8 @@ export const clanProfileCache = new Map<string, any>();
 const memGlobalChatCache = new Map<GlobalRoom, GlobalChatMessage[]>();
 
 export function getCachedGlobalMessagesSync(room: GlobalRoom): GlobalChatMessage[] {
-  return memGlobalChatCache.get(room) || [];
+  const list = memGlobalChatCache.get(room) || [];
+  return list.slice(-MAX_GLOBAL_CHAT_MESSAGES);
 }
 
 async function fetchSenderProfile(userId: string) {
@@ -85,6 +88,77 @@ async function fetchSenderProfile(userId: string) {
   return null;
 }
 
+/**
+ * Batch preload data klan ke in-memory cache clanProfileCache
+ * Dapat digunakan oleh Chat Global, Leaderboard, dsb. agar plakat klan langsung muncul tanpa delay
+ */
+export async function batchPreloadClanProfiles(userIds: string[]): Promise<void> {
+  const missingClanIds = userIds.filter((id) => Boolean(id) && !clanProfileCache.has(id));
+  if (missingClanIds.length === 0) return;
+
+  try {
+    const { data: clanMembers } = await supabase
+      .from("rpg_clan_members")
+      .select(`
+        user_id,
+        role,
+        status,
+        rpg_clans (
+          id,
+          name,
+          tag,
+          city_id,
+          logo_url,
+          level,
+          total_exp,
+          status
+        )
+      `)
+      .in("user_id", missingClanIds)
+      .eq("status", "active");
+
+    if (clanMembers) {
+      clanMembers.forEach((m: any) => {
+        const rawClan = m.rpg_clans;
+        const joinedClan = Array.isArray(rawClan) ? rawClan[0] : rawClan;
+        if (joinedClan && joinedClan.status !== "disbanded") {
+          clanProfileCache.set(m.user_id, {
+            clan: joinedClan,
+            role: m.role,
+          });
+        }
+      });
+    }
+
+    // Cek juga jika ada user yang merupakan leader_id di rpg_clans
+    const stillMissing = missingClanIds.filter((id) => !clanProfileCache.has(id));
+    if (stillMissing.length > 0) {
+      const { data: leaderClans } = await supabase
+        .from("rpg_clans")
+        .select("id, name, tag, city_id, logo_url, level, total_exp, status, leader_id")
+        .in("leader_id", stillMissing)
+        .neq("status", "disbanded");
+
+      if (leaderClans) {
+        leaderClans.forEach((c: any) => {
+          clanProfileCache.set(c.leader_id, {
+            clan: c,
+            role: "Pemimpin Klan",
+          });
+        });
+      }
+    }
+
+    missingClanIds.forEach((id) => {
+      if (!clanProfileCache.has(id)) {
+        clanProfileCache.set(id, null);
+      }
+    });
+  } catch (err) {
+    console.warn("[clan-service] batch clan fetch error:", err);
+  }
+}
+
 let hasPurgedMockCache = false;
 
 /**
@@ -101,7 +175,7 @@ export async function purgeGlobalChatMockCache(): Promise<void> {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          const filtered = parsed.filter((m: any) => !String(m.id).startsWith("seed-"));
+          const filtered = parsed.filter((m: any) => !String(m.id).startsWith("seed-")).slice(-MAX_GLOBAL_CHAT_MESSAGES);
           await AsyncStorage.setItem(key, JSON.stringify(filtered));
         }
       }
@@ -110,9 +184,12 @@ export async function purgeGlobalChatMockCache(): Promise<void> {
 }
 
 /**
- * Mengambil daftar pesan terbaru dari room chat global (100% Real Database Supabase)
+ * Mengambil daftar pesan terbaru dari room chat global (Maksimal 30 pesan terbaru)
  */
-export async function getGlobalMessages(room: GlobalRoom): Promise<GlobalChatMessage[]> {
+export async function getGlobalMessages(
+  room: GlobalRoom,
+  limit: number = MAX_GLOBAL_CHAT_MESSAGES
+): Promise<GlobalChatMessage[]> {
   const cacheKey = `${GLOBAL_CHAT_CACHE_PREFIX}${room}`;
   let cached: GlobalChatMessage[] = [];
 
@@ -121,7 +198,7 @@ export async function getGlobalMessages(room: GlobalRoom): Promise<GlobalChatMes
     if (rawCache) {
       const parsed = JSON.parse(rawCache);
       if (Array.isArray(parsed)) {
-        cached = parsed.filter((m) => !m.id.startsWith("seed-"));
+        cached = parsed.filter((m) => !m.id.startsWith("seed-")).slice(-limit);
       }
     }
   } catch {}
@@ -132,13 +209,13 @@ export async function getGlobalMessages(room: GlobalRoom): Promise<GlobalChatMes
       .select("id, room, sender_id, message, reply_to_id, reply_to_sender_name, reply_to_text, reply_to_member_number, clan_tag, created_at")
       .eq("room", room)
       .order("created_at", { ascending: false })
-      .limit(80);
+      .limit(limit);
 
     if (error || !rows || rows.length === 0) {
       return cached;
     }
 
-    // Ambil profile sender secara unik
+    // Ambil profile sender secara unik (maksimal 30 sender)
     const uniqueSenderIds = Array.from(new Set(rows.map((r) => r.sender_id)));
     const missingSenderIds = uniqueSenderIds.filter((id) => !profileCache.has(id));
 
@@ -157,51 +234,7 @@ export async function getGlobalMessages(room: GlobalRoom): Promise<GlobalChatMes
     }
 
     // ── BATCH FETCH DATA KLAN UNTUK SELURUH SENDER DALAM 1 QUERY SAJA ──
-    // Mencegah 80 query individual yang sebelumnya membebani CPU & jaringan di Android
-    const missingClanIds = uniqueSenderIds.filter((id) => !clanProfileCache.has(id));
-    if (missingClanIds.length > 0) {
-      try {
-        const { data: clanMembers } = await supabase
-          .from("rpg_clan_members")
-          .select(`
-            user_id,
-            role,
-            status,
-            rpg_clans (
-              id,
-              name,
-              tag,
-              city_id,
-              logo_url,
-              level,
-              total_exp,
-              status
-            )
-          `)
-          .in("user_id", missingClanIds)
-          .eq("status", "active");
-
-        if (clanMembers) {
-          clanMembers.forEach((m: any) => {
-            const rawClan = m.rpg_clans;
-            const joinedClan = Array.isArray(rawClan) ? rawClan[0] : rawClan;
-            if (joinedClan && joinedClan.status !== "disbanded") {
-              clanProfileCache.set(m.user_id, {
-                clan: joinedClan,
-                role: m.role,
-              });
-            }
-          });
-        }
-        missingClanIds.forEach((id) => {
-          if (!clanProfileCache.has(id)) {
-            clanProfileCache.set(id, null);
-          }
-        });
-      } catch (err) {
-        console.warn("[global-chat] batch clan fetch error:", err);
-      }
-    }
+    await batchPreloadClanProfiles(uniqueSenderIds);
 
     const messages: GlobalChatMessage[] = rows.map((r) => {
       const p = profileCache.get(r.sender_id) || {};
@@ -236,8 +269,8 @@ export async function getGlobalMessages(room: GlobalRoom): Promise<GlobalChatMes
       };
     });
 
-    // Urutkan dari terlama ke terbaru untuk FlatList chat
-    const sorted = messages.reverse();
+    // Urutkan dari terlama ke terbaru (kronologis) dan pastikan tepat maksimal 30 pesan
+    const sorted = messages.reverse().slice(-limit);
 
     memGlobalChatCache.set(room, sorted);
     void AsyncStorage.setItem(cacheKey, JSON.stringify(sorted)).catch(() => {});
@@ -379,13 +412,17 @@ export async function sendGlobalMessage({
     await recordChatTimestamp(senderId);
     await AsyncStorage.setItem(LAST_SENT_TIMESTAMP_KEY, String(now));
 
-    // Perbarui cache lokal
+    // Perbarui cache lokal (Maksimal 30 pesan terbaru)
     const cacheKey = `${GLOBAL_CHAT_CACHE_PREFIX}${room}`;
     try {
       const raw = await AsyncStorage.getItem(cacheKey);
       const list: GlobalChatMessage[] = raw ? JSON.parse(raw) : [];
-      list.push(createdMsg);
-      await AsyncStorage.setItem(cacheKey, JSON.stringify(list.slice(-100)));
+      if (!list.some((m) => m.id === createdMsg.id)) {
+        list.push(createdMsg);
+      }
+      const trimmed = list.slice(-MAX_GLOBAL_CHAT_MESSAGES);
+      memGlobalChatCache.set(room, trimmed);
+      await AsyncStorage.setItem(cacheKey, JSON.stringify(trimmed));
     } catch {}
 
     return {
@@ -399,18 +436,30 @@ export async function sendGlobalMessage({
   }
 }
 
+type RoomChannelState = {
+  channel: ReturnType<typeof supabase.channel>;
+  listeners: Set<(msg: GlobalChatMessage) => void>;
+  status: string;
+};
+
+const activeRoomChannels = new Map<GlobalRoom, RoomChannelState>();
+
 /**
  * Berlangganan pesan baru secara realtime via Supabase Realtime channel
+ * Menggunakan deduplikasi channel, proteksi reconnect, dan zero double subscription.
  */
 export function subscribeGlobalMessages(
   room: GlobalRoom,
   onNewMessage: (msg: GlobalChatMessage) => void
 ) {
-  const channelName = `realtime-global-${room}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  let channel: ReturnType<typeof supabase.channel> | null = null;
+  let state = activeRoomChannels.get(room);
 
-  try {
-    channel = supabase
+  if (!state) {
+    const channelName = `realtime-global-chat:${room}`;
+    const listeners = new Set<(msg: GlobalChatMessage) => void>();
+    listeners.add(onNewMessage);
+
+    const channel = supabase
       .channel(channelName)
       .on(
         "postgres_changes",
@@ -423,6 +472,18 @@ export function subscribeGlobalMessages(
         async (payload) => {
           const row = payload.new as any;
           if (!row || !row.id) return;
+
+          // Hindari memproses ID pesan yang sudah pernah masuk (deduplikasi ketat)
+          const currentMem = memGlobalChatCache.get(row.room as GlobalRoom) || [];
+          if (currentMem.some((m) => m.id === row.id)) return;
+
+          // Preload profile & klan secara background jika belum ada di memori cache
+          if (!profileCache.has(row.sender_id)) {
+            void fetchSenderProfile(row.sender_id);
+          }
+          if (!clanProfileCache.has(row.sender_id)) {
+            void batchPreloadClanProfiles([row.sender_id]);
+          }
 
           const p = (await fetchSenderProfile(row.sender_id)) || {};
           const cleanMsg = filterAndCensorMessage(row.message || "").processedText;
@@ -455,18 +516,53 @@ export function subscribeGlobalMessages(
             createdAt: row.created_at,
           };
 
-          onNewMessage(parsedMsg);
+          // Update memory cache secara incremental dengan batas 30 pesan
+          const mem = memGlobalChatCache.get(row.room as GlobalRoom) || [];
+          if (!mem.some((m) => m.id === parsedMsg.id)) {
+            const updatedMem = [...mem, parsedMsg].slice(-MAX_GLOBAL_CHAT_MESSAGES);
+            memGlobalChatCache.set(row.room as GlobalRoom, updatedMem);
+          }
+
+          // Broadcast ke seluruh listeners aktif untuk room ini
+          const currentListeners = activeRoomChannels.get(room)?.listeners;
+          if (currentListeners) {
+            currentListeners.forEach((listener) => {
+              try {
+                listener(parsedMsg);
+              } catch (err) {
+                console.warn("[global-chat] listener error:", err);
+              }
+            });
+          }
         }
-      )
-      .subscribe();
-  } catch (err) {
-    console.warn("[global-chat] subscribeGlobalMessages warning:", err);
+      );
+
+    state = { channel, listeners, status: "CONNECTING" };
+    activeRoomChannels.set(room, state);
+
+    channel.subscribe((status, err) => {
+      if (state) state.status = status;
+      if (status === "CHANNEL_ERROR") {
+        console.warn(`[global-chat] Realtime channel status error for room ${room}:`, err?.message || err);
+      } else if (status === "TIMED_OUT") {
+        console.warn(`[global-chat] Realtime channel timed out for room ${room}. Auto-reconnecting...`);
+      }
+    });
+  } else {
+    // Channel sudah ada: cukup daftarkan listener baru (mencegah subscription ganda)
+    state.listeners.add(onNewMessage);
   }
 
   return () => {
-    if (channel) {
+    const currentState = activeRoomChannels.get(room);
+    if (!currentState) return;
+    currentState.listeners.delete(onNewMessage);
+
+    // Jika sudah tidak ada listener yang mendengarkan room ini, lepas channel dengan aman
+    if (currentState.listeners.size === 0) {
+      activeRoomChannels.delete(room);
       try {
-        supabase.removeChannel(channel).catch(() => {});
+        supabase.removeChannel(currentState.channel).catch(() => {});
       } catch {}
     }
   };

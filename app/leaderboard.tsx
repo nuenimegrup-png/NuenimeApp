@@ -21,6 +21,8 @@ import { useQuery } from "@tanstack/react-query";
 import { AppIcon } from "@/components/app-icon";
 import { ChibiLoading } from "@/components/chibi-loading";
 import { BorderAvatar } from "@/components/border-avatar";
+import { UserVerificationBadge } from "@/components/user-verification-badge";
+import { ProfileCityPlaque } from "@/components/profile-city-plaque";
 import { getTierForLevel } from "@/components/level-progress-modal";
 import { getEquippedBorderId, getEquippedBorderStorageKey } from "@/lib/avatar-borders";
 import { useAnirakuAuth } from "@/providers/auth-provider";
@@ -62,6 +64,101 @@ function crownIcon(rank: number): string | null {
   return null;
 }
 
+// ── Generate nama warna yang harmonis persis seperti di Chat Global ──────────
+const NAME_COLORS = [
+  "#38BDF8", // Cyan Sky
+  "#4ADE80", // Emerald Green
+  "#F43F5E", // Rose Red
+  "#A855F7", // Purple
+  "#F59E0B", // Amber Gold
+  "#2DD4BF", // Teal
+  "#EC4899", // Pink
+  "#60A5FA", // Blue
+];
+
+function getUsernameColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % NAME_COLORS.length;
+  return NAME_COLORS[index];
+}
+
+/**
+ * Mendapatkan tema warna kapsul Rank Tier persis sesuai referensi Chat Global
+ */
+function getTierPillColors(tierName: string) {
+  switch (tierName.toLowerCase()) {
+    case "infinity":
+      return {
+        bg: "rgba(239, 68, 68, 0.16)",
+        border: "rgba(239, 68, 68, 0.45)",
+        text: "#FCA5A5",
+      };
+    case "eternal":
+      return {
+        bg: "rgba(168, 85, 247, 0.16)",
+        border: "rgba(168, 85, 247, 0.45)",
+        text: "#D8B4FE",
+      };
+    case "celestial":
+      return {
+        bg: "rgba(251, 146, 60, 0.16)",
+        border: "rgba(251, 146, 60, 0.45)",
+        text: "#FDBA74",
+      };
+    case "ruby star":
+      return {
+        bg: "rgba(251, 113, 133, 0.16)",
+        border: "rgba(251, 113, 133, 0.45)",
+        text: "#FDA4AF",
+      };
+    case "amethyst":
+      return {
+        bg: "rgba(192, 132, 252, 0.16)",
+        border: "rgba(192, 132, 252, 0.45)",
+        text: "#E9D5FF",
+      };
+    case "sapphire":
+      return {
+        bg: "rgba(56, 189, 248, 0.16)",
+        border: "rgba(56, 189, 248, 0.45)",
+        text: "#7DD3FC",
+      };
+    case "emerald":
+      return {
+        bg: "rgba(52, 211, 153, 0.16)",
+        border: "rgba(52, 211, 153, 0.45)",
+        text: "#6EE7B7",
+      };
+    case "gold":
+      return {
+        bg: "rgba(251, 191, 36, 0.16)",
+        border: "rgba(251, 191, 36, 0.45)",
+        text: "#FDE047",
+      };
+    case "silver":
+      return {
+        bg: "rgba(203, 213, 225, 0.16)",
+        border: "rgba(203, 213, 225, 0.45)",
+        text: "#E2E8F0",
+      };
+    case "bronze":
+      return {
+        bg: "rgba(217, 119, 6, 0.16)",
+        border: "rgba(217, 119, 6, 0.45)",
+        text: "#FDBA74",
+      };
+    default:
+      return {
+        bg: "rgba(148, 163, 184, 0.16)",
+        border: "rgba(148, 163, 184, 0.45)",
+        text: "#CBD5E1",
+      };
+  }
+}
+
 // ── Podium Top-3 Card ────────────────────────────────────────────────────────
 interface PodiumCardProps {
   entry: LeaderboardEntry;
@@ -80,8 +177,13 @@ const PodiumCard = React.memo(function PodiumCard({
 }: PodiumCardProps) {
   const isFirst = entry.rank === 1;
   const clr = rankColor(entry.rank);
-  const avatarSize = isFirst ? 68 : 54;
+  const avatarSize = isFirst ? 58 : 48;
   const { currentTier, isInfinity } = getTierForLevel(entry.level, entry.role);
+  const nameColor = useMemo(() => getUsernameColor(entry.displayName), [entry.displayName]);
+  const tierPillColors = useMemo(
+    () => getTierPillColors(currentTier?.name || "Stone"),
+    [currentTier?.name]
+  );
 
   // Periksa apakah ini akun user yang sedang aktif
   const isMe =
@@ -91,6 +193,10 @@ const PodiumCard = React.memo(function PodiumCard({
 
   // Prioritas border: dari DB -> jika ini user sendiri, gunakan border lokal jika di DB belum ada
   const activeBorder = entry.equippedBorder || (isMe ? localMyBorderId : null);
+  const cleanMemberNum =
+    entry.memberNumber != null
+      ? "#" + (String(entry.memberNumber).replace(/[^0-9]/g, "").replace(/^0+/, "") || "1")
+      : null;
 
   return (
     <Pressable
@@ -98,16 +204,6 @@ const PodiumCard = React.memo(function PodiumCard({
       style={({ pressed }) => [
         styles.podiumCard,
         isFirst ? styles.podiumCardFirst : styles.podiumCardOther,
-        {
-          borderColor: isFirst
-            ? "rgba(245, 158, 11, 0.4)"
-            : entry.rank === 2
-            ? "rgba(203, 213, 225, 0.25)"
-            : "rgba(249, 115, 22, 0.25)",
-          backgroundColor: isFirst
-            ? "rgba(245, 158, 11, 0.05)"
-            : "rgba(255, 255, 255, 0.03)",
-        },
         pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
       ]}
     >
@@ -143,40 +239,75 @@ const PodiumCard = React.memo(function PodiumCard({
         </View>
       </View>
 
-      {/* ── User Name & VIP ── */}
+      {/* ── User Name & Verification Badge ── */}
       <View style={styles.podiumNameRow}>
-        <Text style={styles.podiumName} numberOfLines={1}>
+        <Text style={[styles.podiumName, { color: nameColor }]} numberOfLines={1} ellipsizeMode="tail">
           {entry.displayName}
         </Text>
-        {entry.isVip && (
-          <AppIcon name="check-decagram" size={11} color="#06B6D4" />
-        )}
+        <UserVerificationBadge role={entry.role} isVip={entry.isVip} size={11} />
       </View>
 
       {/* Member # Tag */}
-      {entry.memberNumber != null && (
-        <Text style={styles.podiumMember}>#{entry.memberNumber}</Text>
+      {cleanMemberNum != null && (
+        <Text style={styles.podiumMember}>{cleanMemberNum}</Text>
       )}
 
-      {/* ── Level Badge dengan Icon Tier Resmi ── */}
-      <View
-        style={[
-          styles.podiumTierBadge,
-          {
-            borderColor: `${currentTier.color}45`,
-            backgroundColor: `${currentTier.color}15`,
-          },
-        ]}
-      >
-        <Image
-          source={{ uri: currentTier.imageUrl }}
-          style={styles.podiumTierIcon}
-          contentFit="contain"
-          transition={200}
+      {/* ── Plakat Kota & Klan (Podium Mode Presisi & Pas) ── */}
+      <View style={styles.podiumCityClanRow}>
+        <ProfileCityPlaque
+          userId={entry.userId}
+          podium
         />
-        <Text style={[styles.podiumTierText, { color: currentTier.color }]}>
-          {isInfinity ? "∞" : `Lv.${entry.level.toLocaleString()}`}
-        </Text>
+      </View>
+
+      {/* ── Badges Row: Rank Tier Pill + Level Pill (Persis Chat Global & LeaderRow) ── */}
+      <View style={styles.podiumBadgesRow}>
+        {currentTier ? (
+          <View
+            style={[
+              styles.podiumRankTierPill,
+              {
+                backgroundColor: tierPillColors.bg,
+                borderColor: tierPillColors.border,
+              },
+            ]}
+          >
+            <Text style={[styles.podiumRankTierText, { color: tierPillColors.text }]}>
+              {currentTier.name.toUpperCase()}
+            </Text>
+          </View>
+        ) : null}
+
+        <View
+          style={[
+            styles.podiumLevelPill,
+            isInfinity && {
+              backgroundColor: "rgba(239, 68, 68, 0.12)",
+              borderColor: "rgba(239, 68, 68, 0.35)",
+            },
+          ]}
+        >
+          {currentTier?.imageUrl && (
+            <Image
+              source={{ uri: currentTier.imageUrl }}
+              style={styles.podiumTierPillIcon}
+              contentFit="contain"
+              cachePolicy="memory-disk"
+            />
+          )}
+          <Text
+            style={[
+              styles.podiumLevelPillText,
+              isInfinity && {
+                color: "#EF4444",
+                fontFamily: "Nunito-Black",
+              },
+            ]}
+            numberOfLines={1}
+          >
+            {isInfinity ? "∞" : `Lvl ${entry.level}`}
+          </Text>
+        </View>
       </View>
 
       {/* ── XP Counter ── */}
@@ -207,6 +338,11 @@ const LeaderRow = React.memo(function LeaderRow({
 }: LeaderRowProps) {
   const clr = rankColor(entry.rank);
   const { currentTier, isInfinity } = getTierForLevel(entry.level, entry.role);
+  const nameColor = useMemo(() => getUsernameColor(entry.displayName), [entry.displayName]);
+  const tierPillColors = useMemo(
+    () => getTierPillColors(currentTier?.name || "Stone"),
+    [currentTier?.name]
+  );
 
   const isMe =
     (Boolean(currentUserId) && currentUserId === entry.userId) ||
@@ -214,7 +350,6 @@ const LeaderRow = React.memo(function LeaderRow({
       currentUsername?.toLowerCase() === entry.username?.toLowerCase());
 
   const activeBorder = entry.equippedBorder || (isMe ? localMyBorderId : null);
-  const isSpecial = isSpecialRole(entry.role);
   const cleanMemberNum =
     entry.memberNumber != null
       ? "#" + (String(entry.memberNumber).replace(/[^0-9]/g, "").replace(/^0+/, "") || "1")
@@ -243,41 +378,78 @@ const LeaderRow = React.memo(function LeaderRow({
         />
       </View>
 
-      {/* Info Name, Member, Level */}
+      {/* Info Name, Clan Plaque, Badges Row */}
       <View style={styles.rowInfo}>
+        {/* 1. Header: Display Name + Verification Checkmark + Member Tag */}
         <View style={styles.rowNameRow}>
-          <Text style={styles.rowName} numberOfLines={1}>
+          <Text style={[styles.rowName, { color: nameColor }]} numberOfLines={1}>
             {entry.displayName}
           </Text>
-          <AppIcon
-            name={isSpecial ? "check-decagram" : "check-circle"}
+          <UserVerificationBadge
+            role={entry.role}
+            isVip={entry.isVip}
             size={13}
-            color={isSpecial ? "#EF4444" : "#38BDF8"}
           />
           {cleanMemberNum != null && (
             <Text style={styles.rowMember}>{cleanMemberNum}</Text>
           )}
         </View>
 
-        {/* Level Tier Badge with Official Level Icon */}
+        {/* 2. Plakat Kota & Klan (DRAKONIA / GELANDANGAN, persis chat global) */}
+        <View style={styles.rowCityClanRow}>
+          <ProfileCityPlaque
+            userId={entry.userId}
+            compact
+            inlineClan
+          />
+        </View>
+
+        {/* 3. Badges Row: Rank Tier Pill + Level Pill (Persis Chat Global) */}
         <View style={styles.rowBadges}>
+          {currentTier ? (
+            <View
+              style={[
+                styles.rankTierPill,
+                {
+                  backgroundColor: tierPillColors.bg,
+                  borderColor: tierPillColors.border,
+                },
+              ]}
+            >
+              <Text style={[styles.rankTierText, { color: tierPillColors.text }]}>
+                {currentTier.name.toUpperCase()}
+              </Text>
+            </View>
+          ) : null}
+
           <View
             style={[
-              styles.rowTierBadge,
-              {
-                borderColor: `${currentTier.color}35`,
-                backgroundColor: `${currentTier.color}12`,
+              styles.levelPill,
+              isInfinity && {
+                backgroundColor: "rgba(239, 68, 68, 0.12)",
+                borderColor: "rgba(239, 68, 68, 0.35)",
               },
             ]}
           >
-            <Image
-              source={{ uri: currentTier.imageUrl }}
-              style={styles.rowTierIcon}
-              contentFit="contain"
-              transition={200}
-            />
-            <Text style={[styles.rowTierText, { color: currentTier.color }]}>
-              {isInfinity ? `${currentTier.name} • ∞` : `${currentTier.name} • Lv.${entry.level.toLocaleString()}`}
+            {currentTier?.imageUrl && (
+              <Image
+                source={{ uri: currentTier.imageUrl }}
+                style={styles.tierPillIcon}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+              />
+            )}
+            <Text
+              style={[
+                styles.levelPillText,
+                isInfinity && {
+                  color: "#EF4444",
+                  fontSize: 13,
+                  fontFamily: "Nunito-Black",
+                },
+              ]}
+            >
+              {isInfinity ? "∞" : `Lvl ${entry.level.toLocaleString()}`}
             </Text>
           </View>
         </View>
@@ -285,7 +457,7 @@ const LeaderRow = React.memo(function LeaderRow({
 
       {/* XP Counter */}
       <View style={styles.rowXpBox}>
-        <Text style={styles.rowXpText}>{formatXp(entry.xpGained)}</Text>
+        <Text style={[styles.rowXpText, { color: clr }]}>{formatXp(entry.xpGained)}</Text>
       </View>
     </Pressable>
   );
@@ -618,7 +790,6 @@ export default function LeaderboardScreen() {
             {selectedEntry && (() => {
               const seTierInfo = getTierForLevel(selectedEntry.level, selectedEntry.role);
               const seTier = seTierInfo.currentTier;
-              const seSpecial = isSpecialRole(selectedEntry.role);
               const seCleanNum =
                 selectedEntry.memberNumber != null
                   ? "#" + (String(selectedEntry.memberNumber).replace(/[^0-9]/g, "").replace(/^0+/, "") || "1")
@@ -626,6 +797,8 @@ export default function LeaderboardScreen() {
               const seBorder =
                 selectedEntry.equippedBorder ||
                 (selectedEntry.userId === user?.id ? localMyBorderId : null);
+              const seNameColor = getUsernameColor(selectedEntry.displayName);
+              const seTierColors = getTierPillColors(seTier?.name || "Stone");
 
               return (
                 <View style={styles.sheetFriendHeader}>
@@ -636,35 +809,62 @@ export default function LeaderboardScreen() {
                   />
                   <View style={styles.sheetFriendInfo}>
                     <View style={styles.sheetNameRow}>
-                      <Text style={styles.sheetDisplayNameText} numberOfLines={1}>
+                      <Text style={[styles.sheetDisplayNameText, { color: seNameColor }]} numberOfLines={1}>
                         {selectedEntry.displayName}
                       </Text>
-                      <AppIcon
-                        name={seSpecial ? "check-decagram" : "check-circle"}
+                      <UserVerificationBadge
+                        role={selectedEntry.role}
+                        isVip={selectedEntry.isVip}
                         size={14}
-                        color={seSpecial ? "#EF4444" : "#38BDF8"}
+                      />
+                      <Text style={styles.sheetMemberNumberText}>{seCleanNum}</Text>
+                    </View>
+
+                    {/* Plakat Kota & Klan (DRAKONIA / GELANDANGAN) */}
+                    <View style={{ marginVertical: 3 }}>
+                      <ProfileCityPlaque
+                        userId={selectedEntry.userId}
+                        compact
+                        inlineClan
                       />
                     </View>
+
                     <View style={styles.sheetBadgesRow}>
-                      <View style={styles.sheetLevelPill}>
+                      <View
+                        style={[
+                          styles.rankTierPill,
+                          {
+                            backgroundColor: seTierColors.bg,
+                            borderColor: seTierColors.border,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.rankTierText, { color: seTierColors.text }]}>
+                          {seTier.name.toUpperCase()}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.levelPill,
+                          seTierInfo.isInfinity && {
+                            backgroundColor: "rgba(239, 68, 68, 0.12)",
+                            borderColor: "rgba(239, 68, 68, 0.35)",
+                          },
+                        ]}
+                      >
                         {seTier?.imageUrl && (
                           <Image
                             source={{ uri: seTier.imageUrl }}
-                            style={styles.sheetTierPillIcon}
+                            style={styles.tierPillIcon}
                             contentFit="contain"
                             cachePolicy="memory-disk"
                           />
                         )}
-                        <Text style={styles.sheetLevelPillText}>
+                        <Text style={styles.levelPillText}>
                           {seTierInfo.isInfinity ? "∞" : `Lvl ${selectedEntry.level.toLocaleString("id-ID")}`}
                         </Text>
                       </View>
-                      <View style={styles.sheetTierPill}>
-                        <Text style={styles.sheetTierPillText}>
-                          {seTier.name.toUpperCase()}
-                        </Text>
-                      </View>
-                      <Text style={styles.sheetMemberNumberText}>{seCleanNum}</Text>
                     </View>
                   </View>
                 </View>
@@ -821,17 +1021,18 @@ const styles = StyleSheet.create({
   podiumRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 10,
-    paddingBottom: 16,
-    paddingTop: 8,
+    justifyContent: "space-between",
+    gap: 2,
+    paddingHorizontal: 4,
+    paddingBottom: 14,
+    paddingTop: 10,
     backgroundColor: "rgba(18, 24, 38, 0.7)",
-    marginHorizontal: 12,
+    marginHorizontal: 8,
     borderRadius: 24,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.06)",
     marginBottom: 16,
+    overflow: "hidden",
     ...(Platform.OS === "web"
       ? ({ backdropFilter: "blur(20px)" } as any)
       : {}),
@@ -842,22 +1043,20 @@ const styles = StyleSheet.create({
   podiumCard: {
     flex: 1,
     alignItems: "center",
-    borderRadius: 20,
-    borderWidth: 1.2,
-    paddingHorizontal: 6,
-    paddingBottom: 12,
-    gap: 4,
+    paddingHorizontal: 1,
+    paddingBottom: 4,
+    maxWidth: "33.33%",
+    overflow: "hidden",
   },
   podiumCardFirst: {
-    paddingTop: 8,
-    minHeight: 205,
+    paddingTop: 6,
+    minHeight: 250,
     justifyContent: "flex-end",
     zIndex: 2,
-    elevation: 3,
   },
   podiumCardOther: {
     paddingTop: 14,
-    minHeight: 185,
+    minHeight: 232,
     justifyContent: "flex-end",
   },
 
@@ -905,23 +1104,79 @@ const styles = StyleSheet.create({
   podiumNameRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 3,
     marginTop: 2,
-    maxWidth: "95%",
+    width: "100%",
+    paddingHorizontal: 2,
   },
   podiumName: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: "800",
     color: "#F1F5F9",
     textAlign: "center",
+    maxWidth: "80%",
   },
   podiumMember: {
     fontSize: 9,
     color: "#64748B",
     fontWeight: "700",
+    marginTop: 1,
+  },
+  podiumCityClanRow: {
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  podiumBadgesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    height: 22,
+    width: "100%",
+    marginTop: 2,
+  },
+  podiumRankTierPill: {
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  podiumRankTierText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 8,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  podiumLevelPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2.5,
+    backgroundColor: "#1E2636",
+    paddingHorizontal: 4,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  podiumTierPillIcon: {
+    width: 10,
+    height: 10,
+  },
+  podiumLevelPillText: {
+    fontSize: 8.5,
+    fontWeight: "700",
+    color: "#38BDF8",
   },
 
-  // Level Tier Badge on Podium
+  // Level Tier Badge on Podium (legacy fallback)
   podiumTierBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -944,7 +1199,10 @@ const styles = StyleSheet.create({
 
   // XP Pill
   podiumXpPill: {
-    marginTop: 2,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 3,
   },
   podiumXp: {
     fontSize: 12.5,
@@ -1013,11 +1271,57 @@ const styles = StyleSheet.create({
     color: "#475569",
     fontWeight: "700",
   },
+  rowCityClanRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 5,
+    marginTop: 2,
+    marginBottom: 3,
+  },
   rowBadges: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 5,
+    flexWrap: "wrap",
   },
+
+  // ─── TIER & LEVEL PILLS (PERSIS CHAT GLOBAL) ───
+  rankTierPill: {
+    paddingHorizontal: 5.5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rankTierText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 9.5,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  levelPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "#1E2636",
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  tierPillIcon: {
+    width: 11,
+    height: 11,
+  },
+  levelPillText: {
+    fontSize: 9.5,
+    fontWeight: "700",
+    color: "#38BDF8",
+  },
+
   rowTierBadge: {
     flexDirection: "row",
     alignItems: "center",

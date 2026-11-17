@@ -500,44 +500,65 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.horizontalRailContent}
           >
-            {top10Popular.map((item) => (
-              <Pressable
-                key={item.id}
-                onPress={() => {
-                  hapticLight();
-                  prefetch(item.id);
-                  router.push((`/anime/${item.id}`) as never);
-                }}
-                style={({ pressed }) => [styles.animeCardWrap, pressed && styles.btnPressed]}
-              >
-                <View style={styles.animePosterWrap}>
-                  <Image
-                    source={{
-                      uri: getOptimizedImageUri(
-                        item.coverImage?.extraLarge || item.coverImage?.large || "",
-                        POSTER_W
-                      ),
-                    }}
-                    style={StyleSheet.absoluteFill}
-                    contentFit="cover"
-                    transition={150}
-                    cachePolicy="memory-disk"
-                  />
-                  {/* Rating Tag */}
-                  <View style={styles.cardScoreBadge}>
-                    <Text style={styles.cardScoreStar}>★</Text>
-                    <Text style={styles.cardScoreValue}>
-                      {item.averageScore
-                        ? (item.averageScore / 10).toFixed(2)
-                        : "8.50"}
-                    </Text>
+            {top10Popular.map((item) => {
+              const isFinished =
+                item.status?.toUpperCase() === "FINISHED" ||
+                item.status?.toUpperCase() === "COMPLETED";
+              const statusBadge = isFinished
+                ? "TAMAT"
+                : item.nextAiringEpisode?.episode
+                  ? `EP ${item.nextAiringEpisode.episode}`
+                  : typeof item.episodes === "number" && item.episodes > 0
+                    ? `EP ${item.episodes}`
+                    : item.status?.toUpperCase() === "RELEASING"
+                      ? "ONGOING"
+                      : null;
+
+              return (
+                <Pressable
+                  key={item.id}
+                  onPress={() => {
+                    hapticLight();
+                    prefetch(item.id);
+                    router.push((`/anime/${item.id}`) as never);
+                  }}
+                  style={({ pressed }) => [styles.animeCardWrap, pressed && styles.btnPressed]}
+                >
+                  <View style={styles.animePosterWrap}>
+                    <Image
+                      source={{
+                        uri: getOptimizedImageUri(
+                          item.coverImage?.extraLarge || item.coverImage?.large || "",
+                          POSTER_W
+                        ),
+                      }}
+                      style={StyleSheet.absoluteFill}
+                      contentFit="cover"
+                      transition={150}
+                      cachePolicy="memory-disk"
+                    />
+                    {/* Status Badge (Pojok Kiri Atas: EP ... / TAMAT, Warna Putih, Tanpa Titik) */}
+                    {statusBadge ? (
+                      <View style={styles.cardStatusBadge}>
+                        <Text style={styles.cardStatusBadgeText}>{statusBadge}</Text>
+                      </View>
+                    ) : null}
+                    {/* Rating Tag */}
+                    <View style={styles.cardScoreBadge}>
+                      <Text style={styles.cardScoreStar}>★</Text>
+                      <Text style={styles.cardScoreValue}>
+                        {item.averageScore
+                          ? (item.averageScore / 10).toFixed(2)
+                          : "8.50"}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-                <Text style={styles.animeCardTitle} numberOfLines={1}>
-                  {animeTitle(item)}
-                </Text>
-              </Pressable>
-            ))}
+                  <Text style={styles.animeCardTitle} numberOfLines={1}>
+                    {animeTitle(item)}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </ScrollView>
         </View>
 
@@ -799,11 +820,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#161B26",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.12)",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.45,
-    shadowRadius: 20,
-    elevation: 8,
+    ...(Platform.OS !== "web"
+      ? {
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 10 },
+          shadowOpacity: 0.45,
+          shadowRadius: 20,
+          elevation: 8,
+        }
+      : ({
+          boxShadow: "0 10px 20px rgba(0, 0, 0, 0.45)",
+        } as any)),
   },
   heroDarkMask: {
     ...StyleSheet.absoluteFillObject,
@@ -1149,6 +1176,24 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     overflow: "hidden",
     backgroundColor: "#1E293B",
+  },
+  cardStatusBadge: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    backgroundColor: "rgba(0, 0, 0, 0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  cardStatusBadgeText: {
+    fontFamily: "SpaceGrotesk-Bold",
+    fontSize: 10,
+    color: "#FFFFFF",
+    fontWeight: "800",
+    letterSpacing: 0.4,
   },
   cardScoreBadge: {
     position: "absolute",

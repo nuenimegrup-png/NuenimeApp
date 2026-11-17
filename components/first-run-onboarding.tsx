@@ -5,6 +5,7 @@ import {
   PanResponder,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -232,12 +233,12 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
       Animated.timing(fadeAnim, {
         toValue: 0,
         duration: 120,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
       }),
       Animated.timing(translateY, {
         toValue: goingDown ? -30 : 30,
         duration: 120,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== "web",
       }),
     ]).start(() => {
       setCurrentPage(target);
@@ -246,12 +247,12 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
         Animated.timing(fadeAnim, {
           toValue: 1,
           duration: 180,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(translateY, {
           toValue: 0,
           duration: 180,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
       ]).start();
     });
@@ -286,6 +287,8 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gesture) => {
+        // Jangan intersep gesture swipe saat user sedang membaca artikel di Slide 1
+        if (pageRef.current === 1) return false;
         return Math.abs(gesture.dy) > 15 && Math.abs(gesture.dy) > Math.abs(gesture.dx);
       },
       onPanResponderRelease: (_, gesture) => {
@@ -309,9 +312,9 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
 
   return (
     <View style={styles.overlay} {...panResponder.panHandlers}>
-      {/* ─── PURE BLACK BACKGROUND & AMBIENT GLOW ─── */}
+      {/* ─── DARK GREYISH-BLACK BACKGROUND (ABU-ABU KEHITAMAN) ─── */}
       <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "#000000" }]} />
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "#16171C" }]} />
         {/* Soft Ambient Light Halo behind center */}
         <Animated.View
           style={[
@@ -324,32 +327,34 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
       </View>
 
       {/* ─── VERTICAL FROSTED GLASS INDICATOR (RIGHT EDGE) ─── */}
-      <View style={styles.indicatorContainer} pointerEvents="box-none">
-        <View style={styles.indicatorGlassTrack}>
-          {[0, 1, 2].map((idx) => {
-            const isActive = idx === currentPage;
-            return (
-              <Pressable
-                key={idx}
-                onPress={() => goToPage(idx)}
-                hitSlop={14}
-                style={[
-                  styles.indicatorDot,
-                  isActive ? styles.indicatorActive : styles.indicatorInactive,
-                ]}
-              />
-            );
-          })}
+      {currentPage !== 1 && (
+        <View style={styles.indicatorContainer} pointerEvents="box-none">
+          <View style={styles.indicatorGlassTrack}>
+            {[0, 1, 2].map((idx) => {
+              const isActive = idx === currentPage;
+              return (
+                <Pressable
+                  key={idx}
+                  onPress={() => goToPage(idx)}
+                  hitSlop={14}
+                  style={[
+                    styles.indicatorDot,
+                    isActive ? styles.indicatorActive : styles.indicatorInactive,
+                  ]}
+                />
+              );
+            })}
+          </View>
         </View>
-      </View>
+      )}
 
       {/* ─── MAIN SLIDE CONTENT AREA ─── */}
       <Animated.View
         style={[
           styles.contentWrapper,
           {
-            paddingTop: insets.top + 20,
-            paddingBottom: Math.max(insets.bottom, 16) + 16,
+            paddingTop: currentPage === 1 ? insets.top + 6 : insets.top + 20,
+            paddingBottom: currentPage === 1 ? 0 : Math.max(insets.bottom, 16) + 16,
             opacity: fadeAnim,
             transform: [{ translateY }],
           },
@@ -385,122 +390,138 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
               {/* Teks Judul Kiri + Underline Bar + Subtitle */}
               <View style={styles.heroTextGroup}>
                 <Text style={styles.heroBrandTitle}>Nuenime</Text>
-                <LinearGradient
-                  colors={["#FFFFFF", "#CBD5E1", "#64748B"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.heroUnderlineBar}
-                />
+                <View style={styles.heroUnderlineBar} />
                 <Text style={styles.heroSubtitle}>Nonton anime favoritmu tanpa batas</Text>
               </View>
 
-              {/* Tombol Utama: Silver Liquid Glass 'Mulai Menonton' */}
+              {/* Tombol Utama: Clean White 'Mulai Menonton' Tanpa Bayangan */}
               <Pressable
                 onPress={() => goToPage(1)}
                 style={({ pressed }) => [
-                  styles.silverGlassButtonOuter,
+                  styles.cleanWhiteButton,
                   pressed && styles.buttonPressed,
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel="Mulai Menonton"
               >
-                <LinearGradient
-                  colors={["#FFFFFF", "#E2E8F0", "#CBD5E1", "#94A3B8"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.silverGlassButton}
-                >
-                  {/* Kilauan Specular Liquid Glass Bagian Atas */}
-                  <LinearGradient
-                    colors={["rgba(255, 255, 255, 0.8)", "rgba(255, 255, 255, 0.08)"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 0, y: 1 }}
-                    style={styles.silverGlassHighlight}
-                  />
-
-                  <View style={styles.silverButtonInner}>
-                    <Text style={styles.silverButtonText}>Mulai Menonton</Text>
-                    <View style={styles.silverIconCircle}>
-                      <AppIcon name="chevron-right" size={16} color="#0F172A" />
-                    </View>
+                <View style={styles.cleanButtonInner}>
+                  <Text style={styles.cleanButtonText}>Mulai Menonton</Text>
+                  <View style={styles.cleanIconCircle}>
+                    <AppIcon name="chevron-right" size={16} color="#0F172A" />
                   </View>
-                </LinearGradient>
+                </View>
               </Pressable>
 
               {/* Teks Versi di Bawah Tombol (Persis seperti Version 1.3.14 di contoh) */}
               <Text style={styles.heroVersionFooter}>
-                Version {Constants.expoConfig?.version || "0.0.6"}
+                Version {Constants.expoConfig?.version || "0.0.9"}
               </Text>
             </View>
           </View>
         )}
 
-        {/* SLIDE 1: KETENTUAN LAYANAN */}
+        {/* SLIDE 1: DISCLAIMER (Layout Persis Screenshot: Card Rounded Elegan, Bullet Points, Tombol Putih Solid Setuju, Tolak, Nuenime Team) */}
         {currentPage === 1 && (
-          <View style={styles.pageContainer}>
-            {/* Top spacing */}
-            <View style={{ height: 10 }} />
+          <View
+            style={[
+              styles.disclaimerContainer,
+              { paddingBottom: Math.max(insets.bottom, 16) + 12 },
+            ]}
+          >
+            {/* Card Kontainer Disclaimer */}
+            <View style={styles.disclaimerCard}>
+              <Text style={styles.disclaimerTitle}>Disclaimer</Text>
 
-            {/* Content Left-Aligned in Glass Frame */}
-            <View style={styles.termsContentWrap}>
-              <View style={styles.disclaimerGlassBadge}>
-                <Text style={styles.disclaimerBadgeText}>Disclaimer</Text>
-              </View>
+              <ScrollView
+                style={styles.disclaimerScroll}
+                contentContainerStyle={styles.disclaimerScrollContent}
+                showsVerticalScrollIndicator={false}
+                bounces={false}
+              >
+                <Text style={styles.disclaimerParagraph}>
+                  Nuenime adalah aplikasi streaming anime pihak ketiga. Semua konten yang ditampilkan dalam aplikasi ini bersumber dari server eksternal dan tidak dihosting, dimiliki, atau berafiliasi dengan Nuenime atau Nuenime Team.
+                </Text>
 
-              <Text style={styles.termsTitle}>Ketentuan Layanan</Text>
+                <Text style={styles.disclaimerParagraph}>
+                  Dengan menggunakan aplikasi ini, Anda mengakui dan menyetujui bahwa:
+                </Text>
 
-              <View style={styles.termsPointsList}>
-                {/* Point 1 */}
-                <View style={styles.pointGlassCard}>
-                  <View style={styles.yellowBullet} />
-                  <View style={styles.pointTextWrap}>
-                    <Text style={styles.pointHeading}>Aplikasi tidak resmi</Text>
-                    <Text style={styles.pointDescription}>
-                      Nuenime adalah aplikasi pihak ketiga. Semua merek dagang dan hak
-                      cipta menjadi milik pemiliknya masing-masing.
+                <View style={styles.disclaimerBulletList}>
+                  <View style={styles.disclaimerBulletRow}>
+                    <Text style={styles.disclaimerBulletDot}>•</Text>
+                    <Text style={styles.disclaimerBulletText}>
+                      Nuenime tidak menghosting, mengunggah, atau mendistribusikan konten media apa pun.
+                    </Text>
+                  </View>
+                  <View style={styles.disclaimerBulletRow}>
+                    <Text style={styles.disclaimerBulletDot}>•</Text>
+                    <Text style={styles.disclaimerBulletText}>
+                      Semua anime, video streaming, dan metadata disediakan oleh sumber pihak ketiga.
+                    </Text>
+                  </View>
+                  <View style={styles.disclaimerBulletRow}>
+                    <Text style={styles.disclaimerBulletDot}>•</Text>
+                    <Text style={styles.disclaimerBulletText}>
+                      Pengembang Nuenime tidak bertanggung jawab atas konten, ketersediaan, atau legalitas aliran video.
+                    </Text>
+                  </View>
+                  <View style={styles.disclaimerBulletRow}>
+                    <Text style={styles.disclaimerBulletDot}>•</Text>
+                    <Text style={styles.disclaimerBulletText}>
+                      Aplikasi ini adalah search engine untuk menemukan anime di berbagai sumber.
+                    </Text>
+                  </View>
+                  <View style={styles.disclaimerBulletRow}>
+                    <Text style={styles.disclaimerBulletDot}>•</Text>
+                    <Text style={styles.disclaimerBulletText}>
+                      Anda bertanggung jawab penuh untuk mematuhi hukum di wilayah hukum Anda.
+                    </Text>
+                  </View>
+                  <View style={styles.disclaimerBulletRow}>
+                    <Text style={styles.disclaimerBulletDot}>•</Text>
+                    <Text style={styles.disclaimerBulletText}>
+                      Kami tidak mengumpulkan, menyimpan, atau mengirimkan data pribadi ke server eksternal.
                     </Text>
                   </View>
                 </View>
 
-                {/* Point 2 */}
-                <View style={styles.pointGlassCard}>
-                  <View style={styles.yellowBullet} />
-                  <View style={styles.pointTextWrap}>
-                    <Text style={styles.pointHeading}>Tidak mengunggah konten</Text>
-                    <Text style={styles.pointDescription}>
-                      Aplikasi ini tidak mengunggah, menyimpan, atau mendistribusikan
-                      konten media. Semua konten bersumber dari tautan yang tersedia secara
-                      publik di internet.
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Point 3 */}
-                <View style={styles.pointGlassCard}>
-                  <View style={styles.yellowBullet} />
-                  <View style={styles.pointTextWrap}>
-                    <Text style={styles.pointHeading}>Pelanggaran hak cipta</Text>
-                    <Text style={styles.pointDescription}>
-                      Jika kamu adalah pemilik hak cipta dan merasa kontenmu digunakan
-                      secara tidak tepat, hubungi nuenime@gmail.com.
-                    </Text>
-                  </View>
-                </View>
-              </View>
+                <Text style={styles.disclaimerFooterNote}>
+                  Jika Anda tidak menyetujui persyaratan ini, silakan tutup aplikasi.
+                </Text>
+              </ScrollView>
             </View>
 
-            {/* Bottom Liquid Glass Swipe Prompt */}
-            <Pressable
-              onPress={() => goToPage(2)}
-              style={({ pressed }) => [
-                styles.swipeGlassPill,
-                pressed && styles.buttonPressed,
-              ]}
-              hitSlop={20}
-            >
-              <AppIcon name="chevron-up" size={18} color="#CBD5E1" />
-              <Text style={styles.swipePromptText}>Geser ke atas</Text>
-            </Pressable>
+            {/* Area Tombol Tindakan Bawah */}
+            <View style={styles.disclaimerActions}>
+              {/* Tombol Putih Solid: Setuju (Zero Shadow / Elevation) */}
+              <Pressable
+                onPress={() => goToPage(2)}
+                style={({ pressed }) => [
+                  styles.disclaimerWhiteButton,
+                  pressed && styles.buttonPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Setuju"
+              >
+                <Text style={styles.disclaimerWhiteButtonText}>Setuju</Text>
+              </Pressable>
+
+              {/* Tombol Outline: Tolak */}
+              <Pressable
+                onPress={() => goToPage(0)}
+                style={({ pressed }) => [
+                  styles.disclaimerRejectButton,
+                  pressed && styles.buttonPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Tolak"
+              >
+                <Text style={styles.disclaimerRejectButtonText}>Tolak</Text>
+              </Pressable>
+
+              {/* Footer Teks Brand */}
+              <Text style={styles.disclaimerBrandFooter}>Nuenime Team</Text>
+            </View>
           </View>
         )}
 
@@ -610,7 +631,7 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#000000", // Murni hitam pekat
+    backgroundColor: "#16171C", // Abu-abu kehitaman (dark charcoal grey, tidak hitam pekat)
     zIndex: 99999,
     ...(Platform.OS === "web"
       ? ({
@@ -737,6 +758,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     marginTop: 8,
     marginBottom: 10,
+    backgroundColor: "#FFFFFF",
   },
   heroSubtitle: {
     fontFamily: "Nunito-SemiBold",
@@ -744,50 +766,37 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
-  silverGlassButtonOuter: {
+  cleanWhiteButton: {
     width: "100%",
-    borderRadius: 28,
-    shadowColor: "#E2E8F0",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 6,
-  },
-  silverGlassButton: {
+    backgroundColor: "#FFFFFF",
     borderRadius: 28,
     paddingVertical: 15,
     paddingHorizontal: 24,
-    borderWidth: 1.2,
-    borderColor: "rgba(255, 255, 255, 0.65)",
-    overflow: "hidden",
-    position: "relative",
+    // Nol bayangan (tanpa shadow atau elevation)
+    shadowColor: "transparent",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+    ...(Platform.OS === "web" ? ({ boxShadow: "none" } as any) : {}),
   },
-  silverGlassHighlight: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: "50%",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-  },
-  silverButtonInner: {
+  cleanButtonInner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
   },
-  silverButtonText: {
+  cleanButtonText: {
     fontFamily: "Nunito-Black",
     color: "#0F172A",
     fontSize: 16,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
-  silverIconCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "rgba(15, 23, 42, 0.10)",
+  cleanIconCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(15, 23, 42, 0.08)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -877,120 +886,125 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // ─── BOTTOM FROSTED GLASS SWIPE PROMPT (UNIFORM GLASS PILL, NO TOP LINE) ───
-  swipeGlassPill: {
-    backgroundColor: "rgba(255, 255, 255, 0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.14)",
-    borderRadius: 24,
-    paddingHorizontal: 22,
-    paddingVertical: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    marginBottom: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 4,
-    ...(Platform.OS === "web"
-      ? ({
-          backdropFilter: "blur(16px) saturate(160%)",
-          WebkitBackdropFilter: "blur(16px) saturate(160%)",
-        } as any)
-      : {}),
-  },
-  swipePromptText: {
-    fontFamily: "Nunito-SemiBold",
-    color: "#E2E8F0",
-    fontSize: 13,
-    letterSpacing: 0.2,
-  },
-
-  // ─── SLIDE 1: TERMS ───
-  termsContentWrap: {
+  // ─── SLIDE 1: DISCLAIMER SCREEN STYLES (PERSIS SCREENSHOT) ───
+  disclaimerContainer: {
+    flex: 1,
     width: "100%",
-    maxWidth: 360,
-    alignSelf: "center",
+    paddingHorizontal: 20,
+    justifyContent: "space-between",
   },
-  disclaimerGlassBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(226, 232, 240, 0.12)",
+  disclaimerCard: {
+    flex: 1,
+    backgroundColor: "#181A22",
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(226, 232, 240, 0.28)",
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 14,
-    marginBottom: 16,
-    ...(Platform.OS === "web"
-      ? ({
-          backdropFilter: "blur(12px)",
-          WebkitBackdropFilter: "blur(12px)",
-        } as any)
-      : {}),
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    paddingHorizontal: 20,
+    paddingTop: 22,
+    paddingBottom: 16,
   },
-  disclaimerBadgeText: {
+  disclaimerTitle: {
     fontFamily: "Nunito-Bold",
-    color: "#CBD5E1",
-    fontSize: 12,
-    letterSpacing: 0.3,
-  },
-  termsTitle: {
-    fontFamily: "Nunito-Black",
+    fontSize: 24,
     color: "#FFFFFF",
-    fontSize: 28,
-    letterSpacing: -0.4,
-    marginBottom: 20,
+    marginBottom: 16,
   },
-  termsPointsList: {
-    gap: 12,
-  },
-  pointGlassCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.045)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.10)",
-    borderRadius: 16,
-    padding: 13,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    ...(Platform.OS === "web"
-      ? ({
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
-        } as any)
-      : {}),
-  },
-  yellowBullet: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#CBD5E1",
-    marginTop: 7,
-    marginRight: 12,
-    shadowColor: "#CBD5E1",
-    shadowOpacity: 0.8,
-    shadowRadius: 4,
-  },
-  pointTextWrap: {
+  disclaimerScroll: {
     flex: 1,
   },
-  pointHeading: {
-    fontFamily: "Nunito-Bold",
-    color: "#FFFFFF",
-    fontSize: 14.5,
-    marginBottom: 3,
+  disclaimerScrollContent: {
+    paddingBottom: 12,
   },
-  pointDescription: {
+  disclaimerParagraph: {
     fontFamily: "Nunito-Regular",
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#CBD5E1",
+    marginBottom: 14,
+  },
+  disclaimerBulletList: {
+    marginBottom: 8,
+    gap: 8,
+  },
+  disclaimerBulletRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  disclaimerBulletDot: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 14,
+    lineHeight: 20,
     color: "#94A3B8",
-    fontSize: 12.5,
-    lineHeight: 18,
+    marginRight: 8,
+    width: 10,
+  },
+  disclaimerBulletText: {
+    flex: 1,
+    fontFamily: "Nunito-Regular",
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#CBD5E1",
+  },
+  disclaimerFooterNote: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#CBD5E1",
+    marginTop: 10,
+  },
+  disclaimerActions: {
+    width: "100%",
+    paddingTop: 16,
+    alignItems: "center",
+    gap: 12,
+  },
+  disclaimerWhiteButton: {
+    width: "100%",
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "transparent",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+    ...(Platform.OS === "web"
+      ? ({
+          boxShadow: "none",
+        } as any)
+      : {}),
+  },
+  disclaimerWhiteButtonText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 15,
+    color: "#0F172A",
+    letterSpacing: 0.3,
+  },
+  disclaimerRejectButton: {
+    width: "100%",
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.20)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  disclaimerRejectButtonText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 15,
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
+  },
+  disclaimerBrandFooter: {
+    fontFamily: "Nunito-Medium",
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 4,
+    marginBottom: 2,
+    textAlign: "center",
   },
 
   // ─── SLIDE 2: READY BANNER ───

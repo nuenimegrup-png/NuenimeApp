@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { getAnimePool, isAniListPageDepthError, isAniListRateLimitError } from "@/lib/anilist";
 import { regenerateRandomPages, sessionRandomPages, shouldFallbackToFirstPages } from "@/lib/random-pool";
 import type { Anime } from "@/lib/types";
@@ -92,7 +92,7 @@ export default function RandomScreen() {
     // never strand the card at opacity 0 (the old chained fade-out/in could).
     fadeAnim.stopAnimation();
     fadeAnim.setValue(0);
-    Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: Platform.OS !== "web" }).start();
   }, [fadeAnim]);
 
   const pickAnother = useCallback(() => {

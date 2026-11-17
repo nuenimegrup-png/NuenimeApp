@@ -60,12 +60,12 @@ export default function DuniaNuenimeScreen() {
         Animated.timing(pulseAnim, {
           toValue: 1.15,
           duration: 900,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(pulseAnim, {
           toValue: 1,
           duration: 900,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
       ])
     );

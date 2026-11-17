@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import {
   Animated,
+  Platform,
   StyleProp,
   StyleSheet,
   Text,
@@ -32,12 +33,12 @@ export function ChibiLoading({
         Animated.timing(floatAnim, {
           toValue: -7,
           duration: 750,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
         Animated.timing(floatAnim, {
           toValue: 0,
           duration: 750,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== "web",
         }),
       ])
     );

@@ -134,28 +134,30 @@ function isSuppressedNotificationType(type: unknown, prefs: NotificationPrefs): 
   return false;
 }
 
-Notifications.setNotificationHandler({
-  handleNotification: async (notification) => {
-    // Settings → Notifications: suppressed categories arrive silently.
-    let suppressed = false;
-    try {
-      const prefs = await readNotificationPrefs();
-      suppressed = isSuppressedNotificationType(
-        (notification.request?.content?.data as { type?: unknown } | undefined)?.type,
-        prefs,
-      );
-    } catch {
-      // Unreadable prefs → fall back to showing the notification.
-    }
-    return {
-      shouldShowAlert: !suppressed,
-      shouldPlaySound: !suppressed,
-      shouldSetBadge: false,
-      shouldShowBanner: !suppressed,
-      shouldShowList: !suppressed,
-    };
-  },
-});
+if (Platform.OS !== "web") {
+  Notifications.setNotificationHandler({
+    handleNotification: async (notification) => {
+      // Settings → Notifications: suppressed categories arrive silently.
+      let suppressed = false;
+      try {
+        const prefs = await readNotificationPrefs();
+        suppressed = isSuppressedNotificationType(
+          (notification.request?.content?.data as { type?: unknown } | undefined)?.type,
+          prefs,
+        );
+      } catch {
+        // Unreadable prefs → fall back to showing the notification.
+      }
+      return {
+        shouldShowAlert: !suppressed,
+        shouldPlaySound: !suppressed,
+        shouldSetBadge: false,
+        shouldShowBanner: !suppressed,
+        shouldShowList: !suppressed,
+      };
+    },
+  });
+}
 
 async function registerForPushNotifications() {
   if (Platform.OS === "web") return null;

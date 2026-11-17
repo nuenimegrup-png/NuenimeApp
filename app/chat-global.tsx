@@ -32,6 +32,7 @@ import {
   type GlobalChatMessage,
   type GlobalChatReplyInfo,
   GLOBAL_ROOMS,
+  MAX_GLOBAL_CHAT_MESSAGES,
   getGlobalMessages,
   sendGlobalMessage,
   subscribeGlobalMessages,
@@ -199,10 +200,7 @@ const ChatMessageItem = React.memo(
         // @ts-ignore
         id={Platform.OS === "web" ? `chat-msg-${item.id}` : undefined}
         nativeID={`chat-msg-${item.id}`}
-        style={[
-          styles.messageRow,
-          isHighlighted && styles.messageRowHighlighted,
-        ]}
+        style={styles.messageRow}
       >
         {/* Left Avatar with live border */}
         <Pressable onPress={handlePressAvatar} style={styles.avatarWrap}>
@@ -521,7 +519,7 @@ export default function ChatGlobalScreen() {
 
   const [activeRoom, setActiveRoom] = useState<GlobalRoom>("ngobrol_1");
   const [messages, setMessages] = useState<GlobalChatMessage[]>(() =>
-    getCachedGlobalMessagesSync("ngobrol_1")
+    getCachedGlobalMessagesSync("ngobrol_1").slice(-MAX_GLOBAL_CHAT_MESSAGES)
   );
   const [loading, setLoading] = useState<boolean>(
     () => getCachedGlobalMessagesSync("ngobrol_1").length === 0
@@ -554,24 +552,30 @@ export default function ChatGlobalScreen() {
     if (flatListRef.current) {
       try {
         flatListRef.current.scrollToEnd({ animated });
-      } catch {}
-      if (Platform.OS === "web") {
+      } catch {
         try {
-          const ref = flatListRef.current as any;
-          const node =
-            ref?.getScrollableNode?.() ||
-            ref?.getScrollResponder?.()?.getScrollableNode?.() ||
-            ref?._listRef?._scrollRef?.getScrollableNode?.() ||
-            ref?._scrollRef?.getScrollableNode?.() ||
-            (typeof document !== "undefined"
-              ? (document.querySelector('[data-testid="global-chat-list"]') as HTMLElement) ||
-                (document.getElementById("global-chat-scroll-container") as HTMLElement)
-              : null);
-          if (node) {
-            node.scrollTop = node.scrollHeight;
-          }
+          flatListRef.current.scrollToOffset({ offset: 9999999, animated });
         } catch {}
       }
+    }
+
+    if (Platform.OS === "web") {
+      try {
+        const ref = flatListRef.current as any;
+        const scrollNode =
+          ref?.getScrollResponder?.()?.getScrollableNode?.() ||
+          ref?._listRef?._scrollRef?.getScrollableNode?.() ||
+          ref?._scrollRef?.getScrollableNode?.() ||
+          ref?.getScrollableNode?.();
+        if (scrollNode && typeof scrollNode.scrollTo === "function") {
+          scrollNode.scrollTo({
+            top: scrollNode.scrollHeight,
+            behavior: animated ? "smooth" : "auto",
+          });
+        } else if (scrollNode) {
+          scrollNode.scrollTop = scrollNode.scrollHeight;
+        }
+      } catch {}
     }
   }, []);
 
@@ -714,18 +718,20 @@ export default function ChatGlobalScreen() {
   const messagesLengthRef = useRef(messages.length);
   messagesLengthRef.current = messages.length;
 
-  // ─── 1. LOAD PESAN ───
+  // ─── 1. LOAD PESAN (MAKSIMAL 30 PESAN TERBARU) ───
   const loadMessages = useCallback(async (isRefresh = false) => {
     if (!isRefresh && messagesLengthRef.current === 0) setLoading(true);
     else if (isRefresh) setRefreshing(true);
 
     try {
-      const data = await getGlobalMessages(activeRoom);
-      setMessages(data);
-      // Posisikan seketika ke pesan paling baru saat data awal selesai dimuat
+      const data = await getGlobalMessages(activeRoom, MAX_GLOBAL_CHAT_MESSAGES);
+      const trimmed = data.slice(-MAX_GLOBAL_CHAT_MESSAGES);
+      setMessages(trimmed);
+      // Posisikan seketika ke pesan paling baru saat data awal selesai dimuat (tanpa animasi scrolling)
       if (isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
         requestAnimationFrame(() => {
-          flatListRef.current?.scrollToEnd({ animated: false });
+          scrollToLatest(false);
+          isInitialLoadRef.current = false;
         });
       }
     } catch (err) {
@@ -734,7 +740,7 @@ export default function ChatGlobalScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [activeRoom]);
+  }, [activeRoom, scrollToLatest]);
 
   // Saat pertama kali buka layar ATAU saat masuk kembali setelah keluar room / diskusi
   useFocusEffect(
@@ -757,32 +763,36 @@ export default function ChatGlobalScreen() {
     }
   }, [loading, activeRoom, scrollToLatest]);
 
-  // ─── 2. REALTIME SUBSCRIPTION ───
+  // ─── 2. REALTIME SUBSCRIPTION (MAKSIMAL 30 PESAN & SMART AUTO-SCROLL) ───
   useEffect(() => {
     const unsubscribe = subscribeGlobalMessages(activeRoom, (newMsg) => {
       setMessages((prev) => {
         // Hindari duplikasi pesan jika sudah masuk
         if (prev.some((m) => m.id === newMsg.id)) return prev;
         const updated = [...prev, newMsg];
-        // JAGA MEMORI: Batasi riwayat pesan aktif di RAM maksimal 100 agar ringan di HP RAM kecil
-        if (updated.length > 100) {
-          return updated.slice(updated.length - 100);
+        // JAGA MEMORI & TAMPILAN: Batasi daftar pesan aktif selalu maksimal 30 pesan terbaru
+        if (updated.length > MAX_GLOBAL_CHAT_MESSAGES) {
+          return updated.slice(updated.length - MAX_GLOBAL_CHAT_MESSAGES);
         }
         return updated;
       });
 
-      // Kalo ada pesan baru masuk:
-      // Pengguna berada tepat di paling bawah atau pesan sendiri -> scroll instan tanpa animasi
-      // Pengguna sedang membaca pesan lama / tidak di paling bawah -> munculkan tombol panah bawah dengan badge
+      // Sistem Auto-Scroll Cerdas Berdasarkan Posisi Scrolling Pengguna:
       const isMyMessage = newMsg.senderId === currentUserId;
-      if (isMyMessage || (isNearBottomRef.current && !userHasScrolledUpRef.current)) {
+      if (isMyMessage || isNearBottomRef.current) {
+        // Kondisi A: Pengguna sedang berada di bagian paling bawah chat (atau pesan sendiri)
+        // -> Chat otomatis mengikuti pesan terbaru dengan scrolling yang natural
         setShowNewMessageBadge(false);
         setShowScrollBottomBtn(false);
         setUnreadCountWhileScrolled(0);
-        setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: false });
-        }, 10);
+        userHasScrolledUpRef.current = false;
+        requestAnimationFrame(() => {
+          scrollToLatest(true);
+        });
       } else {
+        // Kondisi B: Pengguna sedang scroll ke atas membaca pesan lama
+        // -> Nonaktifkan auto-scroll sementara, JANGAN ubah posisi scroll pengguna!
+        // -> Tampilkan indikator floating dengan angka jumlah pesan baru (+1 setiap pesan masuk)
         setShowNewMessageBadge(true);
         setShowScrollBottomBtn(true);
         setUnreadCountWhileScrolled((prev) => prev + 1);
@@ -792,7 +802,7 @@ export default function ChatGlobalScreen() {
     return () => {
       unsubscribe();
     };
-  }, [activeRoom, currentUserId]);
+  }, [activeRoom, currentUserId, scrollToLatest]);
 
   // ─── 3. SEND MESSAGE ───
   const handleSendMessage = useCallback(
@@ -857,10 +867,14 @@ export default function ChatGlobalScreen() {
         // Mulai jeda countdown 30 detik setelah berhasil mengirim pesan
         startCooldownTimer(CHAT_COOLDOWN_SECONDS);
 
-        // Tambahkan ke UI lokal seketika jika belum ada
+        // Tambahkan ke UI lokal seketika jika belum ada (Maksimal 30 pesan)
         setMessages((prev) => {
           if (prev.some((m) => m.id === res.data!.id)) return prev;
-          return [...prev, res.data!];
+          const updated = [...prev, res.data!];
+          if (updated.length > MAX_GLOBAL_CHAT_MESSAGES) {
+            return updated.slice(updated.length - MAX_GLOBAL_CHAT_MESSAGES);
+          }
+          return updated;
         });
 
         setShowNewMessageBadge(false);
@@ -869,9 +883,9 @@ export default function ChatGlobalScreen() {
         userHasScrolledUpRef.current = false;
         isNearBottomRef.current = true;
         isInitialLoadRef.current = false;
-        setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: false });
-        }, 10);
+        requestAnimationFrame(() => {
+          scrollToLatest(true);
+        });
         return true;
       } else if (!res.success && res.error) {
         hapticWarning();
@@ -892,6 +906,7 @@ export default function ChatGlobalScreen() {
       activeRoom,
       replyingTo,
       startCooldownTimer,
+      scrollToLatest,
     ]
   );
 
@@ -958,10 +973,14 @@ export default function ChatGlobalScreen() {
       // Mulai jeda countdown 30 detik setelah berhasil mengirim stiker
       startCooldownTimer(CHAT_COOLDOWN_SECONDS);
 
-      // Tambahkan ke UI lokal seketika jika belum ada
+      // Tambahkan ke UI lokal seketika jika belum ada (Maksimal 30 pesan)
       setMessages((prev) => {
         if (prev.some((m) => m.id === res.data!.id)) return prev;
-        return [...prev, res.data!];
+        const updated = [...prev, res.data!];
+        if (updated.length > MAX_GLOBAL_CHAT_MESSAGES) {
+          return updated.slice(updated.length - MAX_GLOBAL_CHAT_MESSAGES);
+        }
+        return updated;
       });
 
       setShowNewMessageBadge(false);
@@ -970,9 +989,9 @@ export default function ChatGlobalScreen() {
       userHasScrolledUpRef.current = false;
       isNearBottomRef.current = true;
       isInitialLoadRef.current = false;
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 10);
+      requestAnimationFrame(() => {
+        scrollToLatest(true);
+      });
     } else if (!res.success && res.error) {
       hapticWarning();
       const matchSeconds = res.error.match(/tunggu\s+(\d+)\s+detik/i);
@@ -1112,9 +1131,9 @@ export default function ChatGlobalScreen() {
               showsVerticalScrollIndicator={false}
               testID="global-chat-list"
               nativeID="global-chat-scroll-container"
-              initialNumToRender={18}
-              maxToRenderPerBatch={10}
-              windowSize={7}
+              initialNumToRender={MAX_GLOBAL_CHAT_MESSAGES}
+              maxToRenderPerBatch={MAX_GLOBAL_CHAT_MESSAGES}
+              windowSize={5}
               updateCellsBatchingPeriod={50}
               removeClippedSubviews={Platform.OS !== "web"}
               onScrollToIndexFailed={(info) => {
@@ -1124,9 +1143,9 @@ export default function ChatGlobalScreen() {
                 });
               }}
               onContentSizeChange={(_w, h) => {
-                // Posisikan ke bawah seketika hanya pada pemuatan awal (sebelum user scroll manual)
+                // Posisikan ke bawah seketika hanya pada pemuatan awal tanpa animasi
                 if (h > 0 && isInitialLoadRef.current && !userHasScrolledUpRef.current && !isUserInteractingRef.current) {
-                  flatListRef.current?.scrollToEnd({ animated: false });
+                  scrollToLatest(false);
                   isInitialLoadRef.current = false;
                 }
               }}
@@ -1151,8 +1170,8 @@ export default function ChatGlobalScreen() {
                 if (contentSize.height <= 0) return;
                 const distanceFromBottom = contentSize.height - (layoutMeasurement.height + contentOffset.y);
 
-                // Toleransi presisi 30 piksel untuk mendeteksi posisi paling bawah
-                const isAtBottom = distanceFromBottom <= 30;
+                // Toleransi presisi 50 piksel untuk mendeteksi posisi paling bawah
+                const isAtBottom = distanceFromBottom <= 50;
                 isNearBottomRef.current = isAtBottom;
 
                 if (isAtBottom) {
@@ -1170,7 +1189,7 @@ export default function ChatGlobalScreen() {
 
                   // Jika user aktif dragging atau momentum scroll ke atas
                   userHasScrolledUpRef.current = true;
-                  setShowScrollBottomBtn(distanceFromBottom > 100);
+                  setShowScrollBottomBtn(true);
                 }
               }}
               scrollEventThrottle={16}
@@ -1196,8 +1215,8 @@ export default function ChatGlobalScreen() {
             />
           )}
 
-          {/* ─── FLOATING SCROLL TO BOTTOM BUTTON DENGAN TANDA PANAH KE BAWAH (SELALU DI ATAS NAVBAR KETIK) ─── */}
-          {(showScrollBottomBtn || showNewMessageBadge) && (
+          {/* ─── FLOATING SCROLL TO BOTTOM BUTTON DENGAN INDIKATOR PESAN BARU (SELALU DI ATAS NAVBAR KETIK) ─── */}
+          {(showScrollBottomBtn || showNewMessageBadge || unreadCountWhileScrolled > 0) && (
             <View style={styles.scrollToBottomWrap} pointerEvents="box-none">
               <Pressable
                 style={({ pressed }) => [
@@ -1488,12 +1507,6 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingRight: 24, // Memberi jarak kosong proporsional di kanan agar bubble rapi
   },
-  messageRowHighlighted: {
-    backgroundColor: "rgba(56, 189, 248, 0.08)",
-    borderRadius: 14,
-    paddingVertical: 2,
-    paddingHorizontal: 4,
-  },
   avatarWrap: {
     paddingTop: 2,
   },
@@ -1513,12 +1526,16 @@ const styles = StyleSheet.create({
   messageCardHighlighted: {
     borderColor: "#38BDF8",
     borderWidth: 1.5,
-    backgroundColor: "rgba(14, 165, 233, 0.22)",
     shadowColor: "#38BDF8",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.9,
     shadowRadius: 10,
     elevation: 8,
+    ...(Platform.OS === "web"
+      ? ({
+        boxShadow: "0 0 10px rgba(56, 189, 248, 0.6)",
+      } as any)
+      : {}),
   },
   messageCardSticker: {
     backgroundColor: "rgba(22, 27, 36, 0.45)",

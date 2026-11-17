@@ -212,7 +212,7 @@ export function subscribePrivateMessages(
   userB: string,
   onNewMessage: (msg: PrivateMessage) => void
 ) {
-  const channelName = `dm_${[userA, userB].sort().join("_")}_${Date.now()}`;
+  const channelName = `dm_${[userA, userB].sort().join("_")}`;
 
   const channel = supabase
     .channel(channelName)
@@ -240,10 +240,16 @@ export function subscribePrivateMessages(
         }
       }
     )
-    .subscribe();
+    .subscribe((status, err) => {
+      if (status === "CHANNEL_ERROR") {
+        console.warn(`[private-chat] Realtime error for channel ${channelName}:`, err?.message || err);
+      }
+    });
 
   return () => {
-    supabase.removeChannel(channel);
+    try {
+      supabase.removeChannel(channel).catch(() => {});
+    } catch {}
   };
 }
 

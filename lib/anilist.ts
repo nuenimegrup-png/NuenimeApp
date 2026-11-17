@@ -110,7 +110,8 @@ const fields = `
   id type title { romaji english native } coverImage { large extraLarge color } bannerImage
   description(asHtml: false) genres format status episodes duration averageScore popularity
   season seasonYear isAdult idMal nextAiringEpisode { episode airingAt }
-  trailer { id site thumbnail }
+  trailer { id site thumbnail } source studios { edges { isMain node { name } } nodes { name } }
+  startDate { year month day } endDate { year month day }
 `;
 
 const detailFields = `${fields}

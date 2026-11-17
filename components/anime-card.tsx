@@ -9,7 +9,7 @@ import type { Anime } from "@/lib/types";
 import { animeTitle } from "@/lib/types";
 import { usePrefetchAnime } from "@/lib/prefetch";
 import { POSTER_W, getOptimizedImageUri } from "@/lib/image-optimization";
-import { nothing, Signal } from "@/components/nothing-ui";
+import { nothing } from "@/components/nothing-ui";
 import { useBookmarks } from "@/hooks/use-bookmarks";
 import { useWatchHistory } from "@/hooks/use-watch-history";
 import { useAnirakuAuth } from "@/providers/auth-provider";
@@ -55,6 +55,20 @@ function AnimeCardBase({ anime, compact = false }: { anime: Anime; compact?: boo
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prefetch = usePrefetchAnime();
 
+  const isFinished =
+    anime.status?.toUpperCase() === "FINISHED" ||
+    anime.status?.toUpperCase() === "COMPLETED";
+
+  const statusBadge = isFinished
+    ? "TAMAT"
+    : anime.nextAiringEpisode?.episode
+      ? `EP ${anime.nextAiringEpisode.episode}`
+      : typeof anime.episodes === "number" && anime.episodes > 0
+        ? `EP ${anime.episodes}`
+        : anime.status?.toUpperCase() === "RELEASING"
+          ? "ONGOING"
+          : null;
+
   const cancelLongPress = () => {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
@@ -88,8 +102,38 @@ function AnimeCardBase({ anime, compact = false }: { anime: Anime; compact?: boo
         onPressOut={cancelLongPress}
         style={({ pressed }) => [styles.card, compact && styles.compactCard, pressed && styles.pressed]}
       >
-        <View style={styles.media}><View style={styles.artFallback}><Text style={styles.fallbackInitial}>{title.charAt(0)}</Text></View>{artwork ? <Image source={{ uri: artwork }} style={styles.poster} contentFit="cover" transition={0} cachePolicy="memory-disk" /> : null}{anime.nextAiringEpisode ? <View style={styles.topline}><Signal label={`EP ${anime.nextAiringEpisode.episode}`} /></View> : null}</View>
-        <View style={styles.meta}><Text numberOfLines={2} style={styles.title}>{title}</Text><Text style={styles.detail}>{anime.format || "ANIME"}{anime.averageScore ? ` · ${Math.round(anime.averageScore)}%` : ""}</Text></View>
+        <View style={styles.media}>
+          <View style={styles.artFallback}>
+            <Text style={styles.fallbackInitial}>{title.charAt(0)}</Text>
+          </View>
+          {artwork ? (
+            <Image
+              source={{ uri: artwork }}
+              style={styles.poster}
+              contentFit="cover"
+              transition={0}
+              cachePolicy="memory-disk"
+            />
+          ) : null}
+          {/* Status Badge (Pojok Kiri Atas: EP ... / TAMAT, Warna Putih, Tanpa Titik) */}
+          {statusBadge ? (
+            <View style={styles.statusBadge}>
+              <Text style={styles.statusBadgeText}>{statusBadge}</Text>
+            </View>
+          ) : null}
+          {/* Rating Badge (Pojok Kanan Atas - Persis Screenshot) */}
+          <View style={styles.cardScoreBadge}>
+            <Text style={styles.cardScoreStar}>★</Text>
+            <Text style={styles.cardScoreValue}>
+              {anime.averageScore
+                ? (anime.averageScore / 10).toFixed(2)
+                : "8.50"}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.meta}>
+          <Text numberOfLines={1} style={styles.title}>{title}</Text>
+        </View>
       </Pressable>
 
       {/* The sheet mounts its hooks (bookmarks/watch history/auth) only while open,
@@ -244,7 +288,48 @@ const styles = StyleSheet.create({
   artFallback: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", backgroundColor: "#242422" },
   fallbackInitial: { color: nothing.dim, fontFamily: "Nunito-Black", fontSize: 54 },
   poster: { ...StyleSheet.absoluteFillObject },
-  topline: { position: "absolute", left: 7, top: 7, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 6, backgroundColor: "rgba(9,9,9,0.74)" },
+  cardScoreBadge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "rgba(0, 0, 0, 0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  cardScoreStar: {
+    color: "#F5C518",
+    fontSize: 10,
+  },
+  cardScoreValue: {
+    fontFamily: "SpaceGrotesk-Bold",
+    fontSize: 10.5,
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+  statusBadge: {
+    position: "absolute",
+    left: 6,
+    top: 6,
+    backgroundColor: "rgba(0, 0, 0, 0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  statusBadgeText: {
+    fontFamily: "SpaceGrotesk-Bold",
+    fontSize: 10,
+    color: "#FFFFFF",
+    fontWeight: "800",
+    letterSpacing: 0.4,
+  },
   meta: { gap: 3 },
   title: { color: nothing.white, fontFamily: "Nunito-Bold", fontSize: 13, lineHeight: 17 },
   detail: { color: nothing.muted, fontFamily: "Nunito-SemiBold", fontSize: 10, letterSpacing: 0.35 },

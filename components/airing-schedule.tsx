@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
-import { AppIcon } from "@/components/app-icon";
 
 type AiringScheduleProps = {
   nextAiringEpisode?: { episode: number; airingAt: number } | null;
@@ -25,6 +24,19 @@ export function AiringSchedule({ nextAiringEpisode, totalEpisodes }: AiringSched
     return formatCountdown(ms);
   }, [nextAiringEpisode?.airingAt]);
 
+  const airingDayInfo = useMemo(() => {
+    if (!nextAiringEpisode?.airingAt) return null;
+    const date = new Date(nextAiringEpisode.airingAt * 1000);
+    const dayNames = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+    const day = dayNames[date.getDay()];
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return {
+      day,
+      time: `${hours}:${minutes} WIB`,
+    };
+  }, [nextAiringEpisode?.airingAt]);
+
   if (!nextAiringEpisode) return null;
 
   const ep = nextAiringEpisode.episode;
@@ -32,10 +44,7 @@ export function AiringSchedule({ nextAiringEpisode, totalEpisodes }: AiringSched
 
   return (
     <View style={styles.cardContainer}>
-      <View style={styles.leftContent}>
-        <View style={styles.iconCircle}>
-          <AppIcon name="calendar" size={16} color="#38BDF8" />
-        </View>
+      <View style={styles.topRow}>
         <View style={styles.metaCol}>
           <View style={styles.badgeRow}>
             <View style={styles.liveDot} />
@@ -50,30 +59,36 @@ export function AiringSchedule({ nextAiringEpisode, totalEpisodes }: AiringSched
             Episode {String(ep).padStart(2, "0")}
           </Text>
         </View>
-      </View>
 
-      <View style={styles.countdownBadge}>
-        <AppIcon name="clock-outline" size={13} color="#38BDF8" />
         <Text style={styles.countdownText}>
           {countdown ? `Rilis dalam ${countdown}` : "Tayang Sekarang"}
         </Text>
       </View>
+
+      {airingDayInfo ? (
+        <View style={styles.infoContainer}>
+          <View style={styles.infoDivider} />
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Informasi :</Text>
+            <Text style={styles.infoText}>
+              Anime ini rilis setiap hari {airingDayInfo.day} (± {airingDayInfo.time})
+            </Text>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   cardContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
     backgroundColor: "rgba(255, 255, 255, 0.04)",
     borderRadius: 16,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 12,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.09)",
-    gap: 12,
+    gap: 10,
     ...(Platform.OS === "web"
       ? ({
           backdropFilter: "blur(14px)",
@@ -81,21 +96,37 @@ const styles = StyleSheet.create({
         } as any)
       : {}),
   },
-  leftContent: {
+  topRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    flex: 1,
+    justifyContent: "space-between",
+    width: "100%",
   },
-  iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(56, 189, 248, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(56, 189, 248, 0.25)",
+  infoContainer: {
+    width: "100%",
+    gap: 8,
+  },
+  infoDivider: {
+    height: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    width: "100%",
+  },
+  infoRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  infoLabel: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 12,
+    color: "#38BDF8",
+    letterSpacing: 0.2,
+  },
+  infoText: {
+    fontFamily: "Nunito-SemiBold",
+    fontSize: 12,
+    color: "#CBD5E1",
   },
   metaCol: {
     gap: 2,
@@ -134,20 +165,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#FFFFFF",
   },
-  countdownBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(56, 189, 248, 0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(56, 189, 248, 0.25)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
   countdownText: {
     fontFamily: "Nunito-Bold",
-    fontSize: 12,
-    color: "#38BDF8",
+    fontSize: 12.5,
+    color: "#C0C0C0",
+    letterSpacing: 0.2,
   },
 });

@@ -7,7 +7,7 @@ import { ActivityIndicator, Alert, Animated, BackHandler, Dimensions, FlatList, 
 import { Image } from "expo-image";
 import { UniversalVideo as Video } from "@/components/universal-video";
 import type { OnProgressData, OnLoadData, OnBufferData, VideoRef } from "react-native-video";
-import { useKeepAwake } from "expo-keep-awake";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { StatusBar } from "expo-status-bar";
 import * as ScreenOrientation from "expo-screen-orientation";
 import * as Brightness from "expo-brightness";
@@ -68,6 +68,7 @@ import { useWatchHistory, listLocalWatchEntries } from "@/hooks/use-watch-histor
 import { useEpisodeRatings } from "@/hooks/use-episode-ratings";
 import { AnimeComments } from "@/components/anime-comments";
 import { useProviderSync } from "@/hooks/use-provider-sync";
+import { useMiniPlayer } from "@/providers/mini-player-provider";
 import { markMissionProgress } from "@/lib/lelang-service";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { useExp } from "@/providers/exp-toast-provider";
@@ -193,15 +194,19 @@ async function rememberProviderQuality(providerId: string | undefined, quality: 
   } catch { /* preference loss is acceptable */ }
 }
 
-// ── Track 5.1: Cold-start measurement (dev only) ──
-const _watchMountTime = __DEV__ ? Date.now() : 0;
-if (__DEV__) console.log("[watch] mount t=0");
-
 export default function WatchScreen() {
-  const params = useLocalSearchParams<{ id?: string | string[]; episode?: string | string[]; title?: string; image?: string }>();
+  const screenMountTime = useRef(Date.now()).current;
+  const params = useLocalSearchParams<{ id?: string | string[]; episode?: string | string[]; title?: string; image?: string; resumeTime?: string; fromMini?: string }>();
+  const { playerData, minimizePlayer } = useMiniPlayer();
   const animeId = parseRouteId(params.id) ?? -1;
   const invalidId = animeId <= 0;
   const episode = parseRouteEpisode(params.episode);
+  const isReturningFromMini = Boolean(
+    playerData &&
+    playerData.animeId === animeId &&
+    playerData.episode === episode &&
+    playerData.cachedSource
+  );
   const animeQuery = useQuery({
     queryKey: ["watch-anime", animeId],
     queryFn: async () => { try { return await getAnimeMetadata(animeId); } catch { return getAnimeById(animeId); } },
@@ -243,14 +248,59 @@ export default function WatchScreen() {
     () => isHentaiAnime({ isAdult: animeQuery.data?.isAdult, genres: animeQuery.data?.genres }),
     [animeQuery.data?.isAdult, animeQuery.data?.genres],
   );
-  useKeepAwake("aniraku-watch");
+  // Safe WakeLock lifecycle (mencegah NotAllowedError di web saat tab tidak terlihat / background)
+  useEffect(() => {
+    let active = true;
+    if (Platform.OS === "web") {
+      if (typeof document !== "undefined" && "wakeLock" in navigator) {
+        let sentinel: any = null;
+        const requestWakeLock = async () => {
+          try {
+            if (document.visibilityState === "visible" && active) {
+              sentinel = await (navigator as any).wakeLock?.request("screen");
+            }
+          } catch {
+            // Tangani NotAllowedError secara aman tanpa unhandled promise rejection
+          }
+        };
+
+        const handleVisibilityChange = () => {
+          if (document.visibilityState === "visible") {
+            void requestWakeLock();
+          } else {
+            try {
+              sentinel?.release?.().catch?.(() => {});
+            } catch {}
+          }
+        };
+
+        void requestWakeLock();
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
+        return () => {
+          active = false;
+          document.removeEventListener("visibilitychange", handleVisibilityChange);
+          try {
+            sentinel?.release?.().catch?.(() => {});
+          } catch {}
+        };
+      }
+    } else {
+      activateKeepAwakeAsync("aniraku-watch").catch(() => {});
+      return () => {
+        try {
+          void deactivateKeepAwake("aniraku-watch").catch(() => {});
+        } catch {}
+      };
+    }
+  }, []);
 
   // ── Player state (react-native-video) ──
   const videoRef = useRef<VideoRef>(null);
-  const [playerStatus, setPlayerStatus] = useState<"idle" | "loading" | "playing" | "paused" | "error">("idle");
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [playerStatus, setPlayerStatus] = useState<"idle" | "loading" | "playing" | "paused" | "error">(() => (isReturningFromMini ? "playing" : "idle"));
+  const [currentTime, setCurrentTime] = useState(() => (isReturningFromMini ? playerData!.currentTime : 0));
+  const [duration, setDuration] = useState(() => (isReturningFromMini ? playerData!.duration : 0));
+  const [isPlaying, setIsPlaying] = useState(() => (isReturningFromMini ? playerData!.isPlaying : false));
   const [muted, setMuted] = useState(false);
   const [buffering, setBuffering] = useState(false);
   const [playableDuration, setPlayableDuration] = useState(0);
@@ -262,16 +312,16 @@ export default function WatchScreen() {
   const [parsedQualityNote, setParsedQualityNote] = useState<string | null>(null);
 
   // ── App state ──
-  const [language, setLanguage] = useState<Language>("sub");
+  const [language, setLanguage] = useState<Language>(() => (isReturningFromMini && playerData?.cachedLanguage ? playerData.cachedLanguage : "sub"));
 
-  const [providers, setProviders] = useState<Record<Language, Server[]>>({ sub: [], dub: [] });
-  const [serverIndex, setServerIndex] = useState(0);
-  const [stream, setStream] = useState<StreamResponse | null>(null);
-  const [source, setSource] = useState<StreamSource | null>(null);
+  const [providers, setProviders] = useState<Record<Language, Server[]>>(() => (isReturningFromMini && playerData?.cachedProviders ? playerData.cachedProviders : { sub: [], dub: [] }));
+  const [serverIndex, setServerIndex] = useState(() => (isReturningFromMini && typeof playerData?.cachedServerIndex === "number" ? playerData.cachedServerIndex : 0));
+  const [stream, setStream] = useState<StreamResponse | null>(() => (isReturningFromMini && playerData?.cachedStream ? playerData.cachedStream : null));
+  const [source, setSource] = useState<StreamSource | null>(() => (isReturningFromMini && playerData?.cachedSource ? playerData.cachedSource : null));
   const [embedSource, setEmbedSource] = useState<StreamSource | null>(null);
   const [useSourceProxy, setUseSourceProxy] = useState(false);
-  const [playbackHeaders, setPlaybackHeaders] = useState<Record<string, string> | undefined>();
-  const [loadingServers, setLoadingServers] = useState(true);
+  const [playbackHeaders, setPlaybackHeaders] = useState<Record<string, string> | undefined>(() => (isReturningFromMini && playerData?.cachedStream?.headers ? playerData.cachedStream.headers : undefined));
+  const [loadingServers, setLoadingServers] = useState(() => !isReturningFromMini);
   const [serverAttempt, setServerAttempt] = useState(0);
   const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -410,7 +460,7 @@ export default function WatchScreen() {
   const lastHistorySync = useRef(0);
   const lastProviderSync = useRef(0);
   const skipSegmentsRef = useRef(skipSegments);
-  const pendingResume = useRef<number | null>(null);
+  const pendingResume = useRef<number | null>(isReturningFromMini && playerData ? playerData.currentTime : null);
   const historyResumeRequestedFor = useRef<string | null>(null);
   const initialHistoryResumeApplied = useRef(false);
   const activeProviderId = useRef<string | null>(null);
@@ -779,7 +829,12 @@ export default function WatchScreen() {
   }, [preferencesReady, speed, autoPlayNext]);
 
   // ── Server discovery ──
+  const isReturningFromMiniRef = useRef(isReturningFromMini);
   useEffect(() => {
+    if (isReturningFromMiniRef.current && source) {
+      isReturningFromMiniRef.current = false;
+      return;
+    }
     let cancelled = false;
     clearEpisodePlayback();
     setProviders({ sub: [], dub: [] });
@@ -980,9 +1035,17 @@ export default function WatchScreen() {
       }
     }
 
+    const urlFetchStart = Date.now();
+    if (__DEV__) {
+      console.log(`[PlaybackMetrics] Requesting Stream URL: animeId=${animeId} ep=${episode} provider=${activeProvider.provider} lang=${language} t=${Date.now() - screenMountTime}ms`);
+    }
+
     void getStream({ animeId, episode, provider: activeProvider.provider, lang: language, refresh: forceThisRequest })
       .then((response) => {
         if (cancelled || activeProviderId.current !== providerId) return;
+        if (__DEV__) {
+          console.log(`[PlaybackMetrics] Stream URL Acquired: provider=${activeProvider.provider} fetchDuration=${Date.now() - urlFetchStart}ms t=${Date.now() - screenMountTime}ms`);
+        }
         const refreshedDirect = directSources(response);
         const refreshedProxies = proxySources(response);
         const refreshedEmbeds = embedSources(response);
@@ -2382,12 +2445,12 @@ export default function WatchScreen() {
           const shouldAdvance = dx < -50 && Boolean(nextKnownEpisode);
           const shouldGoBack = dx > 50 && Boolean(previousKnownEpisode);
           if (!shouldAdvance && !shouldGoBack) {
-            Animated.spring(swipeOffsetX, { toValue: 0, useNativeDriver: true }).start();
+            Animated.spring(swipeOffsetX, { toValue: 0, useNativeDriver: Platform.OS !== "web" }).start();
             return;
           }
           swipeAnimating.current = true;
           const offscreen = dx < 0 ? -Dimensions.get("window").width : Dimensions.get("window").width;
-          Animated.timing(swipeOffsetX, { toValue: offscreen, duration: 180, useNativeDriver: true }).start(() => {
+          Animated.timing(swipeOffsetX, { toValue: offscreen, duration: 180, useNativeDriver: Platform.OS !== "web" }).start(() => {
             swipeOffsetX.setValue(0);
             swipeAnimating.current = false;
             if (shouldAdvance && nextKnownEpisode) {
@@ -2403,7 +2466,7 @@ export default function WatchScreen() {
           // A stolen touch (call, notification, scroll) must never leave the
           // episode grid parked mid-swipe with no release to spring it back.
           if (swipeAnimating.current) return;
-          Animated.spring(swipeOffsetX, { toValue: 0, useNativeDriver: true }).start();
+          Animated.spring(swipeOffsetX, { toValue: 0, useNativeDriver: Platform.OS !== "web" }).start();
         },
       }),
     [nextKnownEpisode, previousKnownEpisode, goToEpisode, swipeOffsetX],
@@ -2541,10 +2604,78 @@ export default function WatchScreen() {
   }, [downloadMessage]);
 
   useEffect(() => {
-    if (!manualFullscreen || Platform.OS === "web") return;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => { exitFullscreen(); return true; });
+    const rTime = Number(params.resumeTime);
+    if (Number.isFinite(rTime) && rTime > 0) {
+      pendingResume.current = rTime;
+    }
+  }, [params.resumeTime]);
+
+  const handleBackPress = useCallback(() => {
+    if (manualFullscreen) {
+      exitFullscreen();
+      return;
+    }
+    const activeUri = videoSourceUri || source?.url || embedSource?.url;
+    if (activeUri && animeId > 0 && Number.isFinite(currentTimeRef.current || currentTime)) {
+      minimizePlayer({
+        animeId,
+        episode,
+        animeTitle: title || (animeQuery.data ? animeTitle(animeQuery.data) : "Anime"),
+        episodeTitle: selectedEpisode?.title ? `Episode ${episode} • ${selectedEpisode.title}` : `Episode ${episode}`,
+        thumbnail: selectedEpisode?.thumbnail || image || animeQuery.data?.bannerImage || "",
+        videoSourceUri: videoSourceUri || (source?.url ? anirakuProxyUrl(source.url, nativePlaybackHeaders(playbackHeaders)) : ""),
+        videoSourceHeaders: videoSourceHeaders,
+        videoContentType: videoContentType,
+        currentTime: currentTimeRef.current || currentTime,
+        duration: duration || 0,
+        isPlaying: isPlaying,
+        cachedStream: stream,
+        cachedSource: source,
+        cachedProvider: activeProvider,
+        cachedProviders: providers,
+        cachedServerIndex: serverIndex,
+        cachedLanguage: language,
+      });
+    }
+    router.back();
+  }, [
+    manualFullscreen,
+    exitFullscreen,
+    videoSourceUri,
+    source,
+    embedSource,
+    animeId,
+    episode,
+    title,
+    animeQuery.data,
+    selectedEpisode,
+    image,
+    playbackHeaders,
+    videoSourceHeaders,
+    videoContentType,
+    currentTime,
+    duration,
+    isPlaying,
+    minimizePlayer,
+    stream,
+    activeProvider,
+    providers,
+    serverIndex,
+    language,
+  ]);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (manualFullscreen) {
+        exitFullscreen();
+        return true;
+      }
+      handleBackPress();
+      return true;
+    });
     return () => subscription.remove();
-  }, [manualFullscreen, exitFullscreen]);
+  }, [manualFullscreen, exitFullscreen, handleBackPress]);
 
   useEffect(() => {
     const hasPlayable = Boolean(source) || Boolean(embedSource);
@@ -2569,11 +2700,11 @@ export default function WatchScreen() {
     if (showControls && !playerLocked) {
       setControlsRendered(true);
       controlsOpacity.setValue(0);
-      const job = Animated.timing(controlsOpacity, { toValue: 1, duration: 180, useNativeDriver: true });
+      const job = Animated.timing(controlsOpacity, { toValue: 1, duration: 180, useNativeDriver: Platform.OS !== "web" });
       controlsFadeJob.current = job;
       job.start(() => { controlsFadeJob.current = null; });
     } else {
-      const job = Animated.timing(controlsOpacity, { toValue: 0, duration: 180, useNativeDriver: true });
+      const job = Animated.timing(controlsOpacity, { toValue: 0, duration: 180, useNativeDriver: Platform.OS !== "web" });
       controlsFadeJob.current = job;
       job.start(({ finished }) => { controlsFadeJob.current = null; if (finished) setControlsRendered(false); });
     }
@@ -2628,7 +2759,25 @@ export default function WatchScreen() {
       {source ? <Video key={activeProvider?.id ?? "default"} ref={videoRef} style={StyleSheet.absoluteFill} source={{ uri: videoSourceUri, headers: videoSourceHeaders, type: videoContentType, bufferConfig: videoBufferConfig }}
         paused={!isPlaying} rate={is2xSeeking ? 2.0 : speed} resizeMode={fillMode} muted={muted} volume={volume}
         maxBitRate={adaptiveBitrateCap ?? undefined}
-        onLoad={(data: OnLoadData) => { if (__DEV__) console.log(`[watch] first-frame t=${Date.now() - _watchMountTime}ms provider=${activeProvider?.id ?? "?"}`); setDuration(data.duration); sourceFirstFrame.current = true; sourceStarted.current = true; setPlayerStatus("playing"); setIsPlaying(true); setLastPlayerError(null); setShowControls(true); }}
+        onLoad={(data: OnLoadData) => {
+          if (__DEV__) {
+            console.log(`[PlaybackMetrics] Metadata Loaded (onLoad): duration=${data.duration}s t=${Date.now() - screenMountTime}ms provider=${activeProvider?.provider ?? activeProvider?.id ?? "?"}`);
+          }
+          setDuration(data.duration);
+          sourceStarted.current = true;
+          setLastPlayerError(null);
+          setShowControls(true);
+        }}
+        onReadyForDisplay={() => {
+          if (!sourceFirstFrame.current) {
+            sourceFirstFrame.current = true;
+            if (__DEV__) {
+              console.log(`[PlaybackMetrics] First Frame Displayed (onReadyForDisplay): totalTimeToFirstFrame=${Date.now() - screenMountTime}ms provider=${activeProvider?.provider ?? activeProvider?.id ?? "?"}`);
+            }
+            setPlayerStatus("playing");
+            setIsPlaying(true);
+          }
+        }}
         onProgress={handleVideoProgress}
         onBuffer={(data: OnBufferData) => { setBuffering(data.isBuffering); }}
         onVideoTracks={handleVideoTracks}
@@ -2676,7 +2825,7 @@ export default function WatchScreen() {
               <View pointerEvents="none" style={styles.scrimBottomSoft} />
               <View pointerEvents="none" style={styles.scrimBottomMain} />
               <View style={styles.embedTopBar} pointerEvents="box-none">
-                <Pressable onPress={() => { if (manualFullscreen) exitFullscreen(); else router.back(); }} accessibilityRole="button" accessibilityLabel="Go back" style={styles.iconButton} hitSlop={10}>
+                <Pressable onPress={handleBackPress} accessibilityRole="button" accessibilityLabel="Go back" style={styles.iconButton} hitSlop={10}>
                   <ArrowLeft size={22} color="#FFF" weight="bold" />
                 </Pressable>
                 <View pointerEvents="none" style={styles.playerTitleWrap}>
@@ -2750,7 +2899,7 @@ export default function WatchScreen() {
           <View pointerEvents="none" style={styles.scrimBottomMain} />
           {/* TOP BAR */}
           <View style={styles.topBar}>
-            <Pressable onPress={() => { if (manualFullscreen) exitFullscreen(); else router.back(); }} accessibilityRole="button" accessibilityLabel="Go back" style={styles.iconButton} hitSlop={10}>
+            <Pressable onPress={handleBackPress} accessibilityRole="button" accessibilityLabel="Go back" style={styles.iconButton} hitSlop={10}>
               <ArrowLeft size={22} color="#FFF" weight="bold" />
             </Pressable>
             <Text style={styles.playerTitle} numberOfLines={1} ellipsizeMode="tail">{`${title} - Episode ${episode}`}</Text>

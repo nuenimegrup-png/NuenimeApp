@@ -69,6 +69,70 @@ function formatAiringDate(airingAt?: number | null): string {
   return `Tayang ${date.toLocaleDateString("id-ID", { day: "numeric", month: "short" })}`;
 }
 
+function getStatusDisplay(status?: string | null): string {
+  if (!status) return "-";
+  const s = status.toUpperCase();
+  if (s === "RELEASING") return "Ongoing";
+  if (s === "FINISHED" || s === "COMPLETED") return "Completed";
+  if (s === "NOT_YET_RELEASED") return "Upcoming";
+  if (s === "CANCELLED") return "Cancelled";
+  if (s === "HIATUS") return "Hiatus";
+  return status;
+}
+
+function getSourceDisplay(source?: string | null): string {
+  if (!source) return "Manga";
+  return source
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function getSeasonDisplay(season?: string | null, seasonYear?: number | null): string {
+  if (season && seasonYear) {
+    const sName = season.charAt(0).toUpperCase() + season.slice(1).toLowerCase();
+    return `${sName} ${seasonYear}`;
+  }
+  if (seasonYear) return String(seasonYear);
+  return "-";
+}
+
+function getStudioDisplay(studios?: any): string {
+  const mainStudio =
+    studios?.edges?.find((e: any) => e.isMain)?.node?.name ||
+    studios?.nodes?.[0]?.name;
+  return mainStudio || "-";
+}
+
+function getProducersDisplay(studios?: any, studioDisplay?: string): string {
+  const nonMain = studios?.edges
+    ?.filter((e: any) => !e.isMain && e.node?.name)
+    .map((e: any) => e.node?.name)
+    .filter(Boolean);
+  if (nonMain && nonMain.length > 0) {
+    return nonMain.slice(0, 2).join(", ");
+  }
+  return studioDisplay && studioDisplay !== "-" ? studioDisplay : "-";
+}
+
+function getReleasedDisplay(startDate?: any, endDate?: any): string {
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+  const formatD = (d?: { year?: number | null; month?: number | null; day?: number | null } | null) => {
+    if (!d?.year) return null;
+    const m = d.month ? `${months[d.month - 1]} ` : "";
+    const day = d.day ? `${d.day}, ` : "";
+    return `${m}${day}${d.year}`;
+  };
+  const s = formatD(startDate);
+  const e = formatD(endDate);
+  if (s && e) return `${s} to ${e}`;
+  if (s) return `${s} to ?`;
+  return "-";
+}
+
 export default function AnimeDetailScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const id = parseRouteId(params.id) ?? -1;
@@ -254,6 +318,14 @@ export default function AnimeDetailScreen() {
   const data = anime.data;
   const title = animeTitle(data);
   const isSynopsisLong = cleanedSynopsis.length > 200 || cleanedSynopsis.includes("\n\n");
+
+  // Metadata Details Helper (Japanese, English, Status, Type, Source, Duration, Season, Studio, Producers, Released)
+  const statusDisplay = getStatusDisplay(data?.status);
+  const sourceDisplay = getSourceDisplay(data?.source);
+  const seasonDisplay = getSeasonDisplay(data?.season, data?.seasonYear);
+  const studioDisplay = getStudioDisplay(data?.studios);
+  const producersDisplay = getProducersDisplay(data?.studios, studioDisplay);
+  const releasedDisplay = getReleasedDisplay(data?.startDate, data?.endDate);
   const openEpisode = (episodeNumber: number) => {
     const isFuture = isConfirmedFutureRelease({
       episodeNumber,
@@ -542,6 +614,96 @@ export default function AnimeDetailScreen() {
             </Text>
           </View>
         ) : null}
+
+        {/* Anime Details Card (DI ATAS SINOPSIS) */}
+        <View style={styles.sectionCard}>
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.cardHeaderIndicator} />
+            <Text style={styles.cardSectionTitle}>Detail Anime</Text>
+          </View>
+
+          <View style={styles.detailTable}>
+            {/* Row 1: Japanese & English */}
+            <View style={styles.detailRow}>
+              <View style={styles.detailColLeft}>
+                <Text style={styles.detailKey}>Japanese</Text>
+                <Text style={styles.detailVal} numberOfLines={1}>
+                  {data.title.native || "-"}
+                </Text>
+              </View>
+              <View style={styles.detailColRight}>
+                <Text style={styles.detailKey}>English</Text>
+                <Text style={styles.detailVal} numberOfLines={1}>
+                  {data.title.english || data.title.romaji || "-"}
+                </Text>
+              </View>
+            </View>
+
+            {/* Row 2: Status & Type */}
+            <View style={styles.detailRow}>
+              <View style={styles.detailColLeft}>
+                <Text style={styles.detailKey}>Status</Text>
+                <Text style={styles.detailVal} numberOfLines={1}>
+                  {statusDisplay}
+                </Text>
+              </View>
+              <View style={styles.detailColRight}>
+                <Text style={styles.detailKey}>Type</Text>
+                <Text style={styles.detailVal} numberOfLines={1}>
+                  {data.format || "TV"}
+                </Text>
+              </View>
+            </View>
+
+            {/* Row 3: Source & Duration */}
+            <View style={styles.detailRow}>
+              <View style={styles.detailColLeft}>
+                <Text style={styles.detailKey}>Source</Text>
+                <Text style={styles.detailVal} numberOfLines={1}>
+                  {sourceDisplay}
+                </Text>
+              </View>
+              <View style={styles.detailColRight}>
+                <Text style={styles.detailKey}>Duration</Text>
+                <Text style={styles.detailVal} numberOfLines={1}>
+                  {data.duration ? `${data.duration} min.` : "24 min."}
+                </Text>
+              </View>
+            </View>
+
+            {/* Row 4: Season & Studio */}
+            <View style={styles.detailRow}>
+              <View style={styles.detailColLeft}>
+                <Text style={styles.detailKey}>Season</Text>
+                <Text style={styles.detailVal} numberOfLines={1}>
+                  {seasonDisplay}
+                </Text>
+              </View>
+              <View style={styles.detailColRight}>
+                <Text style={styles.detailKey}>Studio</Text>
+                <Text style={styles.detailVal} numberOfLines={1}>
+                  {studioDisplay}
+                </Text>
+              </View>
+            </View>
+
+            {/* Row 5: Producers & Released */}
+            <View style={[styles.detailRow, { borderBottomWidth: 0 }]}>
+              <View style={styles.detailColLeft}>
+                <Text style={styles.detailKey}>Producers</Text>
+                <Text style={styles.detailVal} numberOfLines={1}>
+                  {producersDisplay}
+                </Text>
+              </View>
+              <View style={styles.detailColRight}>
+                <Text style={styles.detailKey}>Released</Text>
+                <Text style={styles.detailVal} numberOfLines={1}>
+                  {releasedDisplay}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
 
         {/* Synopsis & Genres Card */}
         <View style={styles.sectionCard}>
@@ -1045,7 +1207,7 @@ export default function AnimeDetailScreen() {
                           <View style={styles.episodeBadgeStatusRow}>
                             {isFuture ? (
                               <View style={styles.upcomingPill}>
-                                <AppIcon name="clock-outline" size={10} color="#38BDF8" />
+                                <AppIcon name="clock-outline" size={10} color="#C0C0C0" />
                                 <Text style={styles.upcomingPillText}>
                                   {airingLabel}
                                 </Text>
@@ -1467,6 +1629,42 @@ const styles = StyleSheet.create({
     color: "#E2E8F0",
   },
 
+  detailTable: {
+    width: "100%",
+  },
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.06)",
+    gap: 12,
+  },
+  detailColLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  detailColRight: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  detailKey: {
+    width: 68,
+    fontFamily: "Nunito-SemiBold",
+    fontSize: 12.5,
+    color: "#94A3B8",
+  },
+  detailVal: {
+    flex: 1,
+    fontFamily: "Nunito-Bold",
+    fontSize: 12.5,
+    color: "#F8FAFC",
+  },
+
   synopsisText: {
     fontFamily: "Nunito-Regular",
     fontSize: 14,
@@ -1833,17 +2031,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "rgba(56, 189, 248, 0.12)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "rgba(56, 189, 248, 0.28)",
+    paddingVertical: 1,
   },
   upcomingPillText: {
     fontFamily: "Nunito-Bold",
-    fontSize: 10,
-    color: "#38BDF8",
+    fontSize: 10.5,
+    color: "#C0C0C0",
   },
   thumbPlayIconWrapUpcoming: {
     backgroundColor: "rgba(15, 23, 42, 0.75)",

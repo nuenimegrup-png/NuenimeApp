@@ -21,6 +21,7 @@ export const queryClient = new QueryClient({
 });
 
 import { ExpToastProvider } from "@/providers/exp-toast-provider";
+import { MiniPlayerProvider } from "@/providers/mini-player-provider";
 
 export function AppProviders({ children }: PropsWithChildren) {
   useEffect(() => {
@@ -73,7 +74,9 @@ export function AppProviders({ children }: PropsWithChildren) {
       <AuthProvider>
         <ExpToastProvider>
           <NotificationsProvider>
-            <ThemeProvider>{children}</ThemeProvider>
+            <MiniPlayerProvider>
+              <ThemeProvider>{children}</ThemeProvider>
+            </MiniPlayerProvider>
           </NotificationsProvider>
         </ExpToastProvider>
       </AuthProvider>

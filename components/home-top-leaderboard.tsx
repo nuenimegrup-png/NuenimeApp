@@ -12,6 +12,8 @@ import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppIcon } from "@/components/app-icon";
 import { BorderAvatar } from "@/components/border-avatar";
+import { UserVerificationBadge } from "@/components/user-verification-badge";
+import { ProfileCityPlaque } from "@/components/profile-city-plaque";
 import { getTierForLevel } from "@/components/level-progress-modal";
 import { getLeaderboard, formatXp, type LeaderboardEntry } from "@/lib/leaderboard-service";
 import { supabase } from "@/lib/supabase";
@@ -21,6 +23,26 @@ import { isSpecialRole } from "@/lib/admin-service";
 const GOLD = "#F59E0B";
 const SILVER = "#CBD5E1";
 const BRONZE = "#F97316";
+
+const NAME_COLORS = [
+  "#38BDF8", // Cyan Sky
+  "#4ADE80", // Emerald Green
+  "#F43F5E", // Rose Red
+  "#A855F7", // Purple
+  "#F59E0B", // Amber Gold
+  "#2DD4BF", // Teal
+  "#EC4899", // Pink
+  "#60A5FA", // Blue
+];
+
+function getUsernameColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % NAME_COLORS.length;
+  return NAME_COLORS[index];
+}
 
 function rankColor(rank: number): string {
   if (rank === 1) return GOLD;
@@ -37,27 +59,18 @@ function crownIcon(rank: number): string | null {
 }
 
 // ── Podium Item Mini Card ───────────────────────────────────────────────────
-function HomePodiumItem({ entry }: { entry: LeaderboardEntry }) {
+const HomePodiumItem = React.memo(function HomePodiumItem({ entry }: { entry: LeaderboardEntry }) {
   const isFirst = entry.rank === 1;
   const clr = rankColor(entry.rank);
   const avatarSize = isFirst ? 52 : 42;
   const { currentTier, isInfinity } = getTierForLevel(entry.level, (entry as any).role);
+  const nameColor = useMemo(() => getUsernameColor(entry.displayName), [entry.displayName]);
 
   return (
     <View
       style={[
         styles.podiumItem,
         isFirst ? styles.podiumItemFirst : styles.podiumItemOther,
-        {
-          borderColor: isFirst
-            ? "rgba(245, 158, 11, 0.35)"
-            : entry.rank === 2
-            ? "rgba(203, 213, 225, 0.2)"
-            : "rgba(249, 115, 22, 0.2)",
-          backgroundColor: isFirst
-            ? "rgba(245, 158, 11, 0.05)"
-            : "rgba(255, 255, 255, 0.025)",
-        },
       ]}
     >
       {/* Crown on top */}
@@ -91,14 +104,20 @@ function HomePodiumItem({ entry }: { entry: LeaderboardEntry }) {
         </View>
       </View>
 
-      {/* User Name */}
+      {/* User Name & Verification Badge */}
       <View style={styles.nameRow}>
-        <Text style={styles.userName} numberOfLines={1}>
+        <Text style={[styles.userName, { color: nameColor }]} numberOfLines={1}>
           {entry.displayName}
         </Text>
-        {entry.isVip && (
-          <AppIcon name="check-decagram" size={10} color="#06B6D4" />
-        )}
+        <UserVerificationBadge role={entry.role} isVip={entry.isVip} size={10} />
+      </View>
+
+      {/* Plakat Kota & Klan (DRAKONIA / GELANDANGAN) */}
+      <View style={styles.homeCityClanRow}>
+        <ProfileCityPlaque
+          userId={entry.userId}
+          podium
+        />
       </View>
 
       {/* Level Tier Badge with Official Tier Icon */}
@@ -128,7 +147,7 @@ function HomePodiumItem({ entry }: { entry: LeaderboardEntry }) {
       </Text>
     </View>
   );
-}
+});
 
 // ── Main Home Top Leaderboard Card ──────────────────────────────────────────
 export function HomeTopLeaderboard() {
@@ -316,26 +335,29 @@ const styles = StyleSheet.create({
   podiumItem: {
     flex: 1,
     alignItems: "center",
-    borderRadius: 16,
-    borderWidth: 1,
     paddingHorizontal: 4,
     paddingBottom: 10,
     gap: 3,
   },
   podiumItemFirst: {
     paddingTop: 4,
-    minHeight: 165,
+    minHeight: 185,
     justifyContent: "flex-end",
     zIndex: 2,
-    elevation: 3,
   },
   podiumItemOther: {
     paddingTop: 10,
-    minHeight: 150,
+    minHeight: 170,
     justifyContent: "flex-end",
   },
   podiumItemEmpty: {
     flex: 1,
+  },
+  homeCityClanRow: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginVertical: 2,
+    maxWidth: "100%",
   },
 
   // Crown

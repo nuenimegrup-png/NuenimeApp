@@ -35,6 +35,13 @@ export type Anime = {
   myAnimeListId?: number | null;
   relations?: { edges?: AnimeRelationEdge[] | null } | null;
   trailer?: { id?: string | null; site?: string | null; thumbnail?: string | null } | null;
+  source?: string | null;
+  studios?: {
+    edges?: { isMain?: boolean; node?: { name?: string | null } | null }[] | null;
+    nodes?: { name?: string | null }[] | null;
+  } | null;
+  startDate?: { year?: number | null; month?: number | null; day?: number | null } | null;
+  endDate?: { year?: number | null; month?: number | null; day?: number | null } | null;
 };
 
 export type AnimePage = {

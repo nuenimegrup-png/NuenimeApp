@@ -19,6 +19,7 @@ import { useStartupPrefetch } from "@/hooks/use-startup-prefetch";
 import { AiringReminderScheduler } from "@/hooks/use-airing-reminders";
 import { ChoiceSheetProvider } from "@/components/choice-sheet";
 import { AppAnnouncementModal } from "@/components/app-announcement-modal";
+import { MiniVideoPlayer } from "@/components/mini-video-player";
 import { MaintenanceGate } from "@/components/maintenance-gate";
 import { BroadcastNotificationListener } from "@/components/broadcast-notification-listener";
 import { AppIcon } from "@/components/app-icon";
@@ -140,6 +141,7 @@ export default function RootLayout() {
             <FirstRunOnboarding onComplete={() => {}} />
             <MaintenanceGate />
             <BroadcastNotificationListener />
+            <MiniVideoPlayer />
             <AppAnnouncementModal />
           </ChoiceSheetProvider>
         </AppProviders>

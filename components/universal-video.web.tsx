@@ -16,6 +16,7 @@ export type UniversalVideoProps = {
   volume?: number;
   maxBitRate?: number;
   onLoad?: (data: OnLoadData) => void;
+  onReadyForDisplay?: () => void;
   onProgress?: (data: OnProgressData) => void;
   onBuffer?: (data: OnBufferData) => void;
   onVideoTracks?: (data: any) => void;
@@ -102,7 +103,13 @@ export const UniversalVideo = forwardRef<VideoRef, UniversalVideoProps>((props, 
           });
         }
         if (!props.paused) {
-          video.play().catch(() => {});
+          const playPromise = video.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(() => {
+              video.muted = true;
+              void video.play().catch(() => {});
+            });
+          }
         }
       });
 
@@ -133,12 +140,24 @@ export const UniversalVideo = forwardRef<VideoRef, UniversalVideoProps>((props, 
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = uri;
       if (!props.paused) {
-        video.play().catch(() => {});
+        const playPromise = video.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(() => {
+            video.muted = true;
+            void video.play().catch(() => {});
+          });
+        }
       }
     } else {
       video.src = uri;
       if (!props.paused) {
-        video.play().catch(() => {});
+        const playPromise = video.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(() => {
+            video.muted = true;
+            void video.play().catch(() => {});
+          });
+        }
       }
     }
 
@@ -209,8 +228,15 @@ export const UniversalVideo = forwardRef<VideoRef, UniversalVideoProps>((props, 
     });
   };
 
+  const handleLoadedData = () => {
+    props.onReadyForDisplay?.();
+  };
+
   const handleWaiting = () => props.onBuffer?.({ isBuffering: true });
-  const handlePlaying = () => props.onBuffer?.({ isBuffering: false });
+  const handlePlaying = () => {
+    props.onBuffer?.({ isBuffering: false });
+    props.onReadyForDisplay?.();
+  };
   const handleEnded = () => props.onEnd?.();
   const handleError = () => {
     if (!hlsRef.current) {
@@ -256,6 +282,7 @@ export const UniversalVideo = forwardRef<VideoRef, UniversalVideoProps>((props, 
           display: "block",
         }}
         onLoadedMetadata={handleLoadedMetadata}
+        onLoadedData={handleLoadedData}
         onTimeUpdate={handleTimeUpdate}
         onWaiting={handleWaiting}
         onPlaying={handlePlaying}
