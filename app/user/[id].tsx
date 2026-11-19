@@ -36,6 +36,7 @@ import { hapticLight, hapticSuccess } from "@/lib/haptics";
 import { isSpecialRole } from "@/lib/admin-service";
 import { UserVerificationBadge } from "@/components/user-verification-badge";
 import { ProfileCityPlaque } from "@/components/profile-city-plaque";
+import { ProfileAffinityShowcase } from "@/components/profile-affinity-showcase";
 import { useQuery } from "@tanstack/react-query";
 import { getAnimeByIds } from "@/lib/anilist";
 import { animeTitle } from "@/lib/types";
@@ -612,6 +613,12 @@ export default function PublicUserProfileScreen() {
 
         {/* ─── 2. AVATAR CENTERED DENGAN BORDER ASLI (PERSIS SCREENSHOT 2) ─── */}
         <View style={styles.profileHeaderBox}>
+          {/* Widget Afinitas Showcase di Kanan (di bawah / di belakang avatar utama) */}
+          <ProfileAffinityShowcase
+            userId={id}
+            style={styles.profileAffinityShowcase}
+          />
+
           <View style={styles.avatarWrapper}>
             <BorderAvatar
               avatarSize={80}
@@ -899,7 +906,19 @@ export default function PublicUserProfileScreen() {
             </Pressable>
 
             <Pressable
-              onPress={() => showToast("Fitur Afinitas akan segera hadir.")}
+              onPress={() => {
+                hapticLight();
+                router.push({
+                  pathname: "/affinity",
+                  params: {
+                    isVisitor: isOwnProfile ? "0" : "1",
+                    targetUserId: targetUser.id,
+                    targetName: targetUser.displayName || targetUser.username || "Pengguna",
+                    targetAvatar: targetUser.avatarUrl || "",
+                    targetBorder: targetUser.equippedBorder || "",
+                  },
+                } as any);
+              }}
               style={({ pressed }) => [styles.featureCardBtn, pressed && styles.btnPressed]}
             >
               <View style={styles.featureLabelRow}>
@@ -1493,6 +1512,15 @@ const styles = StyleSheet.create({
     left: 14,
     zIndex: 15,
   },
+  profileAffinityShowcase: {
+    position: "absolute",
+    left: "50%",
+    marginLeft: 26,
+    right: 14,
+    top: 26,
+    zIndex: 1,
+    elevation: 1,
+  },
   bannerImage: {
     width: "100%",
     height: "100%",
@@ -1511,6 +1539,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
+    zIndex: 10,
+    elevation: 10,
   },
 
   // Name Block

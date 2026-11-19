@@ -49,6 +49,7 @@ import { getAnimeByIds } from "@/lib/anilist";
 import { animeTitle } from "@/lib/types";
 import { loadAccountSettings } from "@/lib/user-settings";
 import { ProfileCityPlaque } from "@/components/profile-city-plaque";
+import { ProfileAffinityShowcase } from "@/components/profile-affinity-showcase";
 
 const DEFAULT_BANNER =
   "https://imagepaste.org/i/jqbvxwm5.png";
@@ -1117,7 +1118,13 @@ export default function ProfileScreen() {
 
         {/* ─── 2. USER IDENTITY SECTION ─── */}
         <View style={styles.profileHeaderBox}>
-          {/* Avatar with Equipped Border if active */}
+          {/* Widget Afinitas Showcase di Kanan (di bawah / di belakang avatar utama) */}
+          <ProfileAffinityShowcase
+            userId={auth.user?.id}
+            style={styles.profileAffinityShowcase}
+          />
+
+          {/* Avatar with Equipped Border if active (di atas / di depan grafik detak jantung) */}
           <View style={styles.avatarWrapper}>
             <BorderAvatar
               avatarUrl={avatar}
@@ -1313,7 +1320,10 @@ export default function ProfileScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Fitur Afinitas"
-              onPress={() => showToast("Fitur Afinitas akan segera hadir.")}
+              onPress={() => {
+                hapticLight();
+                router.push("/affinity" as any);
+              }}
               style={({ pressed }) => [styles.featureCardBtn, pressed && styles.btnPressed]}
             >
               <View style={styles.featureLabelRow}>
@@ -2709,6 +2719,15 @@ const styles = StyleSheet.create({
     left: 14,
     zIndex: 15,
   },
+  profileAffinityShowcase: {
+    position: "absolute",
+    left: "50%",
+    marginLeft: 26,
+    right: 14,
+    top: 26,
+    zIndex: 1,
+    elevation: 1,
+  },
   bannerImage: {
     width: "100%",
     height: "100%",
@@ -2758,6 +2777,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
+    zIndex: 10,
+    elevation: 10,
   },
   avatarInner: {
     width: 80,
