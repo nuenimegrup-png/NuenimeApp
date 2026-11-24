@@ -1568,11 +1568,11 @@ const styles = StyleSheet.create({
   profileAffinityShowcase: {
     position: "absolute",
     left: "50%",
-    marginLeft: 78,
-    width: 140,
-    top: 22,
-    zIndex: 12,
-    elevation: 12,
+    marginLeft: 36,
+    width: 132,
+    top: 24,
+    zIndex: 8,
+    elevation: 8,
   },
   bannerImage: {
     width: "100%",
@@ -1592,8 +1592,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
-    zIndex: 10,
-    elevation: 10,
+    zIndex: 15,
+    elevation: 15,
   },
 
   // Name Block
