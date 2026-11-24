@@ -26,6 +26,9 @@ import type { TierId } from "@/app/affinity";
 
 export interface ProfileAffinityShowcaseProps {
   userId?: string | null;
+  userName?: string;
+  userAvatar?: string | null;
+  userBorder?: string | null;
   style?: StyleProp<ViewStyle>;
   onPress?: (() => void) | null;
 }
@@ -73,7 +76,7 @@ const TIER_THEMES: Record<
 };
 
 export const ProfileAffinityShowcase: React.FC<ProfileAffinityShowcaseProps> = React.memo(
-  ({ userId, style, onPress }) => {
+  ({ userId, userName, userAvatar, userBorder, style, onPress }) => {
     const auth = useAnirakuAuth();
     const activeUserId = userId || auth.user?.id;
     const isOwner = !userId || userId === auth.user?.id;
@@ -153,6 +156,10 @@ export const ProfileAffinityShowcase: React.FC<ProfileAffinityShowcaseProps> = R
           pathname: "/affinity",
           params: {
             targetUserId: activeUserId,
+            targetName: userName || activeBond?.friend?.name || "Pengguna",
+            targetAvatar: userAvatar || "",
+            targetBorder: userBorder || "",
+            tier: activeBond?.tierId || "pasangan",
             isVisitor: "1",
           },
         });
@@ -210,6 +217,7 @@ export const ProfileAffinityShowcase: React.FC<ProfileAffinityShowcaseProps> = R
               source={tierIcon}
               style={styles.tierIconImg}
               contentFit="contain"
+              cachePolicy="memory-disk"
             />
           </Animated.View>
         </View>
@@ -235,38 +243,16 @@ export const ProfileAffinityShowcase: React.FC<ProfileAffinityShowcaseProps> = R
           />
         </Svg>
 
-        {/* ─── 4. Avatar Teman / Pasangan di Sisi Kanan (Diperbesar Proporsional & Digeser Lebih ke Kiri) ─── */}
-        {activeBond.friend.equippedBorder ? (
-          <View style={styles.borderAvatarWrapper}>
-            <BorderAvatar
-              avatarUrl={activeBond.friend.avatarUrl}
-              fallbackText={friendInitial}
-              borderId={activeBond.friend.equippedBorder}
-              avatarSize={36}
-              disabled
-            />
-          </View>
-        ) : (
-          <View
-            style={[
-              styles.avatarFrame,
-              { borderColor: theme.avatarBorderColor },
-            ]}
-          >
-            {activeBond.friend.avatarUrl ? (
-              <Image
-                source={{ uri: activeBond.friend.avatarUrl }}
-                style={styles.avatarImg}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-              />
-            ) : (
-              <View style={styles.avatarFallback}>
-                <Text style={styles.avatarInitial}>{friendInitial}</Text>
-              </View>
-            )}
-          </View>
-        )}
+        {/* ─── 4. Avatar Teman / Pasangan di Sisi Kanan (Konsisten dengan BorderAvatar) ─── */}
+        <View style={styles.borderAvatarWrapper}>
+          <BorderAvatar
+            avatarUrl={activeBond.friend.avatarUrl}
+            fallbackText={friendInitial}
+            borderId={activeBond.friend.equippedBorder || null}
+            avatarSize={34}
+            disabled
+          />
+        </View>
       </Pressable>
     );
   }
@@ -293,49 +279,23 @@ const styles = StyleSheet.create({
   },
   waveSvg: {
     flex: 1,
-    height: 24,
-    minWidth: 18,
+    height: 22,
+    minWidth: 20,
   },
   iconWrapper: {
-    width: 28,
-    height: 28,
+    width: 26,
+    height: 26,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 5,
   },
   tierIconImg: {
-    width: 26,
-    height: 26,
+    width: 24,
+    height: 24,
   },
   borderAvatarWrapper: {
     marginLeft: 0,
     alignItems: "center",
     justifyContent: "center",
-  },
-  avatarFrame: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    borderWidth: 2,
-    overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 1,
-  },
-  avatarImg: {
-    width: "100%",
-    height: "100%",
-  },
-  avatarFallback: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: "#1E293B",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarInitial: {
-    color: "#F8FAFC",
-    fontSize: 14,
-    fontWeight: "700",
   },
 });

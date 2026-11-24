@@ -1133,6 +1133,9 @@ export default function ProfileScreen() {
           {/* Widget Afinitas Showcase di Kanan (di bawah / di belakang avatar utama) */}
           <ProfileAffinityShowcase
             userId={auth.user?.id}
+            userName={displayName}
+            userAvatar={avatar}
+            userBorder={equippedBorderId}
             style={styles.profileAffinityShowcase}
           />
 
@@ -2750,7 +2753,7 @@ const styles = StyleSheet.create({
   profileGiftShowcase: {
     position: "absolute",
     right: "50%",
-    marginRight: 70,
+    marginRight: 88,
     width: 56,
     height: 56,
     top: 15,
@@ -2760,8 +2763,8 @@ const styles = StyleSheet.create({
   profileAffinityShowcase: {
     position: "absolute",
     left: "50%",
-    marginLeft: 48,
-    width: 130,
+    marginLeft: 60,
+    width: 136,
     top: 22,
     zIndex: 12,
     elevation: 12,

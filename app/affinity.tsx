@@ -243,30 +243,56 @@ export default function AffinityScreen() {
       (routeParams.targetUserId && routeParams.targetUserId !== auth.user?.id)
   );
   const targetOwnerId = isVisiting && routeParams.targetUserId ? routeParams.targetUserId : auth.user?.id || "";
-  const targetOwnerName = isVisiting && routeParams.targetName ? routeParams.targetName : auth.profile?.display_name || auth.profile?.username || "Pengguna";
-  const targetOwnerAvatar = isVisiting && routeParams.targetAvatar ? routeParams.targetAvatar : auth.profile?.avatar_url || "";
+
+  // Data profil pemilik afinitas yang sedang dibuka
+  const [visitedProfile, setVisitedProfile] = useState<{
+    displayName: string;
+    username: string;
+    avatarUrl: string | null;
+    equippedBorder: string | null;
+  } | null>(null);
+
   const [targetOwnerBorder, setTargetOwnerBorder] = useState<string | null>(
     isVisiting && routeParams.targetBorder ? routeParams.targetBorder : auth.profile?.equipped_border || null
   );
-  const targetOwnerHandle = `@${(auth.profile?.username || "user").toLowerCase()}`;
 
-  // Sinkronisasi border pengguna yang dikunjungi jika belum ada di routeParams
+  // Ambil data profil pengguna yang dikunjungi jika belum lengkap
   useEffect(() => {
-    if (isVisiting && targetOwnerId && !routeParams.targetBorder) {
+    if (isVisiting && targetOwnerId) {
       supabase
         .from("profiles")
-        .select("equipped_border")
+        .select("display_name, username, avatar_url, equipped_border")
         .eq("id", targetOwnerId)
         .maybeSingle()
         .then(({ data }) => {
-          if (data?.equipped_border) {
-            setTargetOwnerBorder(data.equipped_border);
+          if (data) {
+            setVisitedProfile({
+              displayName: data.display_name || data.username || "Pengguna",
+              username: data.username || "user",
+              avatarUrl: data.avatar_url || null,
+              equippedBorder: data.equipped_border || null,
+            });
+            if (data.equipped_border) {
+              setTargetOwnerBorder(data.equipped_border);
+            }
           }
         });
     } else if (!isVisiting) {
       setTargetOwnerBorder(auth.profile?.equipped_border || null);
     }
-  }, [isVisiting, targetOwnerId, routeParams.targetBorder, auth.profile?.equipped_border]);
+  }, [isVisiting, targetOwnerId, auth.profile?.equipped_border]);
+
+  const targetOwnerName = isVisiting
+    ? (visitedProfile?.displayName || routeParams.targetName || "Pengguna")
+    : (auth.profile?.display_name || auth.profile?.username || "Pengguna");
+
+  const targetOwnerAvatar = isVisiting
+    ? (visitedProfile?.avatarUrl !== undefined ? (visitedProfile.avatarUrl || "") : (routeParams.targetAvatar || ""))
+    : (auth.profile?.avatar_url || "");
+
+  const targetOwnerHandle = isVisiting
+    ? `@${(visitedProfile?.username || routeParams.targetName || "user").toLowerCase().replace(/\s+/g, "")}`
+    : `@${(auth.profile?.username || "user").toLowerCase()}`;
 
   const isLeaderboardParam = Boolean(
     routeParams.view === "leaderboard" ||
@@ -329,9 +355,14 @@ export default function AffinityScreen() {
     routeParams.tier,
   ]);
 
+  const [loadingAffinityData, setLoadingAffinityData] = useState(true);
+
   // 1. Sinkronisasi Data Afinitas Real dari Supabase (Ringan: tanpa fetch history & leaderboard di awal)
   const reloadAffinityData = useCallback(async () => {
-    if (!targetOwnerId) return;
+    if (!targetOwnerId) {
+      setLoadingAffinityData(false);
+      return;
+    }
     try {
       const [realPrivacy, realBonds, realInvites] = await Promise.all([
         getAffinityPrivacy(targetOwnerId),
@@ -341,12 +372,73 @@ export default function AffinityScreen() {
       setPrivacy(realPrivacy);
       setBonds(realBonds as any);
       setPendingInvites(realInvites as any);
-    } catch {}
-  }, [targetOwnerId]);
+
+      // Otomatis pilih tier yang memiliki bond saat mengunjungi profil orang lain jika tidak ada param
+      if (isVisiting && !routeParams.tier && realBonds && realBonds.length > 0) {
+        const firstBond = realBonds[0];
+        if (firstBond?.tierId) {
+          setSelectedTier(firstBond.tierId);
+          setLeaderboardTab(firstBond.tierId);
+        }
+      }
+    } catch {
+    } finally {
+      setLoadingAffinityData(false);
+    }
+  }, [targetOwnerId, isVisiting, routeParams.tier]);
 
   useEffect(() => {
     reloadAffinityData();
   }, [reloadAffinityData]);
+
+  // Realtime Supabase Subscription untuk Afinitas (Instant sync tanpa beban CPU polling)
+  useEffect(() => {
+    if (!targetOwnerId) return;
+
+    const channel = supabase
+      .channel(`affinity-realtime-${targetOwnerId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "user_affinity_bonds",
+          filter: `user_id=eq.${targetOwnerId}`,
+        },
+        () => {
+          reloadAffinityData();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "user_affinity_invites",
+          filter: `receiver_id=eq.${targetOwnerId}`,
+        },
+        () => {
+          reloadAffinityData();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "user_affinity_invites",
+          filter: `sender_id=eq.${targetOwnerId}`,
+        },
+        () => {
+          reloadAffinityData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [targetOwnerId, reloadAffinityData]);
 
   // 2. Sinkronisasi Riwayat HANYA saat Modal Riwayat dibuka (Lazy Loading)
   useEffect(() => {
@@ -770,9 +862,10 @@ export default function AffinityScreen() {
             ]}
           >
             <Image
-              source={TIER_ICONS[selectedTier]}
+              source={TIER_ICONS[selectedTier] || TIER_ICONS.pasangan}
               style={styles.tierCrestImg}
               contentFit="contain"
+              cachePolicy="memory-disk"
             />
           </View>
 
@@ -791,6 +884,7 @@ export default function AffinityScreen() {
                     top: toPctY(sat.center.y) as any,
                   },
                 ]}
+                disabled={isVisiting && !bond && !pending}
                 onPress={() => handleSlotClick(sat.slotIndex, bond, pending)}
               >
                 {bond ? (
@@ -825,7 +919,11 @@ export default function AffinityScreen() {
                   </View>
                 ) : (
                   <View style={styles.satelliteEmptyWrap}>
-                    <AppIcon name="plus" size={14} color="#CBD5E1" />
+                    {!isVisiting ? (
+                      <AppIcon name="plus" size={14} color="#CBD5E1" />
+                    ) : (
+                      <View style={styles.satEmptyVisitorDot} />
+                    )}
                   </View>
                 )}
               </Pressable>
@@ -936,7 +1034,7 @@ export default function AffinityScreen() {
                 );
               })}
 
-              {activePending.map((inv) => (
+              {!isVisiting && activePending.map((inv) => (
                 <View key={inv.id} style={styles.pendingListItem}>
                   <BorderAvatar
                     size={42}
@@ -1001,25 +1099,26 @@ export default function AffinityScreen() {
           )}
 
           {/* Single Clean Thumb-Zone Primary Action Footer */}
-          <View style={styles.tierFooterAction}>
-            {remainingSlots > 0 ? (
-              <Pressable
-                style={({ pressed }) => [styles.primaryWhiteBtn, pressed && styles.btnPressed]}
-                onPress={() => {
-                  if (isVisiting) return;
-                  hapticLight();
-                  setInviteModalSlot(activeBonds.length + activePending.length);
-                }}
-              >
-                <AppIcon name="account-plus" size={18} color="#0A0D14" />
-                <Text style={styles.primaryWhiteBtnText}>
-                  Undang Teman ({remainingSlots} slot tersisa)
-                </Text>
-              </Pressable>
-            ) : (
-              <Text style={styles.tierFullText}>Semua slot {activeTierConfig.labelId} telah terisi.</Text>
-            )}
-          </View>
+          {!isVisiting && (
+            <View style={styles.tierFooterAction}>
+              {remainingSlots > 0 ? (
+                <Pressable
+                  style={({ pressed }) => [styles.primaryWhiteBtn, pressed && styles.btnPressed]}
+                  onPress={() => {
+                    hapticLight();
+                    setInviteModalSlot(activeBonds.length + activePending.length);
+                  }}
+                >
+                  <AppIcon name="account-plus" size={18} color="#0A0D14" />
+                  <Text style={styles.primaryWhiteBtnText}>
+                    Undang Teman ({remainingSlots} slot tersisa)
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text style={styles.tierFullText}>Semua slot {activeTierConfig.labelId} telah terisi.</Text>
+              )}
+            </View>
+          )}
         </View>
       </View>
     );
@@ -1194,59 +1293,70 @@ export default function AffinityScreen() {
             <AppIcon name="arrow-left" size={20} color="#CBD5E1" />
           </Pressable>
           <Text style={styles.topBarTitle}>
-            {activeScreen === "leaderboard" ? "TOP AFINITAS" : "AFFINITY"}
+            {activeScreen === "leaderboard"
+              ? "TOP AFINITAS"
+              : isVisiting
+              ? `AFINITAS ${targetOwnerName.toUpperCase()}`
+              : "AFFINITY"}
           </Text>
         </View>
 
         <View style={styles.topBarRight}>
           {activeScreen === "affinity" && (
-            <>
-              <Pressable
-                accessibilityLabel="Top Afinitas"
-                onPress={() => {
-                  hapticLight();
-                  setActiveScreen("leaderboard");
-                }}
-                style={({ pressed }) => [styles.iconBtn, pressed && styles.btnPressed]}
-              >
-                <AppIcon name="trophy-outline" size={18} color="#CBD5E1" />
-              </Pressable>
-
-              <Pressable
-                accessibilityLabel="Riwayat Ajakan"
-                onPress={() => {
-                  hapticLight();
-                  setIsHistoryOpen(true);
-                }}
-                style={({ pressed }) => [styles.iconBtn, pressed && styles.btnPressed]}
-              >
-                <AppIcon name="history" size={18} color="#CBD5E1" />
-              </Pressable>
-            </>
+            <Pressable
+              accessibilityLabel="Top Afinitas"
+              onPress={() => {
+                hapticLight();
+                setActiveScreen("leaderboard");
+              }}
+              style={({ pressed }) => [styles.iconBtn, pressed && styles.btnPressed]}
+            >
+              <AppIcon name="trophy-outline" size={18} color="#CBD5E1" />
+            </Pressable>
           )}
 
-          <Pressable
-            accessibilityLabel={`Privasi Bond: ${privacy}`}
-            onPress={() => {
-              hapticLight();
-              setIsPrivacyOpen(true);
-            }}
-            style={({ pressed }) => [styles.privacyBtn, pressed && styles.btnPressed]}
-          >
-            <AppIcon
-              name={privacy === "publik" ? "earth" : privacy === "teman" ? "account-multiple" : "lock"}
-              size={14}
-              color="#CBD5E1"
-            />
-            <Text style={styles.privacyBtnText}>
-              {privacy === "publik" ? "Publik" : privacy === "teman" ? "Teman saja" : "Privat"}
-            </Text>
-          </Pressable>
+          {activeScreen === "affinity" && !isVisiting && (
+            <Pressable
+              accessibilityLabel="Riwayat Ajakan"
+              onPress={() => {
+                hapticLight();
+                setIsHistoryOpen(true);
+              }}
+              style={({ pressed }) => [styles.iconBtn, pressed && styles.btnPressed]}
+            >
+              <AppIcon name="history" size={18} color="#CBD5E1" />
+            </Pressable>
+          )}
+
+          {!isVisiting && (
+            <Pressable
+              accessibilityLabel={`Privasi Bond: ${privacy}`}
+              onPress={() => {
+                hapticLight();
+                setIsPrivacyOpen(true);
+              }}
+              style={({ pressed }) => [styles.privacyBtn, pressed && styles.btnPressed]}
+            >
+              <AppIcon
+                name={privacy === "publik" ? "earth" : privacy === "teman" ? "account-multiple" : "lock"}
+                size={14}
+                color="#CBD5E1"
+              />
+              <Text style={styles.privacyBtnText}>
+                {privacy === "publik" ? "Publik" : privacy === "teman" ? "Teman saja" : "Privat"}
+              </Text>
+            </Pressable>
+          )}
         </View>
       </View>
 
       {/* ─── BODY ─── */}
-      {activeScreen === "leaderboard" ? (
+      {loadingAffinityData && bonds.length === 0 ? (
+        <View style={styles.affinityLoadingContainer}>
+          <ActivityIndicator size="large" color="#38BDF8" />
+          <Text style={styles.affinityLoadingText}>Memuat Afinitas...</Text>
+        </View>
+      ) : activeScreen === "leaderboard" ? (
         renderTopAfinitasView()
       ) : (
         <ScrollView style={styles.bodyScroll} contentContainerStyle={styles.bodyScrollContent}>
@@ -1315,48 +1425,50 @@ export default function AffinityScreen() {
                 );
               })()}
 
-              {/* Actions */}
-              <View style={{ gap: 10, marginTop: 16 }}>
-                {isGreetedToday(selectedBond.lastInteractionAt) ? (
-                  <View style={styles.greetedDisabledBtn}>
-                    <AppIcon name="check-circle-outline" size={16} color="#94A3B8" />
-                    <Text style={styles.greetedDisabledText}>Sudah Disapa Hari Ini (1x/hari)</Text>
-                  </View>
-                ) : (
-                  <Pressable
-                    style={({ pressed }) => [styles.primaryWhiteBtn, pressed && styles.btnPressed]}
-                    onPress={() => handleBoostXp(selectedBond.id)}
-                  >
-                    <AppIcon name="star-four-points" size={16} color="#0A0D14" />
-                    <Text style={styles.primaryWhiteBtnText}>Kirim Sapaan (+200 XP)</Text>
-                  </Pressable>
-                )}
-
-                {!confirmEndBond ? (
-                  <Pressable
-                    style={styles.unlinkBtn}
-                    onPress={() => setConfirmEndBond(true)}
-                  >
-                    <AppIcon name="link-off" size={16} color="#FB7185" />
-                    <Text style={styles.unlinkBtnText}>Putuskan Bond</Text>
-                  </Pressable>
-                ) : (
-                  <View style={styles.confirmEndCard}>
-                    <Text style={styles.confirmEndDesc}>
-                      Putuskan bond {activeTierConfig.labelId} dengan{" "}
-                      <Text style={{ fontWeight: "700", color: "#FFFFFF" }}>{selectedBond.friend.name}</Text>? Riwayat bond akan tercatat di tab Putus.
-                    </Text>
-                    <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-                      <Pressable style={styles.cancelEndBtn} onPress={() => setConfirmEndBond(false)}>
-                        <Text style={styles.cancelEndBtnText}>Batal</Text>
-                      </Pressable>
-                      <Pressable style={styles.doEndBtn} onPress={() => handleEndBond(selectedBond.id)}>
-                        <Text style={styles.doEndBtnText}>Ya, Putuskan</Text>
-                      </Pressable>
+              {/* Actions (Hanya tampil untuk pemilik akun / peserta bond) */}
+              {!isVisiting && (
+                <View style={{ gap: 10, marginTop: 16 }}>
+                  {isGreetedToday(selectedBond.lastInteractionAt) ? (
+                    <View style={styles.greetedDisabledBtn}>
+                      <AppIcon name="check-circle-outline" size={16} color="#94A3B8" />
+                      <Text style={styles.greetedDisabledText}>Sudah Disapa Hari Ini (1x/hari)</Text>
                     </View>
-                  </View>
-                )}
-              </View>
+                  ) : (
+                    <Pressable
+                      style={({ pressed }) => [styles.primaryWhiteBtn, pressed && styles.btnPressed]}
+                      onPress={() => handleBoostXp(selectedBond.id)}
+                    >
+                      <AppIcon name="star-four-points" size={16} color="#0A0D14" />
+                      <Text style={styles.primaryWhiteBtnText}>Kirim Sapaan (+200 XP)</Text>
+                    </Pressable>
+                  )}
+
+                  {!confirmEndBond ? (
+                    <Pressable
+                      style={styles.unlinkBtn}
+                      onPress={() => setConfirmEndBond(true)}
+                    >
+                      <AppIcon name="link-off" size={16} color="#FB7185" />
+                      <Text style={styles.unlinkBtnText}>Putuskan Bond</Text>
+                    </Pressable>
+                  ) : (
+                    <View style={styles.confirmEndCard}>
+                      <Text style={styles.confirmEndDesc}>
+                        Putuskan bond {activeTierConfig.labelId} dengan{" "}
+                        <Text style={{ fontWeight: "700", color: "#FFFFFF" }}>{selectedBond.friend.name}</Text>? Riwayat bond akan tercatat di tab Putus.
+                      </Text>
+                      <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                        <Pressable style={styles.cancelEndBtn} onPress={() => setConfirmEndBond(false)}>
+                          <Text style={styles.cancelEndBtnText}>Batal</Text>
+                        </Pressable>
+                        <Pressable style={styles.doEndBtn} onPress={() => handleEndBond(selectedBond.id)}>
+                          <Text style={styles.doEndBtnText}>Ya, Putuskan</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
           </View>
         </Modal>
@@ -1847,6 +1959,24 @@ const styles = StyleSheet.create({
     backgroundColor: "#181E2B",
     alignItems: "center",
     justifyContent: "center",
+  },
+  satEmptyVisitorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
+  },
+  affinityLoadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 80,
+    gap: 12,
+  },
+  affinityLoadingText: {
+    color: "#94A3B8",
+    fontSize: 13,
+    fontFamily: "Nunito-SemiBold",
   },
   avatarImgFull: {
     width: "100%",
