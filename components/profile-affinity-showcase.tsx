@@ -186,7 +186,7 @@ export const ProfileAffinityShowcase: React.FC<ProfileAffinityShowcaseProps> = R
         ]}
       >
         {/* ─── 1. Gelombang Detak Jantung Sisi Kiri (Muncul dari belakang avatar utama) ─── */}
-        <Svg style={styles.waveSvg} viewBox="0 0 100 26" preserveAspectRatio="none">
+        <Svg style={styles.waveSvgLeft} viewBox="0 0 100 26" preserveAspectRatio="none">
           {/* Outer Glow Path */}
           <Path
             d="M 0 13 L 26 13 L 34 18 L 45 3 L 57 23 L 65 7 L 73 13 L 100 13"
@@ -223,7 +223,7 @@ export const ProfileAffinityShowcase: React.FC<ProfileAffinityShowcaseProps> = R
         </View>
 
         {/* ─── 3. Gelombang Detak Jantung Sisi Kanan (Menghubungkan ke Avatar Teman) ─── */}
-        <Svg style={styles.waveSvg} viewBox="0 0 100 26" preserveAspectRatio="none">
+        <Svg style={styles.waveSvgRight} viewBox="0 0 100 26" preserveAspectRatio="none">
           {/* Outer Glow Path */}
           <Path
             d="M 0 13 L 24 13 L 32 18 L 43 3 L 55 23 L 63 7 L 71 13 L 100 13"
@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     paddingHorizontal: 0,
     width: "100%",
-    maxWidth: 136,
+    maxWidth: 130,
   },
   containerEmpty: {
     gap: 4,
@@ -277,21 +277,26 @@ const styles = StyleSheet.create({
     opacity: 0.78,
     transform: [{ scale: 0.96 }],
   },
-  waveSvg: {
+  waveSvgLeft: {
+    flex: 1.35,
+    height: 22,
+    minWidth: 32,
+  },
+  waveSvgRight: {
     flex: 1,
     height: 22,
-    minWidth: 20,
+    minWidth: 24,
   },
   iconWrapper: {
-    width: 26,
-    height: 26,
+    width: 24,
+    height: 24,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 5,
   },
   tierIconImg: {
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
   },
   borderAvatarWrapper: {
     marginLeft: 0,

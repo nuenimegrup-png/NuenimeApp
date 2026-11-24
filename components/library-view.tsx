@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -146,6 +146,315 @@ function HistorySkeleton() {
   );
 }
 
+function BookmarkSkeleton({ isGrid = false }: { isGrid?: boolean }) {
+  if (isGrid) {
+    return (
+      <View style={[styles.listContent, styles.gridListContent]}>
+        <View style={styles.gridRow}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <View key={i} style={[styles.gridCard, { width: 160 }]}>
+              <Skeleton style={styles.gridImageWrapper} />
+              <Skeleton style={{ width: "90%", height: 14, borderRadius: 4, marginTop: 8 }} />
+              <Skeleton style={{ width: "60%", height: 12, borderRadius: 4, marginTop: 4 }} />
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.listContent}>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <View key={i} style={styles.glassCard}>
+          <Skeleton style={styles.cardPoster} />
+          <View style={styles.cardBody}>
+            <View style={styles.badgeRow}>
+              <Skeleton style={{ width: 80, height: 18, borderRadius: 6 }} />
+              <Skeleton style={{ width: 50, height: 18, borderRadius: 6 }} />
+            </View>
+            <Skeleton style={{ width: "80%", height: 16, borderRadius: 4, marginTop: 8 }} />
+            <Skeleton style={{ width: "50%", height: 12, borderRadius: 4, marginTop: 6 }} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function AlertSkeleton() {
+  return (
+    <View style={styles.listContent}>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <View key={i} style={[styles.glassCard, styles.alertCard]}>
+          <Skeleton style={{ width: 10, height: 10, borderRadius: 5, marginTop: 4 }} />
+          <View style={styles.cardBody}>
+            <Skeleton style={{ width: "70%", height: 14, borderRadius: 4 }} />
+            <Skeleton style={{ width: "95%", height: 13, borderRadius: 4, marginTop: 6 }} />
+            <Skeleton style={{ width: "35%", height: 11, borderRadius: 4, marginTop: 6 }} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const HistoryCardItem = React.memo(function HistoryCardItem({
+  item,
+  percent,
+  canRemove,
+  removing,
+  onPress,
+  onRemove,
+}: {
+  item: any;
+  percent: number;
+  canRemove: boolean;
+  removing: boolean;
+  onPress: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <View style={styles.glassCard}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Lanjutkan ${item.anime_title || "Anime"} episode ${item.episode_number}`}
+        onPress={onPress}
+        onLongPress={canRemove ? onRemove : undefined}
+        style={({ pressed }) => [styles.historyContentWrap, pressed && styles.btnPressed]}
+      >
+        <Image
+          source={{ uri: item.episode_thumbnail || item.anime_image || "" }}
+          style={styles.cardPoster}
+          contentFit="cover"
+          transition={150}
+          cachePolicy="memory-disk"
+        />
+        <View style={styles.cardBody}>
+          <View style={styles.badgeRow}>
+            <View style={styles.epBadge}>
+              <Text style={styles.epBadgeText}>EP {item.episode_number}</Text>
+            </View>
+            <Text style={styles.resumeStatusText}>{percent}% Ditonton</Text>
+          </View>
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {item.anime_title || "Anime"}
+          </Text>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${percent}%` }]} />
+          </View>
+          <Text style={styles.cardSubText}>Lanjutkan Menonton</Text>
+        </View>
+      </Pressable>
+      {canRemove ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Hapus riwayat"
+          disabled={removing}
+          hitSlop={8}
+          onPress={onRemove}
+          style={({ pressed }) => [styles.actionCircleBtn, pressed && styles.btnPressed]}
+        >
+          <AppIcon
+            name="trash-can-outline"
+            size={16}
+            color={removing ? "#EF4444" : "#94A3B8"}
+          />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+});
+
+const BookmarkListItem = React.memo(function BookmarkListItem({
+  item,
+  status,
+  epMeta,
+  onPress,
+  onOpenStatus,
+}: {
+  item: any;
+  status: ListStatus;
+  epMeta: string | null;
+  onPress: () => void;
+  onOpenStatus: () => void;
+}) {
+  const colors = statusColors[status];
+  const rawScore = Number(item?.score ?? item?.averageScore ?? 0);
+  const displayScore = rawScore > 10 ? (rawScore / 10).toFixed(1) : rawScore > 0 ? rawScore.toFixed(1) : null;
+
+  return (
+    <Pressable
+      accessibilityRole={Platform.OS === "web" ? undefined : "button"}
+      onPress={onPress}
+      onLongPress={onOpenStatus}
+      style={({ pressed }) => [styles.glassCard, pressed && styles.btnPressed]}
+    >
+      <Image
+        source={{ uri: item.image || item.anime_image || "" }}
+        style={styles.cardPoster}
+        contentFit="cover"
+        transition={150}
+        cachePolicy="memory-disk"
+      />
+      <View style={styles.cardBody}>
+        <View style={styles.badgeRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Ubah status ${item.title || item.anime_title || "Anime"}`}
+            onPress={(e) => {
+              e?.stopPropagation?.();
+              onOpenStatus();
+            }}
+            hitSlop={6}
+            style={[
+              styles.statusBadgeSmall,
+              { backgroundColor: colors.bg, borderColor: colors.border },
+            ]}
+          >
+            <Text style={[styles.statusBadgeSmallText, { color: colors.text }]}>
+              {statusLabelsId[status] || LIST_STATUS_LABELS[status]}
+            </Text>
+          </Pressable>
+
+          <View style={styles.typeBadge}>
+            <Text style={styles.typeBadgeText}>{item.type || "ANIME"}</Text>
+          </View>
+          {displayScore ? (
+            <View style={styles.scoreBadge}>
+              <Text style={styles.scoreStarIcon}>★</Text>
+              <Text style={styles.scoreBadgeText}>{displayScore}</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={styles.cardTitle} numberOfLines={2}>
+          {item.title || item.anime_title || "Anime"}
+        </Text>
+        <Text style={styles.cardSubText}>
+          {[
+            epMeta,
+            item.format || "TV Series",
+            item.episodes ? `${item.episodes} Eps` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </Text>
+      </View>
+      <AppIcon name="chevron-right" size={18} color="#64748B" />
+    </Pressable>
+  );
+});
+
+const BookmarkGridItem = React.memo(function BookmarkGridItem({
+  item,
+  status,
+  epMeta,
+  cardWidth,
+  onPress,
+  onOpenStatus,
+}: {
+  item: any;
+  status: ListStatus;
+  epMeta: string | null;
+  cardWidth: number;
+  onPress: () => void;
+  onOpenStatus: () => void;
+}) {
+  const uri = item.image || item.anime_image || "";
+  const colors = statusColors[status];
+  const rawScore = Number(item?.score ?? item?.averageScore ?? 0);
+  const displayScore = rawScore > 10 ? (rawScore / 10).toFixed(1) : rawScore > 0 ? rawScore.toFixed(1) : null;
+
+  return (
+    <Pressable
+      accessibilityRole={Platform.OS === "web" ? undefined : "button"}
+      onPress={onPress}
+      onLongPress={onOpenStatus}
+      style={({ pressed }) => [
+        styles.gridCard,
+        { width: cardWidth, maxWidth: cardWidth },
+        pressed && styles.btnPressed,
+      ]}
+    >
+      <View style={styles.gridImageWrapper}>
+        {uri ? (
+          <Image
+            source={{ uri }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={150}
+            cachePolicy="memory-disk"
+          />
+        ) : (
+          <Text style={styles.gridFallbackLetter}>
+            {String(item.title || item.anime_title || "A").charAt(0).toUpperCase()}
+          </Text>
+        )}
+
+        <Pressable
+          accessibilityRole="button"
+          onPress={(e) => {
+            e?.stopPropagation?.();
+            onOpenStatus();
+          }}
+          hitSlop={6}
+          style={[
+            styles.gridStatusBadge,
+            { backgroundColor: colors.bg, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.statusBadgeSmallText, { color: colors.text, fontSize: 9 }]}>
+            {statusLabelsId[status] || LIST_STATUS_LABELS[status]}
+          </Text>
+        </Pressable>
+
+        {displayScore ? (
+          <View style={styles.gridBadge}>
+            <Text style={styles.gridBadgeText}>★ {displayScore}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={styles.gridTitle} numberOfLines={2}>
+        {item.title || item.anime_title || "Anime"}
+      </Text>
+      <Text style={styles.gridMeta} numberOfLines={1}>
+        {[epMeta, item.type || item.format || "ANIME"].filter(Boolean).join(" · ")}
+      </Text>
+    </Pressable>
+  );
+});
+
+const AlertCardItem = React.memo(function AlertCardItem({
+  item,
+  onPress,
+}: {
+  item: any;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.glassCard, styles.alertCard, pressed && styles.btnPressed]}
+    >
+      <View style={styles.alertIndicatorCol}>
+        <View style={[styles.alertDot, !item.read && styles.alertDotUnread]} />
+      </View>
+      <View style={styles.cardBody}>
+        {item.title ? (
+          <Text style={[styles.cardTitle, { fontSize: 13, marginBottom: 2 }]} numberOfLines={1}>
+            {item.title}
+          </Text>
+        ) : null}
+        <Text style={styles.alertText}>{item.message}</Text>
+        <Text style={styles.alertTimeText}>
+          {item.read ? "Sudah dibaca" : "Pemberitahuan baru"}
+        </Text>
+      </View>
+    </Pressable>
+  );
+});
+
 type LibraryViewProps = {
   variant?: "tab" | "route";
   initialTab?: LibraryTab;
@@ -249,7 +558,7 @@ export function LibraryView({
 
   const liveHistory = history.history.data;
   useEffect(() => {
-    if (!liveHistory) return;
+    if (!liveHistory || tab !== "history") return;
     try {
       const rows = buildResumeRows(
         liveHistory.map((item) => ({
@@ -266,29 +575,36 @@ export function LibraryView({
     } catch {
       // Precompute is best-effort; live rows still render.
     }
-  }, [liveHistory]);
+  }, [liveHistory, tab]);
 
-  const fallbackRows =
-    history.history.isPending && !history.history.data && cachedResumeRows?.length
-      ? cachedResumeRows.map((row) => ({
-          id: `${row.animeId}:${row.episode}`,
-          anime_id: row.animeId,
-          anime_title: row.animeTitle,
-          anime_image: row.animeImage,
-          episode_number: row.episode,
-          progress: row.progress,
-          duration: row.duration,
-        }))
-      : null;
+  const fallbackRows = useMemo(() => {
+    if (history.history.isPending && !history.history.data && cachedResumeRows?.length) {
+      return cachedResumeRows.map((row) => ({
+        id: `${row.animeId}:${row.episode}`,
+        anime_id: row.animeId,
+        anime_title: row.animeTitle,
+        anime_image: row.animeImage,
+        episode_number: row.episode,
+        progress: row.progress,
+        duration: row.duration,
+      }));
+    }
+    return null;
+  }, [history.history.isPending, history.history.data, cachedResumeRows]);
+
   const data =
     tab === "history"
       ? history.history
       : tab === "bookmarks"
       ? bookmarks.bookmarks
       : notifications.notifications;
-  const rawRecords: any[] = tab === "history" && fallbackRows?.length ? fallbackRows : data.data ?? [];
-  // Batasi history maksimal 50 riwayat terbaru sesuai permintaan
-  const allRecords: any[] = tab === "history" ? rawRecords.slice(0, 50) : rawRecords;
+
+  // Batasi history maksimal 50 riwayat terbaru sesuai permintaan (memoized)
+  const allRecords: any[] = useMemo(() => {
+    const raw = tab === "history" && fallbackRows?.length ? fallbackRows : data.data ?? [];
+    return tab === "history" ? raw.slice(0, 50) : raw;
+  }, [tab, fallbackRows, data.data]);
+
   const canRemoveHistory = tab === "history";
   const activeSort = sortOptionsFor(tab).includes(sort) ? sort : "recent";
 
@@ -298,22 +614,28 @@ export function LibraryView({
   );
   const watchedCounts = useMemo(() => countWatchedEpisodes(history.displayRows ?? []), [history.displayRows]);
 
+  const statusChipCounts = useMemo(() => {
+    if (tab !== "bookmarks" || allRecords.length === 0) return null;
+    return statusCounts(allRecords, watchedAnimeIds);
+  }, [tab, allRecords, watchedAnimeIds]);
+
   const query = search.trim().toLowerCase();
-  const searched = query ? allRecords.filter((row) => searchText(tab, row, query)) : allRecords;
-  const statusSearched = tab === "bookmarks" ? filterByListStatus(searched, watchedAnimeIds, statusFilter) : searched;
-  const statusChipCounts = tab === "bookmarks" ? statusCounts(allRecords, watchedAnimeIds) : null;
-  const records =
-    tab === "alerts"
-      ? unreadOnly
-        ? searched.filter((row) => !row.read)
-        : searched
-      : sortRecords(tab, activeSort, statusSearched);
+  const records = useMemo(() => {
+    const searched = query ? allRecords.filter((row) => searchText(tab, row, query)) : allRecords;
+    const statusSearched = tab === "bookmarks" ? filterByListStatus(searched, watchedAnimeIds, statusFilter) : searched;
+
+    if (tab === "alerts") {
+      return unreadOnly ? searched.filter((row) => !row.read) : searched;
+    }
+    return sortRecords(tab, activeSort, statusSearched);
+  }, [query, allRecords, tab, watchedAnimeIds, statusFilter, unreadOnly, activeSort]);
+
   const isGrid = tab === "bookmarks" && layout === "grid";
   const pending =
     (data.isPending && !(tab === "history" && fallbackRows?.length)) ||
     (data.isLoading && !allRecords.length);
 
-  const confirmRemoveHistory = (row: any) => {
+  const confirmRemoveHistory = useCallback((row: any) => {
     const animeId = Number(row?.anime_id);
     const episode = Number(row?.episode_number);
     if (!Number.isInteger(animeId) || !Number.isInteger(episode)) return;
@@ -369,82 +691,28 @@ export function LibraryView({
         },
       },
     ]);
-  };
+  }, [user?.id, queryClient, history.remove]);
 
-  const renderHistoryRow = (item: any) => {
-    const percent = watchedPercent(item);
-    const key = `${Number(item?.anime_id)}:${Number(item?.episode_number)}`;
-    const removing = removingKey === key;
-    return (
-      <View style={styles.glassCard}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Lanjutkan ${item.anime_title || "Anime"} episode ${item.episode_number}`}
-          onPress={() => {
-            hapticLight();
-            router.push({
-              pathname: "/watch/[id]",
-              params: {
-                id: String(item.anime_id),
-                episode: String(item.episode_number),
-                title: item.anime_title ?? "Anime",
-                image: item.anime_image ?? "",
-              },
-            } as never);
-          }}
-          onLongPress={() => canRemoveHistory && confirmRemoveHistory(item)}
-          style={({ pressed }) => [styles.historyContentWrap, pressed && styles.btnPressed]}
-        >
-          <Image
-            source={{ uri: item.episode_thumbnail || item.anime_image || "" }}
-            style={styles.cardPoster}
-            contentFit="cover"
-            transition={150}
-            cachePolicy="memory-disk"
-          />
-          <View style={styles.cardBody}>
-            <View style={styles.badgeRow}>
-              <View style={styles.epBadge}>
-                <Text style={styles.epBadgeText}>EP {item.episode_number}</Text>
-              </View>
-              <Text style={styles.resumeStatusText}>{percent}% Ditonton</Text>
-            </View>
-            <Text style={styles.cardTitle} numberOfLines={1}>
-              {item.anime_title || "Anime"}
-            </Text>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${percent}%` }]} />
-            </View>
-            <Text style={styles.cardSubText}>Lanjutkan Menonton</Text>
-          </View>
-        </Pressable>
-        {canRemoveHistory ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Hapus riwayat"
-            disabled={removing}
-            hitSlop={8}
-            onPress={() => confirmRemoveHistory(item)}
-            style={({ pressed }) => [styles.actionCircleBtn, pressed && styles.btnPressed]}
-          >
-            <AppIcon
-              name="trash-can-outline"
-              size={16}
-              color={removing ? "#EF4444" : "#94A3B8"}
-            />
-          </Pressable>
-        ) : null}
-      </View>
-    );
-  };
+  const handleOpenHistory = useCallback((item: any) => {
+    hapticLight();
+    router.push({
+      pathname: "/watch/[id]",
+      params: {
+        id: String(item.anime_id),
+        episode: String(item.episode_number),
+        title: item.anime_title ?? "Anime",
+        image: item.anime_image ?? "",
+      },
+    } as never);
+  }, []);
 
-  const openBookmark = (item: any) => {
+  const openBookmark = useCallback((item: any) => {
     hapticLight();
     router.push((`/anime/${item.anime_id}`) as never);
-  };
+  }, []);
 
   /** Membuka sheet untuk mengubah status (Watching, Plan to Watch, Completed, Dropped). */
-  const openStatusPicker = (item: any) => {
+  const openStatusPicker = useCallback((item: any) => {
     const animeId = Number(item?.anime_id);
     if (!Number.isInteger(animeId)) return;
     const current = bookmarkDisplayStatus(item, watchedAnimeIds.has(animeId));
@@ -468,184 +736,83 @@ export function LibraryView({
         { key: "cancel", label: "Batal", variant: "muted" as const },
       ],
     });
-  };
+  }, [watchedAnimeIds, bookmarks.updateStatus]);
 
-  const renderBookmarkRow = (item: any) => {
-    const animeId = Number(item?.anime_id);
-    const status = bookmarkDisplayStatus(item, watchedAnimeIds.has(animeId));
-    const colors = statusColors[status];
-    const epMeta = savedEpisodeMeta(watchedCounts.get(animeId) ?? 0, Number(item?.total_episodes) || 0);
+  const handleOpenAlert = useCallback((item: any) => {
+    hapticLight();
+    void notifications.markRead.mutateAsync(item.id);
+    if (item.anime_id) router.push((`/anime/${item.anime_id}`) as never);
+  }, [notifications.markRead]);
 
-    return (
-      <Pressable
-        accessibilityRole={Platform.OS === "web" ? undefined : "button"}
-        onPress={() => openBookmark(item)}
-        onLongPress={() => openStatusPicker(item)}
-        style={({ pressed }) => [styles.glassCard, pressed && styles.btnPressed]}
-      >
-        <Image
-          source={{ uri: item.image || item.anime_image || "" }}
-          style={styles.cardPoster}
-          contentFit="cover"
-          transition={150}
-          cachePolicy="memory-disk"
-        />
-        <View style={styles.cardBody}>
-          <View style={styles.badgeRow}>
-            {/* Status Badge - Tap to Change Status */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Ubah status ${item.title || item.anime_title || "Anime"}`}
-              onPress={(e) => {
-                e?.stopPropagation?.();
-                openStatusPicker(item);
-              }}
-              hitSlop={6}
-              style={[
-                styles.statusBadgeSmall,
-                { backgroundColor: colors.bg, borderColor: colors.border },
-              ]}
-            >
-              <Text style={[styles.statusBadgeSmallText, { color: colors.text }]}>
-                {statusLabelsId[status] || LIST_STATUS_LABELS[status]}
-              </Text>
-            </Pressable>
-
-            <View style={styles.typeBadge}>
-              <Text style={styles.typeBadgeText}>{item.type || "ANIME"}</Text>
-            </View>
-            {(() => {
-              const rawScore = Number(item?.score ?? item?.averageScore ?? 0);
-              const displayScore = rawScore > 10 ? (rawScore / 10).toFixed(1) : rawScore > 0 ? rawScore.toFixed(1) : null;
-              return displayScore ? (
-                <View style={styles.scoreBadge}>
-                  <Text style={styles.scoreStarIcon}>★</Text>
-                  <Text style={styles.scoreBadgeText}>{displayScore}</Text>
-                </View>
-              ) : null;
-            })()}
-          </View>
-          <Text style={styles.cardTitle} numberOfLines={2}>
-            {item.title || item.anime_title || "Anime"}
-          </Text>
-          <Text style={styles.cardSubText}>
-            {[
-              epMeta,
-              item.format || "TV Series",
-              item.episodes ? `${item.episodes} Eps` : null,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </Text>
-        </View>
-        <AppIcon name="chevron-right" size={18} color="#64748B" />
-      </Pressable>
-    );
-  };
-
-  const renderBookmarkGrid = (item: any) => {
-    const uri = item.image || item.anime_image || "";
-    const animeId = Number(item?.anime_id);
-    const status = bookmarkDisplayStatus(item, watchedAnimeIds.has(animeId));
-    const colors = statusColors[status];
-    const epMeta = savedEpisodeMeta(watchedCounts.get(animeId) ?? 0, Number(item?.total_episodes) || 0);
-
-    return (
-      <Pressable
-        accessibilityRole={Platform.OS === "web" ? undefined : "button"}
-        onPress={() => openBookmark(item)}
-        onLongPress={() => openStatusPicker(item)}
-        style={({ pressed }) => [
-          styles.gridCard,
-          { width: gridCardWidth, maxWidth: gridCardWidth },
-          pressed && styles.btnPressed,
-        ]}
-      >
-        <View style={styles.gridImageWrapper}>
-          {uri ? (
-            <Image
-              source={{ uri }}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              transition={150}
-              cachePolicy="memory-disk"
-            />
-          ) : (
-            <Text style={styles.gridFallbackLetter}>
-              {String(item.title || item.anime_title || "A").charAt(0).toUpperCase()}
-            </Text>
-          )}
-
-          {/* Status badge in top-left of grid image */}
-          <Pressable
-            accessibilityRole="button"
-            onPress={(e) => {
-              e?.stopPropagation?.();
-              openStatusPicker(item);
-            }}
-            hitSlop={6}
-            style={[
-              styles.gridStatusBadge,
-              { backgroundColor: colors.bg, borderColor: colors.border },
-            ]}
-          >
-            <Text style={[styles.statusBadgeSmallText, { color: colors.text, fontSize: 9 }]}>
-              {statusLabelsId[status] || LIST_STATUS_LABELS[status]}
-            </Text>
-          </Pressable>
-
-          {(() => {
-            const rawScore = Number(item?.score ?? item?.averageScore ?? 0);
-            const displayScore = rawScore > 10 ? (rawScore / 10).toFixed(1) : rawScore > 0 ? rawScore.toFixed(1) : null;
-            return displayScore ? (
-              <View style={styles.gridBadge}>
-                <Text style={styles.gridBadgeText}>★ {displayScore}</Text>
-              </View>
-            ) : null;
-          })()}
-        </View>
-        <Text style={styles.gridTitle} numberOfLines={2}>
-          {item.title || item.anime_title || "Anime"}
-        </Text>
-        <Text style={styles.gridMeta} numberOfLines={1}>
-          {[epMeta, item.type || item.format || "ANIME"].filter(Boolean).join(" · ")}
-        </Text>
-      </Pressable>
-    );
-  };
-
-  const renderAlertRow = (item: any) => (
-    <Pressable
-      accessibilityRole="button"
-      onPress={() => {
-        hapticLight();
-        void notifications.markRead.mutateAsync(item.id);
-        if (item.anime_id) router.push((`/anime/${item.anime_id}`) as never);
-      }}
-      style={({ pressed }) => [styles.glassCard, styles.alertCard, pressed && styles.btnPressed]}
-    >
-      <View style={styles.alertIndicatorCol}>
-        <View style={[styles.alertDot, !item.read && styles.alertDotUnread]} />
-      </View>
-      <View style={styles.cardBody}>
-        {item.title ? (
-          <Text style={[styles.cardTitle, { fontSize: 13, marginBottom: 2 }]} numberOfLines={1}>
-            {item.title}
-          </Text>
-        ) : null}
-        <Text style={styles.alertText}>{item.message}</Text>
-        <Text style={styles.alertTimeText}>
-          {item.read ? "Sudah dibaca" : "Pemberitahuan baru"}
-        </Text>
-      </View>
-    </Pressable>
+  const keyExtractor = useCallback(
+    (item: any) => String(item?.id ?? `${item?.anime_id}:${item?.episode_number}`),
+    []
   );
 
-  const renderItem = ({ item }: { item: any }) => {
-    if (tab === "history") return renderHistoryRow(item);
-    if (tab === "bookmarks") return isGrid ? renderBookmarkGrid(item) : renderBookmarkRow(item);
-    return renderAlertRow(item);
-  };
+  const renderItem = useCallback(
+    ({ item }: { item: any }) => {
+      if (tab === "history") {
+        const percent = watchedPercent(item);
+        const key = `${Number(item?.anime_id)}:${Number(item?.episode_number)}`;
+        return (
+          <HistoryCardItem
+            item={item}
+            percent={percent}
+            canRemove={canRemoveHistory}
+            removing={removingKey === key}
+            onPress={() => handleOpenHistory(item)}
+            onRemove={() => confirmRemoveHistory(item)}
+          />
+        );
+      }
+      if (tab === "bookmarks") {
+        const animeId = Number(item?.anime_id);
+        const status = bookmarkDisplayStatus(item, watchedAnimeIds.has(animeId));
+        const epMeta = savedEpisodeMeta(watchedCounts.get(animeId) ?? 0, Number(item?.total_episodes) || 0);
+        if (isGrid) {
+          return (
+            <BookmarkGridItem
+              item={item}
+              status={status}
+              epMeta={epMeta}
+              cardWidth={gridCardWidth}
+              onPress={() => openBookmark(item)}
+              onOpenStatus={() => openStatusPicker(item)}
+            />
+          );
+        }
+        return (
+          <BookmarkListItem
+            item={item}
+            status={status}
+            epMeta={epMeta}
+            onPress={() => openBookmark(item)}
+            onOpenStatus={() => openStatusPicker(item)}
+          />
+        );
+      }
+      return (
+        <AlertCardItem
+          item={item}
+          onPress={() => handleOpenAlert(item)}
+        />
+      );
+    },
+    [
+      tab,
+      isGrid,
+      canRemoveHistory,
+      removingKey,
+      watchedAnimeIds,
+      watchedCounts,
+      gridCardWidth,
+      handleOpenHistory,
+      confirmRemoveHistory,
+      openBookmark,
+      openStatusPicker,
+      handleOpenAlert,
+    ]
+  );
 
   const emptyMessage = query
     ? `Tidak ada anime yang cocok dengan "${search.trim()}".`
@@ -662,8 +829,10 @@ export function LibraryView({
   const content = pending ? (
     tab === "history" ? (
       <HistorySkeleton />
+    ) : tab === "bookmarks" ? (
+      <BookmarkSkeleton isGrid={isGrid} />
     ) : (
-      <LoadingState label="Menyelaraskan data..." />
+      <AlertSkeleton />
     )
   ) : data.isError ? (
     <ErrorState
@@ -681,7 +850,7 @@ export function LibraryView({
       data={records}
       numColumns={isGrid ? 2 : 1}
       columnWrapperStyle={isGrid ? styles.gridRow : undefined}
-      keyExtractor={(item: any) => String(item?.id ?? `${item?.anime_id}:${item?.episode_number}`)}
+      keyExtractor={keyExtractor}
       contentContainerStyle={[
         styles.listContent,
         isGrid && styles.gridListContent,
