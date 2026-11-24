@@ -78,9 +78,9 @@ export function ProfileGiftModal({
   const [loadingData, setLoadingData] = useState(false);
   const [loadingSummary, setLoadingSummary] = useState(false);
 
-  // Responsif mobile dialog max width
+  // Responsif mobile dialog max width & height
   const modalMaxWidth = Math.min(windowWidth - 24, 410);
-  const modalMaxHeight = Math.min(windowHeight * 0.88, 560);
+  const modalHeight = Math.max(380, Math.min(windowHeight * 0.78, 530));
 
   // Load balance & gift summary
   useEffect(() => {
@@ -231,7 +231,11 @@ export function ProfileGiftModal({
         <View
           style={[
             styles.dialogContainer,
-            { maxWidth: modalMaxWidth, maxHeight: modalMaxHeight },
+            {
+              width: modalMaxWidth,
+              height: modalHeight,
+              maxHeight: Math.min(windowHeight * 0.88, 560),
+            },
           ]}
         >
           {/* ─── MODAL HEADER (Persis Screenshot Mobile Legends) ─── */}
@@ -330,7 +334,7 @@ export function ProfileGiftModal({
                     <Text style={styles.detailBackText}>Katalog Gift</Text>
                   </Pressable>
 
-                  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailScrollContent}>
+                  <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1, width: "100%" }} contentContainerStyle={styles.detailScrollContent}>
                     {/* Spotlight Podium with Gift Graphic */}
                     <View style={styles.spotlightPodium}>
                       <Image
@@ -473,8 +477,9 @@ export function ProfileGiftModal({
                 </View>
               ) : (
                 /* ─── 8 GIFTS GRID VIEW (Screenshot 1: Mobile Legends Style - 4 Kolom Rapi) ─── */
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, width: "100%" }}>
                   <ScrollView
+                    style={{ flex: 1 }}
                     contentContainerStyle={styles.giftsGrid}
                     showsVerticalScrollIndicator={false}
                   >
@@ -902,7 +907,7 @@ const styles = StyleSheet.create({
   // Tab Content Area
   tabContentArea: {
     flex: 1,
-    minHeight: 330,
+    width: "100%",
   },
 
   // 8 Gifts Grid View (Mobile First: 4 Kolom Pas Tanpa Potongan)
