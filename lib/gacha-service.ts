@@ -188,11 +188,46 @@ export async function saveGachaConfig(
 // ─── 3. GACHA BANNERS CRUD (DATABASE POOL) ───
 const STORAGE_CACHED_BANNERS = "nuenime.cached.gacha_banners";
 
+// In-memory cache untuk performa kilat 0ms & anti-lag
+let _memoryGachaBanners: WallpaperItem[] | null = null;
+let _memoryGachaBannersTimestamp = 0;
+const GACHA_BANNERS_TTL = 60_000; // 60 detik
+
+export function invalidateGachaBannersCache(): void {
+  _memoryGachaBanners = null;
+  _memoryGachaBannersTimestamp = 0;
+}
+
+/**
+ * Membaca cache lokal gacha banners secara instan tanpa menunggu network (0ms)
+ */
+export async function getCachedGachaBannersFast(): Promise<WallpaperItem[]> {
+  if (_memoryGachaBanners && _memoryGachaBanners.length > 0) {
+    return _memoryGachaBanners;
+  }
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_CACHED_BANNERS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        _memoryGachaBanners = parsed;
+        return parsed;
+      }
+    }
+  } catch {}
+  return [];
+}
+
 /**
  * Mengambil seluruh koleksi banner dari database Supabase (gacha_banners).
  * Jika tabel belum ada atau offline, menggabungkan dengan katalog awal WALLPAPER_CATALOG.
  */
-export async function getAllGachaBanners(): Promise<WallpaperItem[]> {
+export async function getAllGachaBanners(forceRefresh: boolean = false): Promise<WallpaperItem[]> {
+  // 1. Cek in-memory cache untuk kecepatan 0ms
+  if (!forceRefresh && _memoryGachaBanners && Date.now() - _memoryGachaBannersTimestamp < GACHA_BANNERS_TTL) {
+    return _memoryGachaBanners;
+  }
+
   try {
     const { data, error } = await supabase
       .from("gacha_banners")
@@ -214,11 +249,18 @@ export async function getAllGachaBanners(): Promise<WallpaperItem[]> {
         updatedAt: row.updated_at,
       }));
 
-      await AsyncStorage.setItem(STORAGE_CACHED_BANNERS, JSON.stringify(mapped));
+      _memoryGachaBanners = mapped;
+      _memoryGachaBannersTimestamp = Date.now();
+      AsyncStorage.setItem(STORAGE_CACHED_BANNERS, JSON.stringify(mapped)).catch(() => {});
       return mapped;
     }
   } catch (err) {
     console.warn("[gacha-service] Supabase query gacha_banners failed:", err);
+  }
+
+  // Fallback memory cache
+  if (_memoryGachaBanners && _memoryGachaBanners.length > 0) {
+    return _memoryGachaBanners;
   }
 
   // Fallback cache AsyncStorage jika offline
@@ -227,6 +269,7 @@ export async function getAllGachaBanners(): Promise<WallpaperItem[]> {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        _memoryGachaBanners = parsed;
         return parsed;
       }
     }
@@ -602,11 +645,32 @@ export async function toggleGachaBannerActive(
 }
 
 // ─── 4. USER BANNER INVENTORY & OWNERSHIP (PER AKUN) ───
+const _ownedWallpapersMemory = new Map<string, { data: string[]; timestamp: number }>();
+const OWNED_WALLPAPERS_TTL = 60_000;
+
+export function invalidateOwnedWallpapersCache(userId?: string | null): void {
+  if (userId) {
+    _ownedWallpapersMemory.delete(userId);
+  } else {
+    _ownedWallpapersMemory.clear();
+  }
+}
+
 /**
  * Mengambil daftar ID banner yang dimiliki akun pengguna.
- * Prioritas: Supabase user_banner_inventory → AsyncStorage cache per user.
+ * Prioritas: In-Memory Cache (0ms) → Supabase user_banner_inventory → AsyncStorage cache per user.
  */
-export async function getOwnedWallpaperIds(userId?: string | null): Promise<string[]> {
+export async function getOwnedWallpaperIds(
+  userId?: string | null,
+  forceRefresh: boolean = false
+): Promise<string[]> {
+  if (userId && !forceRefresh) {
+    const cached = _ownedWallpapersMemory.get(userId);
+    if (cached && Date.now() - cached.timestamp < OWNED_WALLPAPERS_TTL) {
+      return cached.data;
+    }
+  }
+
   // 1. Coba dari Supabase jika user logged-in
   if (userId && userId.trim().length > 0 && userId !== "guest") {
     try {
@@ -617,8 +681,9 @@ export async function getOwnedWallpaperIds(userId?: string | null): Promise<stri
 
       if (!error && Array.isArray(data)) {
         const ids = data.map((r: any) => r.banner_id as string);
+        _ownedWallpapersMemory.set(userId, { data: ids, timestamp: Date.now() });
         const key = getOwnedWallpapersStorageKey(userId);
-        await AsyncStorage.setItem(key, JSON.stringify(ids));
+        AsyncStorage.setItem(key, JSON.stringify(ids)).catch(() => {});
         return ids;
       }
     } catch (err) {
@@ -632,7 +697,10 @@ export async function getOwnedWallpaperIds(userId?: string | null): Promise<stri
     const raw = await AsyncStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        if (userId) _ownedWallpapersMemory.set(userId, { data: parsed, timestamp: Date.now() });
+        return parsed;
+      }
     }
   } catch {}
 
@@ -649,10 +717,13 @@ export async function recordBannerOwnership(
 ): Promise<void> {
   if (!bannerIds || bannerIds.length === 0) return;
 
+  invalidateOwnedWallpapersCache(userId);
+
   // 1. Simpan ke local cache AsyncStorage
   const current = await getOwnedWallpaperIds(userId);
   const nextSet = new Set([...current, ...bannerIds]);
   const nextArray = Array.from(nextSet);
+  if (userId) _ownedWallpapersMemory.set(userId, { data: nextArray, timestamp: Date.now() });
   const key = getOwnedWallpapersStorageKey(userId);
   await AsyncStorage.setItem(key, JSON.stringify(nextArray));
 

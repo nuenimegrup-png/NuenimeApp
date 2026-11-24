@@ -43,35 +43,126 @@ import {
   verifyAndSaveSummonResults,
   GACHA_XP_REWARD,
   type DynamicGachaConfig,
+  getCachedGachaBannersFast,
+  invalidateGachaBannersCache,
 } from "@/lib/gacha-service";
-import { useCachedGachaAsset, cleanupOrphanedGachaAssets } from "@/lib/gacha-asset-cache";
 import { useExp } from "@/providers/exp-toast-provider";
 import { supabase } from "@/lib/supabase";
 
-// ─── KOMPONEN GAMBAR CACHED ANDROID ───
-// Mengambil aset dari disk lokal Android jika sudah di-cache, atau streaming sembari mengunduh ke storage
-function CachedGachaImage({
+// ─── KOMPONEN GAMBAR GACHA TEROPTIMASI (GLIDE C++ NATIVE CACHE & DOWNSAMPLING) ───
+const GachaOptimizedImage = React.memo(function GachaOptimizedImage({
   uri,
   style,
   contentFit = "cover",
-  transition = 200,
+  transition = 120,
+  priority = "normal",
 }: {
   uri?: string | null;
   style?: any;
   contentFit?: any;
   transition?: number;
+  priority?: "low" | "normal" | "high";
 }) {
-  const { assetUri } = useCachedGachaAsset(uri);
+  if (!uri) {
+    return <View style={[style, { backgroundColor: "#161D2B" }]} />;
+  }
   return (
     <Image
-      source={{ uri: assetUri || uri || "" }}
+      source={{ uri }}
       style={style}
       contentFit={contentFit}
       transition={transition}
-      cachePolicy="disk"
+      cachePolicy="memory-disk"
+      priority={priority}
+      recyclingKey={uri}
     />
   );
+});
+
+interface WallpaperGridCardProps {
+  item: WallpaperItem;
+  cardWidth: number;
+  isOwned: boolean;
+  isEquipped: boolean;
+  onPressItem: (item: WallpaperItem) => void;
 }
+
+const WallpaperGridCard = React.memo(
+  function WallpaperGridCard({
+    item,
+    cardWidth,
+    isOwned,
+    isEquipped,
+    onPressItem,
+  }: WallpaperGridCardProps) {
+    return (
+      <View
+        style={[
+          styles.wallpaperCard,
+          { width: cardWidth },
+          !isOwned && styles.wallpaperCardLocked,
+        ]}
+      >
+        {/* Wallpaper Image (Downsampled & Disk-Cached by Native Glide) */}
+        <GachaOptimizedImage
+          uri={item.image}
+          style={styles.wallpaperThumbnail}
+          contentFit="cover"
+          transition={120}
+          priority="low"
+        />
+
+        {/* Top dark gradient */}
+        <LinearGradient
+          colors={["rgba(0,0,0,0.8)", "rgba(0,0,0,0.2)", "transparent"]}
+          style={styles.wallpaperTopGradient}
+        />
+
+        {/* Title on image top left */}
+        <Text style={styles.wallpaperCardTitle} numberOfLines={1}>
+          {item.name}
+        </Text>
+
+        {/* Bottom action row */}
+        <View style={styles.wallpaperCardBottom}>
+          {isEquipped ? (
+            <View style={styles.equippedBadge}>
+              <AppIcon name="check" size={11} color="#10B981" />
+              <Text style={styles.equippedBadgeText}>Dipakai</Text>
+            </View>
+          ) : isOwned ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Pakai wallpaper ${item.name}`}
+              onPress={() => onPressItem(item)}
+              style={({ pressed }) => [
+                styles.pakaiBtn,
+                pressed && styles.btnPressed,
+              ]}
+            >
+              <Text style={styles.pakaiBtnText}>Pakai</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.lockedPill}>
+              <AppIcon name="lock" size={11} color="#94A3B8" />
+              <Text style={styles.lockedPillText}>Terkunci</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  },
+  (prev, next) => {
+    return (
+      prev.isOwned === next.isOwned &&
+      prev.isEquipped === next.isEquipped &&
+      prev.cardWidth === next.cardWidth &&
+      prev.item.id === next.item.id &&
+      prev.item.image === next.item.image &&
+      prev.item.name === next.item.name
+    );
+  }
+);
 
 
 
@@ -138,25 +229,24 @@ export default function GachaScreen() {
   const cost10x = gachaConfigState?.costMulti ?? GACHA_SETTINGS.cost10x;
 
   // ─── INITIAL LOAD (MURNI DATABASE & CACHE OFFLINE SAH) ───
-  const loadData = useCallback(async () => {
-    setIsLoadingBanners(true);
+  const loadData = useCallback(async (isSilent: boolean = false) => {
+    if (!isSilent) {
+      setIsLoadingBanners(true);
+    }
     try {
       const [balance, owned, cfg, bannerList] = await Promise.all([
         getCrystalBalance(auth.user?.id),
-        getOwnedWallpaperIds(auth.user?.id),
+        getOwnedWallpaperIds(auth.user?.id, true),
         getGachaConfig(),
-        getAllGachaBanners(),
+        getAllGachaBanners(true),
       ]);
 
       setCrystalBalance(balance);
       setGachaConfigState(cfg);
-      setAllBanners(bannerList);
-      setOwnedIds(owned);
-
-      // Sinkronisasi otomatis cache disk Android: bersihkan aset yang sudah dihapus oleh admin
       if (bannerList && bannerList.length > 0) {
-        cleanupOrphanedGachaAssets(bannerList.map((b) => b.image)).catch(() => {});
+        setAllBanners(bannerList);
       }
+      setOwnedIds(owned);
 
       // Sync active equipped wallpaper (either from profile.banner_url or storage)
       const localActive = await getActiveWallpaperId(auth.user?.id);
@@ -179,25 +269,53 @@ export default function GachaScreen() {
       console.warn("[gacha] Gagal memuat data gacha:", err);
     } finally {
       setIsLoadingBanners(false);
-      setTimeout(() => setIsInitialLoading(false), 300);
+      setIsInitialLoading(false);
     }
   }, [auth.user?.id, auth.profile?.banner_url]);
 
+  // Pre-load dari cache in-memory / storage lokal instan (0ms render)
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    let isMounted = true;
+    getCachedGachaBannersFast().then((cached) => {
+      if (isMounted && cached && cached.length > 0) {
+        setAllBanners(cached);
+        setIsInitialLoading(false);
+        setIsLoadingBanners(false);
+      }
+    });
 
-  // Refresh data saat layar mendapatkan fokus
+    if (auth.user?.id) {
+      getOwnedWallpaperIds(auth.user.id, false).then((owned) => {
+        if (isMounted && owned && owned.length > 0) {
+          setOwnedIds(owned);
+        }
+      });
+    }
+
+    // Panggil loadData awal
+    loadData(allBanners.length > 0);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loadData, auth.user?.id]);
+
+  // Refresh silent saat layar mendapatkan fokus kembali
+  const hasMountedRef = useRef(false);
   useFocusEffect(
     useCallback(() => {
-      loadData();
+      if (!hasMountedRef.current) {
+        hasMountedRef.current = true;
+        return;
+      }
+      loadData(true);
     }, [loadData])
   );
 
   // Real-time synchronization dengan Supabase jika banner & config diubah oleh admin
   useEffect(() => {
     const channel = supabase
-      .channel(`gacha-db-sync-${Date.now()}`)
+      .channel("gacha-catalog-sync")
       .on(
         "postgres_changes",
         {
@@ -206,7 +324,8 @@ export default function GachaScreen() {
           table: "gacha_banners",
         },
         () => {
-          loadData();
+          invalidateGachaBannersCache();
+          loadData(true);
         }
       )
       .on(
@@ -218,7 +337,7 @@ export default function GachaScreen() {
           filter: "key=eq.gacha_config",
         },
         () => {
-          loadData();
+          loadData(true);
         }
       )
       .subscribe();
@@ -230,24 +349,25 @@ export default function GachaScreen() {
 
   // Real-time synchronization dengan Supabase jika balance di-update via admin / topup
   useEffect(() => {
-    if (!auth.user?.id || auth.user.id === "guest") return;
+    const userId = auth.user?.id;
+    if (!userId || userId === "guest") return;
 
     const channel = supabase
-      .channel(`gacha-crystal-${auth.user.id}-${Date.now()}`)
+      .channel(`gacha-crystal-${userId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "user_balances",
-          filter: `user_id=eq.${auth.user.id}`,
+          filter: `user_id=eq.${userId}`,
         },
         (payload) => {
           const newRow = payload.new as any;
           if (newRow && typeof newRow.crystal_balance === "number") {
             setCrystalBalance(newRow.crystal_balance);
           } else {
-            loadData();
+            loadData(true);
           }
         }
       )
@@ -413,6 +533,14 @@ export default function GachaScreen() {
     });
   }, [allBanners, searchQuery, showLocked, ownedIds]);
 
+  // Set O(1) untuk pengecekan kepemilikan super cepat
+  const ownedIdsSet = useMemo(() => new Set(ownedIds), [ownedIds]);
+
+  const handlePreviewItem = useCallback((item: WallpaperItem) => {
+    hapticLight();
+    setPreviewItem(item);
+  }, []);
+
   // Group wallpapers by rarity in order: Mythic, Legendary, Epic, Rare, Normal
   const rarityGroups: WallpaperRarity[] = ["Mythic", "Legendary", "Epic", "Rare", "Normal"];
 
@@ -503,7 +631,9 @@ export default function GachaScreen() {
               style={styles.bannerImage}
               contentFit="cover"
               autoplay
-              transition={200}
+              transition={120}
+              cachePolicy="memory-disk"
+              priority="high"
             />
             {/* Subtle inner dark gradient for contrast */}
             <LinearGradient
@@ -727,7 +857,7 @@ export default function GachaScreen() {
               </Text>
               <Pressable
                 accessibilityRole="button"
-                onPress={loadData}
+                onPress={() => loadData()}
                 style={({ pressed }) => [styles.reloadCatalogBtn, pressed && { opacity: 0.8 }]}
               >
                 <AppIcon name="refresh" size={15} color="#38BDF8" />
@@ -778,72 +908,17 @@ export default function GachaScreen() {
 
                   {/* 2-Column Grid */}
                   <View style={styles.wallpaperGrid}>
-                    {groupVisibleItems.map((item) => {
-                      const isOwned = ownedIds.includes(item.id);
-                      const isEquipped = activeWallpaperId === item.id;
-
-                      return (
-                        <View
-                          key={item.id}
-                          style={[
-                            styles.wallpaperCard,
-                            { width: cardWidth },
-                            !isOwned && styles.wallpaperCardLocked,
-                          ]}
-                        >
-                          {/* Wallpaper Image (Cached di Android) */}
-                          <CachedGachaImage
-                            uri={item.image}
-                            style={styles.wallpaperThumbnail}
-                            contentFit="cover"
-                            transition={200}
-                          />
-
-
-                        {/* Top dark gradient */}
-                        <LinearGradient
-                          colors={["rgba(0,0,0,0.8)", "rgba(0,0,0,0.2)", "transparent"]}
-                          style={styles.wallpaperTopGradient}
-                        />
-
-                        {/* Title on image top left */}
-                        <Text style={styles.wallpaperCardTitle} numberOfLines={1}>
-                          {item.name}
-                        </Text>
-
-                        {/* Bottom action row */}
-                        <View style={styles.wallpaperCardBottom}>
-                          {isEquipped ? (
-                            <View style={styles.equippedBadge}>
-                              <AppIcon name="check" size={11} color="#10B981" />
-                              <Text style={styles.equippedBadgeText}>Dipakai</Text>
-                            </View>
-                          ) : isOwned ? (
-                            <Pressable
-                              accessibilityRole="button"
-                              accessibilityLabel={`Pakai wallpaper ${item.name}`}
-                              onPress={() => {
-                                hapticLight();
-                                setPreviewItem(item);
-                              }}
-                              style={({ pressed }) => [
-                                styles.pakaiBtn,
-                                pressed && styles.btnPressed,
-                              ]}
-                            >
-                              <Text style={styles.pakaiBtnText}>Pakai</Text>
-                            </Pressable>
-                          ) : (
-                            <View style={styles.lockedPill}>
-                              <AppIcon name="lock" size={11} color="#94A3B8" />
-                              <Text style={styles.lockedPillText}>Terkunci</Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
+                    {groupVisibleItems.map((item) => (
+                      <WallpaperGridCard
+                        key={item.id}
+                        item={item}
+                        cardWidth={cardWidth}
+                        isOwned={ownedIdsSet.has(item.id)}
+                        isEquipped={activeWallpaperId === item.id}
+                        onPressItem={handlePreviewItem}
+                      />
+                    ))}
+                  </View>
               </View>
             );
           })
@@ -922,10 +997,11 @@ export default function GachaScreen() {
                   return (
                     <View style={styles.singleResultCard}>
                       <View style={[styles.singleImageWrapper, { borderColor: cfg.borderColor }]}>
-                        <CachedGachaImage
+                        <GachaOptimizedImage
                           uri={item.image}
                           style={styles.singleResultImage}
                           contentFit="cover"
+                          priority="high"
                         />
                         <View style={[styles.singleRarityBadge, { backgroundColor: cfg.color }]}>
                           <Text style={styles.singleRarityBadgeText}>{item.rarity}</Text>
@@ -1020,10 +1096,11 @@ export default function GachaScreen() {
                         { borderColor: cfg.borderColor, width: Math.floor((Math.min(windowWidth, 540) - 48 - 10) / 2) },
                       ]}
                     >
-                      <CachedGachaImage
+                      <GachaOptimizedImage
                         uri={item.image}
                         style={styles.multiResultThumb}
                         contentFit="cover"
+                        priority="normal"
                       />
                       <LinearGradient
                         colors={["rgba(0,0,0,0.8)", "transparent"]}
@@ -1099,10 +1176,11 @@ export default function GachaScreen() {
               <>
                 {/* 16:9 Banner Preview */}
                 <View style={styles.previewBannerFrame}>
-                  <CachedGachaImage
+                  <GachaOptimizedImage
                     uri={previewItem.image}
                     style={styles.previewBannerImage}
                     contentFit="cover"
+                    priority="high"
                   />
                   <LinearGradient
                     colors={["transparent", "rgba(0,0,0,0.7)"]}
