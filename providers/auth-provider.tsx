@@ -114,6 +114,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const sessionValidation = useRef(0);
 
   const loadProfile = useCallback(async (user: User) => {
+    // 1. Baca cache profil lokal secepat mungkin (0ms delay) agar tidak ada kedipan profil default
+    try {
+      const cachedRaw = await AsyncStorage.getItem(`@nuenime_cached_profile_${user.id}`).catch(() => null);
+      if (cachedRaw) {
+        const parsed = JSON.parse(cachedRaw);
+        if (parsed && typeof parsed === "object") {
+          setProfile((current) => current || parsed);
+        }
+      }
+    } catch {}
+
     const fallback = fallbackProfile(user);
     const googleAvatar = extractOAuthAvatar(user);
 
@@ -177,6 +188,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
               .eq("id", user.id)
           ).catch(() => {});
         }
+        AsyncStorage.setItem(`@nuenime_cached_profile_${user.id}`, JSON.stringify(fullProfile)).catch(() => {});
         setProfile(fullProfile);
         return;
       }
@@ -227,6 +239,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
         clearSessionState();
         return;
       }
+      // Memuat profil dari cache lokal secepat mungkin (0ms delay) agar tidak ada kedipan profil default
+      AsyncStorage.getItem(`@nuenime_cached_profile_${candidate.user.id}`)
+        .then((raw) => {
+          if (raw && mounted && validationId === sessionValidation.current) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (parsed && typeof parsed === "object") {
+                setProfile((cur) => cur || parsed);
+              }
+            } catch {}
+          }
+        })
+        .catch(() => {});
       if (mounted) setLoading(true);
       try {
         let activeUser = candidate.user;

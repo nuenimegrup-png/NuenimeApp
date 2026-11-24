@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -30,6 +30,7 @@ import { useBookmarks } from "@/hooks/use-bookmarks";
 import { avatarUrl, isDefaultAvatar } from "@/lib/aniraku-avatars";
 import { AppIcon } from "@/components/app-icon";
 import { ChibiLoading } from "@/components/chibi-loading";
+import { Skeleton } from "@/components/skeleton";
 import { hapticLight, hapticSuccess, hapticWarning } from "@/lib/haptics";
 import { supabase } from "@/lib/supabase";
 import { LevelProgressModal, getTierForLevel } from "@/components/level-progress-modal";
@@ -99,6 +100,216 @@ function formatRelativeTimeId(dateStr?: string | number | null): string {
 
 type ProfileTab = "komentar" | "favorit" | "histori";
 
+const ProfileOverviewSkeleton = memo(function ProfileOverviewSkeleton() {
+  return (
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.socialContainer}>
+      {/* 1. Header Skeleton */}
+      <View style={styles.socialHeader}>
+        <View style={styles.socialUserRow}>
+          {/* Avatar Skeleton */}
+          <Skeleton style={{ width: 46, height: 46, borderRadius: 23 }} />
+
+          <View style={[styles.socialUserMeta, { gap: 6 }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Skeleton style={{ width: 110, height: 16, borderRadius: 4 }} />
+              <Skeleton style={{ width: 36, height: 14, borderRadius: 4 }} />
+            </View>
+            <Skeleton style={{ width: 68, height: 20, borderRadius: 10 }} />
+          </View>
+        </View>
+
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          <Skeleton style={{ width: 38, height: 38, borderRadius: 19 }} />
+          <Skeleton style={{ width: 38, height: 38, borderRadius: 19 }} />
+        </View>
+      </View>
+
+      {/* 2. Body Skeleton */}
+      <ScrollView
+        style={styles.socialScrollView}
+        contentContainerStyle={styles.socialScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Row 1 Quick Cards */}
+        <View style={[styles.profileQuickRow, { marginBottom: 10 }]}>
+          <View style={styles.profileQuickCard}>
+            <Skeleton style={{ width: 38, height: 38, borderRadius: 19, marginBottom: 8 }} />
+            <Skeleton style={{ width: 80, height: 12, borderRadius: 4 }} />
+          </View>
+          <View style={styles.profileQuickCard}>
+            <Skeleton style={{ width: 38, height: 38, borderRadius: 19, marginBottom: 8 }} />
+            <Skeleton style={{ width: 80, height: 12, borderRadius: 4 }} />
+          </View>
+        </View>
+
+        {/* Row 2 Quick Cards */}
+        <View style={[styles.profileQuickRow, { marginBottom: 16 }]}>
+          <View style={styles.profileQuickCard}>
+            <Skeleton style={{ width: 38, height: 38, borderRadius: 19, marginBottom: 8 }} />
+            <Skeleton style={{ width: 80, height: 12, borderRadius: 4 }} />
+          </View>
+          <View style={styles.profileQuickCard}>
+            <Skeleton style={{ width: 38, height: 38, borderRadius: 19, marginBottom: 8 }} />
+            <Skeleton style={{ width: 80, height: 12, borderRadius: 4 }} />
+          </View>
+        </View>
+
+        {/* Papan Informasi Header */}
+        <View style={styles.socialSectionHeader}>
+          <Skeleton style={{ width: 120, height: 16, borderRadius: 4, marginBottom: 4 }} />
+          <Skeleton style={{ width: 180, height: 12, borderRadius: 4 }} />
+        </View>
+
+        {/* Papan Informasi Card */}
+        <View style={[styles.infoBoardCard, { padding: 16, gap: 10 }]}>
+          <Skeleton style={{ width: 90, height: 18, borderRadius: 4 }} />
+          <Skeleton style={{ width: "80%", height: 16, borderRadius: 4 }} />
+          <Skeleton style={{ width: "95%", height: 12, borderRadius: 4 }} />
+          <Skeleton style={{ width: "70%", height: 12, borderRadius: 4 }} />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+});
+
+const ProfileGuestView = memo(function ProfileGuestView() {
+  return (
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.socialContainer}>
+      {/* 1. Header Tamu */}
+      <View style={styles.socialHeader}>
+        <View style={styles.socialUserRow}>
+          <View
+            style={[
+              styles.socialAvatarWrap,
+              {
+                backgroundColor: "#1E293B",
+                borderRadius: 23,
+                alignItems: "center",
+                justifyContent: "center",
+              },
+            ]}
+          >
+            <AppIcon name="account-outline" size={26} color="#94A3B8" />
+          </View>
+          <View style={styles.socialUserMeta}>
+            <Text style={styles.socialDisplayName}>Pengunjung Tamu</Text>
+            <Text style={styles.socialUserTag}>Mode Guest</Text>
+          </View>
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Pengaturan"
+          onPress={() => {
+            hapticLight();
+            router.push("/settings" as never);
+          }}
+          style={({ pressed }) => [styles.socialSettingsBtn, pressed && styles.btnPressed]}
+          hitSlop={12}
+        >
+          <AppIcon name="cog-outline" size={24} color="#FFFFFF" />
+        </Pressable>
+      </View>
+
+      <ScrollView
+        style={styles.socialScrollView}
+        contentContainerStyle={styles.socialScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Banner Masuk Akun */}
+        <View style={styles.guestBannerCard}>
+          <View style={styles.guestIconCircle}>
+            <AppIcon name="account-circle-outline" size={32} color="#38BDF8" />
+          </View>
+          <Text style={styles.guestTitle}>Buka Fitur Penuh Nuenime</Text>
+          <Text style={styles.guestDesc}>
+            Masuk atau buat akun untuk menyimpan riwayat tontonan, mengoleksi border avatar eksklusif, menaikkan level rank, dan berinteraksi dengan komunitas.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Masuk atau Daftar Akun"
+            onPress={() => {
+              hapticLight();
+              router.push("/auth" as never);
+            }}
+            style={({ pressed }) => [styles.guestLoginBtn, pressed && styles.btnPressed]}
+          >
+            <AppIcon name="login" size={18} color="#0B0E14" />
+            <Text style={styles.guestLoginBtnText}>Masuk / Daftar Akun</Text>
+          </Pressable>
+        </View>
+
+        {/* Quick Menu */}
+        <View style={[styles.profileQuickRow, { marginBottom: 10 }]}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              hapticLight();
+              router.push("/inventory" as never);
+            }}
+            style={({ pressed }) => [styles.profileQuickCard, pressed && styles.btnPressed]}
+          >
+            <Image source={INVENTORY_STAR_IMG} style={styles.profileQuickImg} contentFit="contain" />
+            <Text style={styles.profileQuickTitle} numberOfLines={1}>
+              Tas & Inventory
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              hapticLight();
+              router.push("/nobar" as never);
+            }}
+            style={({ pressed }) => [styles.profileQuickCard, pressed && styles.btnPressed]}
+          >
+            <View style={styles.profileQuickIconCircle}>
+              <AppIcon name="television-play" size={18} color="#E2E8F0" />
+            </View>
+            <Text style={styles.profileQuickTitle} numberOfLines={1}>
+              NOBAR ANIME
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.profileQuickRow}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              hapticLight();
+              router.push("/lelang" as never);
+            }}
+            style={({ pressed }) => [styles.profileQuickCard, pressed && styles.btnPressed]}
+          >
+            <View style={styles.profileQuickIconCircle}>
+              <AppIcon name="gavel" size={18} color="#E2E8F0" />
+            </View>
+            <Text style={styles.profileQuickTitle} numberOfLines={1}>
+              LELANG ANIME
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              hapticLight();
+              router.push("/dunia" as never);
+            }}
+            style={({ pressed }) => [styles.profileQuickCard, pressed && styles.btnPressed]}
+          >
+            <View style={styles.profileQuickIconCircle}>
+              <Image source={DUNIA_EMBLEM_IMG} style={{ width: 22, height: 22 }} contentFit="contain" />
+            </View>
+            <Text style={styles.profileQuickTitle} numberOfLines={1}>
+              PENJELAJAH
+            </Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+});
+
 export default function ProfileScreen() {
   const auth = useAnirakuAuth();
   const stats = useWatchStats();
@@ -115,7 +326,15 @@ export default function ProfileScreen() {
   );
   const [activeTab, setActiveTab] = useState<ProfileTab>("komentar");
   const [showLevelProgressModal, setShowLevelProgressModal] = useState(false);
-  const [equippedBorderId, setEquippedBorderId] = useState<string | null>(null);
+  const [equippedBorderId, setEquippedBorderId] = useState<string | null>(
+    auth.profile?.equipped_border || null
+  );
+
+  useEffect(() => {
+    if (auth.profile?.equipped_border !== undefined) {
+      setEquippedBorderId(auth.profile?.equipped_border || null);
+    }
+  }, [auth.profile?.equipped_border]);
 
   // Floating Toast State for Coming Soon features
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -296,10 +515,11 @@ export default function ProfileScreen() {
     }, 2500);
   };
 
-  // Query real user comments from Supabase
+  // Query real user comments from Supabase (hanya dijalankan saat detail profil terbuka)
   const userCommentsQuery = useQuery({
     queryKey: ["user-profile-comments", auth.user?.id],
-    enabled: Boolean(auth.user?.id),
+    enabled: Boolean(showDetailProfile && auth.user?.id),
+    staleTime: 60 * 1000,
     queryFn: async () => {
       if (!auth.user?.id) return [];
       const { data, error } = await supabase
@@ -319,10 +539,12 @@ export default function ProfileScreen() {
   // Sinkronisasi otomatis data komentar & jumlah like saat membuka tab Profil
   useEffect(() => {
     const unsub = navigation.addListener("focus" as any, () => {
-      userCommentsQuery.refetch().catch(() => { });
+      if (showDetailProfile) {
+        userCommentsQuery.refetch().catch(() => { });
+      }
     });
     return unsub;
-  }, [navigation]);
+  }, [navigation, showDetailProfile]);
 
   // Hitung jumlah balasan (replies) per komentar
   const commentIds = useMemo(() => {
@@ -331,7 +553,7 @@ export default function ProfileScreen() {
 
   const replyCountsQuery = useQuery({
     queryKey: ["user-comments-reply-counts", commentIds.join(",")],
-    enabled: commentIds.length > 0,
+    enabled: Boolean(showDetailProfile && commentIds.length > 0),
     staleTime: 60 * 1000,
     queryFn: async () => {
       if (commentIds.length === 0) return {};
@@ -479,7 +701,7 @@ export default function ProfileScreen() {
   // Query metadata anime (judul resmi & poster/banner) dari AniList untuk semua komentar
   const commentAnimeQuery = useQuery({
     queryKey: ["comment-anime-info", commentAnimeIds.sort().join(",")],
-    enabled: commentAnimeIds.length > 0,
+    enabled: Boolean(showDetailProfile && commentAnimeIds.length > 0),
     staleTime: 30 * 60 * 1000,
     queryFn: async () => {
       if (commentAnimeIds.length === 0) return [];
@@ -495,6 +717,7 @@ export default function ProfileScreen() {
 
   // Map anime posters & titles for fast lookup in comments
   const animePosterMap = useMemo(() => {
+    if (!showDetailProfile) return new Map();
     const map = new Map<number, { title: string; image: string; banner?: string | null }>();
 
     // 1. Dari AniList query khusus komentar (resmi, akurat, dan lengkap)
@@ -532,24 +755,24 @@ export default function ProfileScreen() {
     }
 
     return map;
-  }, [displayRows, bookmarks.data, commentAnimeQuery.data]);
+  }, [showDetailProfile, displayRows, bookmarks.data, commentAnimeQuery.data]);
 
-  if (auth.loading) {
-    return (
-      <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ChibiLoading size={80} />
-        </View>
-      </SafeAreaView>
-    );
+  // ─── 1. LOADING STATE (SKELETON TANPA KEDIPAN DUMMY DATA) ───
+  if (auth.loading || (auth.user && !auth.profile)) {
+    return <ProfileOverviewSkeleton />;
   }
 
-  // Synchronized Profile Information (with fallback for guest/offline)
+  // ─── 2. GUEST STATE (PENGUNJUNG TAMU TANPA DUMMY DATA) ───
+  if (!auth.user) {
+    return <ProfileGuestView />;
+  }
+
+  // ─── 3. REAL USER PROFILE DATA ───
   const username =
     auth.profile?.username ||
     auth.user?.user_metadata?.username ||
     auth.user?.email?.split("@")[0] ||
-    "Aprizal Febrian";
+    "Pengguna";
 
   const displayName =
     auth.profile?.display_name ||
@@ -570,11 +793,11 @@ export default function ProfileScreen() {
       : (googleAvatar || auth.profile?.avatar_url);
 
   const avatar = rawAvatar ? avatarUrl(rawAvatar) : null;
-  const initialLetter = (displayName || username).trim().charAt(0).toUpperCase() || "A";
+  const initialLetter = (displayName || username).trim().charAt(0).toUpperCase() || "N";
 
   // Sequential user tag (#1, #2, dst.) berdasarkan urutan pendaftaran member
-  const memberNumber = auth.profile?.member_number ?? 1;
-  const userTag = `#${memberNumber}`;
+  const memberNumber = auth.profile?.member_number;
+  const userTag = memberNumber ? `#${memberNumber}` : "";
 
   // Role pengguna & verifikasi centang (Merah untuk role khusus, Biru untuk member)
   const userRole = auth.profile?.role || "Member";
@@ -665,12 +888,14 @@ export default function ProfileScreen() {
                 >
                   {displayName}
                 </Text>
-                <Text
-                  style={[styles.socialUserTag, { pointerEvents: "none" } as any]}
-                  pointerEvents="none"
-                >
-                  {userTag}
-                </Text>
+                {userTag ? (
+                  <Text
+                    style={[styles.socialUserTag, { pointerEvents: "none" } as any]}
+                    pointerEvents="none"
+                  >
+                    {userTag}
+                  </Text>
+                ) : null}
                 <View style={styles.socialVerifiedBadge}>
                   <UserVerificationBadge role={auth.profile?.role} isVip={auth.profile?.is_vip} size={15} />
                 </View>
@@ -1191,7 +1416,7 @@ export default function ProfileScreen() {
               <View style={styles.verifiedBadge}>
                 <UserVerificationBadge role={auth.profile?.role} isVip={auth.profile?.is_vip} size={17} />
               </View>
-              <Text style={styles.userTagText}>{userTag}</Text>
+              {userTag ? <Text style={styles.userTagText}>{userTag}</Text> : null}
               {auth.user?.id && (
                 <ProfileLikeButton
                   targetUserId={auth.user.id}
@@ -4070,5 +4295,51 @@ const styles = StyleSheet.create({
     fontFamily: "Nunito-Bold",
     fontSize: 12,
     color: "#E2E8F0",
+  },
+  guestBannerCard: {
+    backgroundColor: "rgba(30, 41, 59, 0.7)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.25)",
+    padding: 22,
+    alignItems: "center",
+    marginBottom: 20,
+    gap: 12,
+  },
+  guestIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  guestTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontFamily: "Nunito-Bold",
+    textAlign: "center",
+  },
+  guestDesc: {
+    color: "#94A3B8",
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
+    paddingHorizontal: 8,
+  },
+  guestLoginBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#38BDF8",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  guestLoginBtnText: {
+    color: "#0B0E14",
+    fontSize: 14,
+    fontFamily: "Nunito-Bold",
   },
 });
