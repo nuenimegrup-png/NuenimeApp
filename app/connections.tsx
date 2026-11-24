@@ -33,6 +33,206 @@ import {
 } from "@/lib/friends-service";
 import { getTierForLevel } from "@/components/level-progress-modal";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
+import { ProfileCityPlaque } from "@/components/profile-city-plaque";
+import { batchPreloadClanProfiles } from "@/lib/global-chat-service";
+
+const NAME_COLORS = [
+  "#38BDF8", // Cyan Sky
+  "#4ADE80", // Emerald Green
+  "#F43F5E", // Rose Red
+  "#A855F7", // Purple
+  "#F59E0B", // Amber Gold
+  "#2DD4BF", // Teal
+  "#EC4899", // Pink
+  "#60A5FA", // Blue
+];
+
+function getUsernameColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % NAME_COLORS.length;
+  return NAME_COLORS[index];
+}
+
+function getTierPillColors(tierName: string) {
+  switch (tierName.toLowerCase()) {
+    case "infinity":
+      return {
+        bg: "rgba(239, 68, 68, 0.16)",
+        border: "rgba(239, 68, 68, 0.45)",
+        text: "#FCA5A5",
+      };
+    case "eternal":
+      return {
+        bg: "rgba(168, 85, 247, 0.16)",
+        border: "rgba(168, 85, 247, 0.45)",
+        text: "#D8B4FE",
+      };
+    case "celestial":
+      return {
+        bg: "rgba(251, 146, 60, 0.16)",
+        border: "rgba(251, 146, 60, 0.45)",
+        text: "#FDBA74",
+      };
+    case "ruby star":
+      return {
+        bg: "rgba(251, 113, 133, 0.16)",
+        border: "rgba(251, 113, 133, 0.45)",
+        text: "#FDA4AF",
+      };
+    case "amethyst":
+      return {
+        bg: "rgba(192, 132, 252, 0.16)",
+        border: "rgba(192, 132, 252, 0.45)",
+        text: "#E9D5FF",
+      };
+    case "sapphire":
+      return {
+        bg: "rgba(56, 189, 248, 0.16)",
+        border: "rgba(56, 189, 248, 0.45)",
+        text: "#7DD3FC",
+      };
+    case "emerald":
+      return {
+        bg: "rgba(52, 211, 153, 0.16)",
+        border: "rgba(52, 211, 153, 0.45)",
+        text: "#6EE7B7",
+      };
+    case "gold":
+      return {
+        bg: "rgba(251, 191, 36, 0.16)",
+        border: "rgba(251, 191, 36, 0.45)",
+        text: "#FDE047",
+      };
+    case "silver":
+      return {
+        bg: "rgba(203, 213, 225, 0.16)",
+        border: "rgba(203, 213, 225, 0.45)",
+        text: "#E2E8F0",
+      };
+    case "bronze":
+      return {
+        bg: "rgba(217, 119, 6, 0.16)",
+        border: "rgba(217, 119, 6, 0.45)",
+        text: "#FCD34D",
+      };
+    case "iron":
+      return {
+        bg: "rgba(100, 116, 139, 0.16)",
+        border: "rgba(100, 116, 139, 0.45)",
+        text: "#94A3B8",
+      };
+    case "stone":
+    default:
+      return {
+        bg: "rgba(71, 85, 105, 0.16)",
+        border: "rgba(71, 85, 105, 0.45)",
+        text: "#94A3B8",
+      };
+  }
+}
+
+interface UserIdentityBlockProps {
+  userId: string;
+  displayName: string;
+  memberNumber: string | number;
+  role?: string | null;
+  isVip?: boolean;
+  level: number;
+}
+
+const UserIdentityBlock = React.memo(function UserIdentityBlock({
+  userId,
+  displayName,
+  memberNumber,
+  role,
+  isVip,
+  level,
+}: UserIdentityBlockProps) {
+  const nameColor = useMemo(() => getUsernameColor(displayName), [displayName]);
+  const tierInfo = useMemo(() => getTierForLevel(level || 1, role), [level, role]);
+  const activeTier = tierInfo?.currentTier;
+  const tierPillColors = useMemo(
+    () => getTierPillColors(activeTier?.name || "Stone"),
+    [activeTier?.name]
+  );
+  const cleanMemberNum = useMemo(
+    () => "#" + (String(memberNumber).replace(/[^0-9]/g, "").replace(/^0+/, "") || "1"),
+    [memberNumber]
+  );
+
+  return (
+    <View style={styles.friendInfoCol}>
+      {/* 1. Header: Display Name + Verification Checkmark + Member Tag */}
+      <View style={styles.senderHeaderRow}>
+        <Text style={[styles.senderNameText, { color: nameColor }]} numberOfLines={1}>
+          {displayName}
+        </Text>
+        <UserVerificationBadge role={role} isVip={isVip} size={13} />
+        <Text style={styles.memberTagText}>{cleanMemberNum}</Text>
+      </View>
+
+      {/* 2. Plakat Kota & Klan (DRAKONIA / GELANDANGAN / [CLAN] NamaClan, compact & inline) */}
+      <View style={styles.cityClanRow}>
+        <ProfileCityPlaque userId={userId} compact inlineClan />
+      </View>
+
+      {/* 3. Badges Row: Rank Tier Pill + Level Pill */}
+      <View style={styles.badgesRow}>
+        {activeTier ? (
+          <View
+            style={[
+              styles.rankTierPill,
+              {
+                backgroundColor: tierPillColors.bg,
+                borderColor: tierPillColors.border,
+              },
+            ]}
+          >
+            <Text style={[styles.rankTierText, { color: tierPillColors.text }]}>
+              {activeTier.name.toUpperCase()}
+            </Text>
+          </View>
+        ) : null}
+
+        <View
+          style={[
+            styles.levelPill,
+            tierInfo?.isInfinity && {
+              backgroundColor: "rgba(239, 68, 68, 0.12)",
+              borderColor: "rgba(239, 68, 68, 0.35)",
+            },
+          ]}
+        >
+          {activeTier?.imageUrl && (
+            <Image
+              source={{ uri: activeTier.imageUrl }}
+              style={styles.tierPillIcon}
+              contentFit="contain"
+              cachePolicy="memory-disk"
+            />
+          )}
+          <Text
+            style={[
+              styles.levelPillText,
+              tierInfo?.isInfinity && {
+                color: "#EF4444",
+                fontSize: 13,
+                fontFamily: "Nunito-Black",
+              },
+            ]}
+          >
+            {tierInfo?.isInfinity
+              ? "∞"
+              : `Lvl ${Number(level || 1).toLocaleString("id-ID")}`}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+});
 
 export default function ConnectionsScreen() {
   const auth = useAnirakuAuth();
@@ -76,6 +276,12 @@ export default function ConnectionsScreen() {
       ]);
       setFriends(friendList);
       setRequests(requestList);
+      const allIds = Array.from(
+        new Set([...friendList.map((f) => f.id), ...requestList.map((r) => r.id)])
+      );
+      if (allIds.length > 0) {
+        batchPreloadClanProfiles(allIds).catch(() => {});
+      }
     } catch (err) {
       console.warn("[connections] Error loading data:", err);
     } finally {
@@ -145,6 +351,9 @@ export default function ConnectionsScreen() {
           const res = await searchUsers(searchQuery, currentUserId);
           setSearchResults(res);
           setHasSearched(true);
+          if (res.length > 0) {
+            batchPreloadClanProfiles(res.map((r) => r.id)).catch(() => {});
+          }
         } catch (err) {
           console.warn("[connections] search error:", err);
         } finally {
@@ -165,6 +374,9 @@ export default function ConnectionsScreen() {
       const res = await searchUsers(searchQuery, currentUserId);
       setSearchResults(res);
       setHasSearched(true);
+      if (res.length > 0) {
+        batchPreloadClanProfiles(res.map((r) => r.id)).catch(() => {});
+      }
     } catch (err) {
       console.warn("[connections] search error:", err);
     } finally {
@@ -329,13 +541,6 @@ export default function ConnectionsScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#38BDF8" />}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => {
-            const tierInfo = getTierForLevel(item.level || 1, item.role);
-            const activeTier = tierInfo?.currentTier;
-            const tierName = activeTier?.name || "Member";
-            const isSpecial = isSpecialRole(item.role);
-            const cleanMemberNum =
-              "#" + (String(item.memberNumber).replace(/[^0-9]/g, "").replace(/^0+/, "") || "1");
-
             return (
               <Pressable
                 onPress={() => {
@@ -354,40 +559,15 @@ export default function ConnectionsScreen() {
                   />
                 </View>
 
-                {/* Info Column */}
-                <View style={styles.friendInfoCol}>
-                  <View style={styles.nameRow}>
-                    <Text style={styles.displayNameText} numberOfLines={1}>
-                      {item.displayName}
-                    </Text>
-                    <UserVerificationBadge role={item.role} isVip={item.isVip} size={14} />
-                  </View>
-
-                  <View style={styles.badgesRow}>
-                    {/* Level Pill */}
-                    <View style={styles.levelPill}>
-                      {activeTier?.imageUrl && (
-                        <Image
-                          source={{ uri: activeTier.imageUrl }}
-                          style={styles.tierPillIcon}
-                          contentFit="contain"
-                          cachePolicy="memory-disk"
-                        />
-                      )}
-                      <Text style={styles.levelPillText}>
-                        {tierInfo?.isInfinity ? "∞" : `Lvl ${item.level.toLocaleString("id-ID")}`}
-                      </Text>
-                    </View>
-
-                    {/* Tier Pill */}
-                    <View style={styles.tierPill}>
-                      <Text style={styles.tierPillText}>{tierName.toUpperCase()}</Text>
-                    </View>
-
-                    {/* Member Number */}
-                    <Text style={styles.memberNumberText}>{cleanMemberNum}</Text>
-                  </View>
-                </View>
+                {/* Info Column (Chat Global Style: Name, Clan & City, Rank Tier, Level) */}
+                <UserIdentityBlock
+                  userId={item.id}
+                  displayName={item.displayName}
+                  memberNumber={item.memberNumber}
+                  role={item.role}
+                  isVip={item.isVip}
+                  level={item.level}
+                />
 
                 {/* Right Chat Bubble Icon (Langsung Masuk Room Chat) */}
                 <Pressable
@@ -421,13 +601,6 @@ export default function ConnectionsScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#38BDF8" />}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => {
-            const tierInfo = getTierForLevel(item.level || 1, item.role);
-            const activeTier = tierInfo?.currentTier;
-            const tierName = activeTier?.name || "Member";
-            const isSpecial = isSpecialRole(item.role);
-            const cleanMemberNum =
-              "#" + (String(item.memberNumber).replace(/[^0-9]/g, "").replace(/^0+/, "") || "1");
-
             return (
               <View style={styles.requestCard}>
                 {/* Pressable kiri → profil */}
@@ -435,43 +608,23 @@ export default function ConnectionsScreen() {
                   onPress={() => { hapticLight(); router.push(`/user/${item.id}` as never); }}
                   style={styles.requestLeft}
                 >
-                  <BorderAvatar
-                    size={46}
-                    borderId={item.equippedBorder}
-                    avatarUrl={item.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
-                  />
-
-                  {/* Info Column */}
-                  <View style={styles.friendInfoCol}>
-                    {/* Nama + Verified Badge */}
-                    <View style={styles.nameRow}>
-                      <Text style={styles.displayNameText} numberOfLines={1}>
-                        {item.displayName}
-                      </Text>
-                      <UserVerificationBadge role={item.role} isVip={item.isVip} size={14} />
-                    </View>
-
-                    {/* Level + Tier + Member Number */}
-                    <View style={styles.badgesRow}>
-                      <View style={styles.levelPill}>
-                        {activeTier?.imageUrl && (
-                          <Image
-                            source={{ uri: activeTier.imageUrl }}
-                            style={styles.tierPillIcon}
-                            contentFit="contain"
-                            cachePolicy="memory-disk"
-                          />
-                        )}
-                        <Text style={styles.levelPillText}>
-                          {tierInfo?.isInfinity ? "∞" : `Lvl ${item.level.toLocaleString("id-ID")}`}
-                        </Text>
-                      </View>
-                      <View style={styles.tierPill}>
-                        <Text style={styles.tierPillText}>{tierName.toUpperCase()}</Text>
-                      </View>
-                      <Text style={styles.memberNumberText}>{cleanMemberNum}</Text>
-                    </View>
+                  <View style={styles.avatarWrap}>
+                    <BorderAvatar
+                      size={46}
+                      borderId={item.equippedBorder}
+                      avatarUrl={item.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
+                    />
                   </View>
+
+                  {/* Info Column (Chat Global Style: Name, Clan & City, Rank Tier, Level) */}
+                  <UserIdentityBlock
+                    userId={item.id}
+                    displayName={item.displayName}
+                    memberNumber={item.memberNumber}
+                    role={item.role}
+                    isVip={item.isVip}
+                    level={item.level}
+                  />
                 </Pressable>
 
                 {/* Tombol Aksi */}
@@ -585,12 +738,6 @@ export default function ConnectionsScreen() {
             renderItem={({ item }) => {
               const isSent = requestSentIds.has(item.id);
               const isAlreadyFriend = friends.some((f) => f.id === item.id);
-              const srTierInfo = getTierForLevel(item.level || 1, item.role);
-              const srActiveTier = srTierInfo?.currentTier;
-              const srTierName = srActiveTier?.name || "Member";
-              const srIsSpecial = isSpecialRole(item.role);
-              const srCleanNum =
-                "#" + (String(item.memberNumber).replace(/[^0-9]/g, "").replace(/^0+/, "") || "1");
 
               return (
                 <View style={styles.searchResultCard}>
@@ -601,40 +748,23 @@ export default function ConnectionsScreen() {
                     }}
                     style={styles.searchResultLeft}
                   >
-                    <BorderAvatar
-                      size={44}
-                      borderId={item.equippedBorder}
-                      avatarUrl={item.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
-                    />
-                    <View style={{ flex: 1, gap: 4 }}>
-                      {/* Name + Checkmark */}
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                        <Text style={styles.displayNameText} numberOfLines={1}>
-                          {item.displayName}
-                        </Text>
-                        <UserVerificationBadge role={item.role} isVip={item.isVip} size={13} />
-                      </View>
-                      {/* Level + Tier + Member Number */}
-                      <View style={styles.badgesRow}>
-                        <View style={styles.levelPill}>
-                          {srActiveTier?.imageUrl && (
-                            <Image
-                              source={{ uri: srActiveTier.imageUrl }}
-                              style={styles.tierPillIcon}
-                              contentFit="contain"
-                              cachePolicy="memory-disk"
-                            />
-                          )}
-                          <Text style={styles.levelPillText}>
-                            {srTierInfo?.isInfinity ? "∞" : `Lvl ${item.level.toLocaleString("id-ID")}`}
-                          </Text>
-                        </View>
-                        <View style={styles.tierPill}>
-                          <Text style={styles.tierPillText}>{srTierName.toUpperCase()}</Text>
-                        </View>
-                        <Text style={styles.memberNumberText}>{srCleanNum}</Text>
-                      </View>
+                    <View style={styles.avatarWrap}>
+                      <BorderAvatar
+                        size={44}
+                        borderId={item.equippedBorder}
+                        avatarUrl={item.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
+                      />
                     </View>
+
+                    {/* Info Column (Chat Global Style: Name, Clan & City, Rank Tier, Level) */}
+                    <UserIdentityBlock
+                      userId={item.id}
+                      displayName={item.displayName}
+                      memberNumber={item.memberNumber}
+                      role={item.role}
+                      isVip={item.isVip}
+                      level={item.level}
+                    />
                   </Pressable>
 
                   {item.id === currentUserId ? (
@@ -704,56 +834,25 @@ export default function ConnectionsScreen() {
             <View style={styles.sheetGrabHandle} />
 
             {/* Friend Header Preview */}
-            {selectedFriend && (() => {
-              const sfTierInfo = getTierForLevel(selectedFriend.level, selectedFriend.role);
-              const sfTier = sfTierInfo.currentTier;
-              const sfSpecial = isSpecialRole(selectedFriend.role);
-              const sfCleanNum =
-                "#" + (String(selectedFriend.memberNumber).replace(/[^0-9]/g, "").replace(/^0+/, "") || "1");
-
-              return (
-                <View style={styles.sheetFriendHeader}>
+            {selectedFriend && (
+              <View style={styles.sheetFriendHeader}>
+                <View style={styles.avatarWrap}>
                   <BorderAvatar
                     size={46}
                     borderId={selectedFriend.equippedBorder}
                     avatarUrl={selectedFriend.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
                   />
-                  <View style={styles.sheetFriendInfo}>
-                    <View style={styles.nameRow}>
-                      <Text style={styles.displayNameText} numberOfLines={1}>
-                        {selectedFriend.displayName}
-                      </Text>
-                      <AppIcon
-                        name={sfSpecial ? "check-decagram" : "check-circle"}
-                        size={14}
-                        color={sfSpecial ? "#EF4444" : "#38BDF8"}
-                      />
-                    </View>
-                    <View style={styles.badgesRow}>
-                      <View style={styles.levelPill}>
-                        {sfTier?.imageUrl && (
-                          <Image
-                            source={{ uri: sfTier.imageUrl }}
-                            style={styles.tierPillIcon}
-                            contentFit="contain"
-                            cachePolicy="memory-disk"
-                          />
-                        )}
-                        <Text style={styles.levelPillText}>
-                          Lvl {selectedFriend.level.toLocaleString("id-ID")}
-                        </Text>
-                      </View>
-                      <View style={styles.tierPill}>
-                        <Text style={styles.tierPillText}>
-                          {sfTier.name.toUpperCase()}
-                        </Text>
-                      </View>
-                      <Text style={styles.memberNumberText}>{sfCleanNum}</Text>
-                    </View>
-                  </View>
                 </View>
-              );
-            })()}
+                <UserIdentityBlock
+                  userId={selectedFriend.id}
+                  displayName={selectedFriend.displayName}
+                  memberNumber={selectedFriend.memberNumber}
+                  role={selectedFriend.role}
+                  isVip={selectedFriend.isVip}
+                  level={selectedFriend.level}
+                />
+              </View>
+            )}
 
             <View style={styles.sheetDivider} />
 
@@ -942,60 +1041,80 @@ const styles = StyleSheet.create({
     height: 48,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "visible",
   },
   friendInfoCol: {
     flex: 1,
-    gap: 4,
+    gap: 2,
+    justifyContent: "center",
   },
-  nameRow: {
+  senderHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 5,
+    marginBottom: 1,
+    flexWrap: "wrap",
   },
-  displayNameText: {
+  senderNameText: {
+    fontSize: 13,
     fontFamily: "Nunito-Black",
-    fontSize: 14,
-    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+  memberTagText: {
+    fontSize: 10.5,
+    color: "#64748B",
+    fontFamily: "Nunito-Bold",
+    fontWeight: "600",
+  },
+  cityClanRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 5,
+    marginTop: 1,
+    marginBottom: 2,
   },
   badgesRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
+    marginTop: 1,
     flexWrap: "wrap",
+  },
+  rankTierPill: {
+    paddingHorizontal: 5.5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rankTierText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 9.5,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
   },
   levelPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(16, 185, 129, 0.16)",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
+    gap: 3,
+    backgroundColor: "#1E2636",
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
     borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.3)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
   },
   tierPillIcon: {
-    width: 13,
-    height: 13,
+    width: 11,
+    height: 11,
   },
   levelPillText: {
-    fontFamily: "Nunito-Bold",
-    fontSize: 10,
-    color: "#34D399",
-  },
-  tierPill: {
-    backgroundColor: "rgba(168, 85, 247, 0.16)",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "rgba(168, 85, 247, 0.3)",
-  },
-  tierPillText: {
-    fontFamily: "Nunito-Black",
     fontSize: 9.5,
-    color: "#C084FC",
-    letterSpacing: 0.5,
+    fontFamily: "Nunito-Bold",
+    fontWeight: "700",
+    color: "#94A3B8",
   },
   memberNumberText: {
     fontFamily: "Nunito-Bold",
