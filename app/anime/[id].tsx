@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, memo } from "react";
 import { useWindowDimensions } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import {
+  ActivityIndicator,
   Alert,
   Platform,
   Pressable,
@@ -35,6 +36,7 @@ import { AnimeComments } from "@/components/anime-comments";
 import { ErrorState, LoadingState } from "@/components/async-state";
 import { AppIcon } from "@/components/app-icon";
 import { AiringSchedule } from "@/components/airing-schedule";
+import { Skeleton } from "@/components/skeleton";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
 
 function cleanSynopsisText(raw?: string | null): string {
@@ -133,6 +135,330 @@ function getReleasedDisplay(startDate?: any, endDate?: any): string {
   return "-";
 }
 
+const AnimeDetailSkeleton = memo(function AnimeDetailSkeleton() {
+  return (
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
+      {/* Top Nav Placeholder */}
+      <View style={styles.topNav}>
+        <View style={styles.iconBtn}>
+          <AppIcon name="arrow-left" size={20} color="#FFFFFF" />
+        </View>
+        <Skeleton style={{ width: 140, height: 16, borderRadius: 4 }} />
+        <View style={{ width: 40 }} />
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Banner Skeleton */}
+        <View style={styles.backdropWrap}>
+          <Skeleton style={{ width: "100%", height: 260 }} />
+          <LinearGradient
+            colors={[
+              "rgba(11,14,23,0.35)",
+              "rgba(11,14,23,0.0)",
+              "rgba(11,14,23,0.85)",
+              "rgba(11,14,23,1.0)",
+            ]}
+            locations={[0, 0.3, 0.72, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+        </View>
+
+        {/* Hero Section Skeleton */}
+        <View style={styles.heroSection}>
+          <View style={styles.posterContainer}>
+            <Skeleton style={{ width: 110, height: 160, borderRadius: 12 }} />
+          </View>
+          <View style={styles.heroDetails}>
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+              <Skeleton style={{ width: 70, height: 20, borderRadius: 10 }} />
+              <Skeleton style={{ width: 45, height: 20, borderRadius: 10 }} />
+            </View>
+            <Skeleton style={{ width: "90%", height: 22, borderRadius: 4, marginBottom: 8 }} />
+            <Skeleton style={{ width: "65%", height: 18, borderRadius: 4, marginBottom: 10 }} />
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              <Skeleton style={{ width: 60, height: 20, borderRadius: 6 }} />
+              <Skeleton style={{ width: 60, height: 20, borderRadius: 6 }} />
+            </View>
+          </View>
+        </View>
+
+        {/* Buttons Row Skeleton */}
+        <View style={styles.image2ButtonRow}>
+          <Skeleton style={{ flex: 1, height: 44, borderRadius: 24 }} />
+          <Skeleton style={{ width: 110, height: 44, borderRadius: 24 }} />
+          <Skeleton style={{ width: 44, height: 44, borderRadius: 24 }} />
+        </View>
+
+        {/* Detail Anime Card Skeleton */}
+        <View style={styles.sectionCard}>
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.cardHeaderIndicator} />
+            <Skeleton style={{ width: 100, height: 16, borderRadius: 4 }} />
+          </View>
+          <View style={{ gap: 10, paddingVertical: 6 }}>
+            {[1, 2, 3, 4].map((k) => (
+              <View key={k} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Skeleton style={{ width: "45%", height: 28, borderRadius: 6 }} />
+                <Skeleton style={{ width: "45%", height: 28, borderRadius: 6 }} />
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Synopsis Skeleton */}
+        <View style={styles.sectionCard}>
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.cardHeaderIndicator} />
+            <Skeleton style={{ width: 75, height: 16, borderRadius: 4 }} />
+          </View>
+          <Skeleton style={{ width: "100%", height: 14, borderRadius: 4, marginBottom: 6 }} />
+          <Skeleton style={{ width: "95%", height: 14, borderRadius: 4, marginBottom: 6 }} />
+          <Skeleton style={{ width: "80%", height: 14, borderRadius: 4, marginBottom: 6 }} />
+          <Skeleton style={{ width: "60%", height: 14, borderRadius: 4 }} />
+        </View>
+
+        {/* Episodes Skeleton */}
+        <View style={styles.sectionCard}>
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.cardHeaderIndicator} />
+            <Skeleton style={{ width: 110, height: 16, borderRadius: 4 }} />
+          </View>
+          {[1, 2, 3].map((k) => (
+            <View key={k} style={{ flexDirection: "row", gap: 12, marginBottom: 12, alignItems: "center" }}>
+              <Skeleton style={{ width: 120, height: 68, borderRadius: 10 }} />
+              <View style={{ flex: 1, gap: 8 }}>
+                <Skeleton style={{ width: "85%", height: 14, borderRadius: 4 }} />
+                <Skeleton style={{ width: "45%", height: 12, borderRadius: 4 }} />
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+});
+
+const RelationCardItem = memo(function RelationCardItem({
+  relation,
+  onPress,
+}: {
+  relation: any;
+  onPress: (id: number) => void;
+}) {
+  const relationTitle = animeTitle(relation.anime);
+  const rawCover =
+    relation.anime.coverImage?.large ||
+    relation.anime.coverImage?.extraLarge ||
+    "";
+  const cover = rawCover ? getOptimizedImageUri(rawCover, POSTER_W) : "";
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Buka ${relation.label}: ${relationTitle}`}
+      onPress={() => onPress(relation.id)}
+      style={({ pressed }) => [styles.relationCard, pressed && styles.btnPressed]}
+    >
+      <View style={styles.relationPosterWrap}>
+        {cover ? (
+          <Image
+            source={{ uri: cover }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={120}
+            cachePolicy="memory-disk"
+          />
+        ) : (
+          <Text style={styles.fallbackPosterLabel}>ANIME</Text>
+        )}
+        <View style={styles.relationBadgePill}>
+          <Text style={styles.relationBadgeText}>{relation.label}</Text>
+        </View>
+      </View>
+      <Text style={styles.relationAnimeTitle} numberOfLines={2}>
+        {relationTitle}
+      </Text>
+      <Text style={styles.relationMetaText} numberOfLines={1}>
+        {[relation.anime.format, relation.anime.episodes ? `${relation.anime.episodes} EP` : null]
+          .filter(Boolean)
+          .join(" · ") || "Detail"}
+      </Text>
+    </Pressable>
+  );
+});
+
+const RecommendationCardItem = memo(function RecommendationCardItem({
+  rec,
+  onPress,
+}: {
+  rec: any;
+  onPress: (id: number) => void;
+}) {
+  const recTitle = animeTitle(rec);
+  const rawCover = rec.coverImage?.extraLarge || rec.coverImage?.large || "";
+  const cover = rawCover ? getOptimizedImageUri(rawCover, POSTER_W) : "";
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Buka rekomendasi: ${recTitle}`}
+      onPress={() => onPress(rec.id)}
+      style={({ pressed }) => [styles.recCard, pressed && styles.btnPressed]}
+    >
+      <View style={styles.recPosterWrap}>
+        {cover ? (
+          <Image
+            source={{ uri: cover }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={120}
+            cachePolicy="memory-disk"
+          />
+        ) : (
+          <Text style={styles.fallbackPosterLabel}>ANIME</Text>
+        )}
+        {rec.averageScore ? (
+          <View style={styles.recScoreBadge}>
+            <AppIcon name="star" size={10} color="#F5C518" />
+            <Text style={styles.recScoreText}>{(rec.averageScore / 10).toFixed(1)}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={styles.recCardTitle} numberOfLines={2}>
+        {recTitle}
+      </Text>
+      <Text style={styles.recMetaText} numberOfLines={1}>
+        {[rec.format, rec.episodes ? `${rec.episodes} Ep` : null].filter(Boolean).join(" · ")}
+      </Text>
+    </Pressable>
+  );
+});
+
+const EpisodeCardItem = memo(function EpisodeCardItem({
+  episode,
+  seen,
+  score,
+  isFuture,
+  airingLabel,
+  twoPane,
+  onOpen,
+  onRate,
+}: {
+  episode: any;
+  seen?: any;
+  score?: number;
+  isFuture: boolean;
+  airingLabel: string | null;
+  twoPane: boolean;
+  onOpen: (epNum: number) => void;
+  onRate: (epNum: number, currentScore?: number) => void;
+}) {
+  const progress = seen
+    ? Math.min(100, Math.round((seen.progress / Math.max(seen.duration, 1)) * 100))
+    : 0;
+
+  return (
+    <View style={[styles.episodeItemRow, twoPane && styles.episodeItemRowWide]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Tonton episode ${episode.number}: ${
+          episode.title || "Episode " + episode.number
+        }`}
+        onPress={() => onOpen(episode.number)}
+        style={({ pressed }) => [styles.episodeItemPressable, pressed && styles.btnPressed]}
+      >
+        {/* 16:9 Thumbnail Box */}
+        <View style={[styles.episodeThumbnailWrap, isFuture && { opacity: 0.65 }]}>
+          {episode.thumbnail ? (
+            <Image
+              source={{ uri: episode.thumbnail }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              transition={120}
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            <View style={[StyleSheet.absoluteFill, styles.thumbnailFallback]}>
+              <AppIcon name="movie-play-outline" size={22} color="#64748B" />
+            </View>
+          )}
+          <View style={styles.episodeThumbnailOverlay} />
+          <View style={styles.episodeNumberBadge}>
+            <Text style={styles.episodeNumberText}>
+              {String(episode.number).padStart(2, "0")}
+            </Text>
+          </View>
+          <View style={[styles.thumbPlayIconWrap, isFuture && styles.thumbPlayIconWrapUpcoming]}>
+            <AppIcon name={isFuture ? "clock-outline" : "play"} size={13} color="#FFFFFF" />
+          </View>
+          {seen ? (
+            <View style={styles.thumbnailProgressTrack}>
+              <View style={[styles.thumbnailProgressFill, { width: `${progress}%` }]} />
+            </View>
+          ) : null}
+        </View>
+
+        {/* Title and metadata */}
+        <View style={styles.episodeInfoCol}>
+          <Text style={styles.episodeTitleText} numberOfLines={2}>
+            {episode.title || `Episode ${episode.number}`}
+          </Text>
+
+          <View style={styles.episodeBadgeStatusRow}>
+            {isFuture ? (
+              <View style={styles.upcomingPill}>
+                <AppIcon name="clock-outline" size={10} color="#C0C0C0" />
+                <Text style={styles.upcomingPillText}>{airingLabel}</Text>
+              </View>
+            ) : seen ? (
+              <View style={styles.watchedPill}>
+                <Text style={styles.watchedPillText}>{progress}% Ditonton</Text>
+              </View>
+            ) : (
+              <View style={styles.readyPill}>
+                <Text style={styles.readyPillText}>Siap Nonton</Text>
+              </View>
+            )}
+
+            {episode.isFiller ? (
+              <View style={styles.fillerPill}>
+                <Text style={styles.fillerPillText}>FILLER</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Pressable>
+
+      {/* Episode rating button */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Beri nilai episode ${episode.number}`}
+        onPress={(event) => {
+          event.stopPropagation();
+          onRate(episode.number, score);
+        }}
+        style={({ pressed }) => [
+          styles.ratingPillBtn,
+          score ? styles.ratingPillBtnActive : null,
+          pressed && styles.btnPressed,
+        ]}
+      >
+        <AppIcon
+          name={score ? "star" : "star-outline"}
+          size={13}
+          color={score ? "#F5C518" : "#94A3B8"}
+        />
+        <Text style={[styles.ratingPillText, score ? styles.ratingPillTextActive : null]}>
+          {score ? `${score}` : "Nilai"}
+        </Text>
+      </Pressable>
+    </View>
+  );
+});
+
 export default function AnimeDetailScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const id = parseRouteId(params.id) ?? -1;
@@ -152,13 +478,11 @@ export default function AnimeDetailScreen() {
     staleTime: 10 * 60_000,
   });
   const canonicalEpisodeRows = useMemo(() => episodes.data ?? [], [episodes.data]);
-  const episodeSignature = useMemo(
-    () =>
-      canonicalEpisodeRows
-        .map((item) => `${item.number}:${item.title ?? ""}:${item.thumbnail ?? ""}`)
-        .join("|"),
-    [canonicalEpisodeRows]
-  );
+  const episodeSignature = useMemo(() => {
+    const len = canonicalEpisodeRows.length;
+    if (!len) return "0";
+    return `${len}:${canonicalEpisodeRows[0]?.number ?? 0}:${canonicalEpisodeRows[len - 1]?.number ?? 0}`;
+  }, [canonicalEpisodeRows]);
   const fallbackThumbnail =
     anime.data?.bannerImage ||
     anime.data?.coverImage?.extraLarge ||
@@ -195,6 +519,7 @@ export default function AnimeDetailScreen() {
   const [episodePage, setEpisodePage] = useState(0);
   const [episodeSearch, setEpisodeSearch] = useState("");
   const [isSynopsisExpanded, setIsSynopsisExpanded] = useState(false);
+  const [renderComments, setRenderComments] = useState(false);
   const { width } = useWindowDimensions();
   const recommendations = useQuery({
     queryKey: ["recommendations", id],
@@ -202,6 +527,12 @@ export default function AnimeDetailScreen() {
     enabled: Number.isFinite(id) && id > 0,
     staleTime: 10 * 60_000,
   });
+
+  // Defer heavy below-the-fold comments slightly so initial screen paints at 60fps
+  useEffect(() => {
+    const t = setTimeout(() => setRenderComments(true), 250);
+    return () => clearTimeout(t);
+  }, [id]);
 
   const twoPane = isWideLayout(width);
 
@@ -224,10 +555,19 @@ export default function AnimeDetailScreen() {
   );
   const episodePageStart = episodeRows.length ? safeEpisodePage * 50 + 1 : 0;
   const episodePageEnd = Math.min(episodeRows.length, (safeEpisodePage + 1) * 50);
+
   const animeHistory = useMemo(
     () => history.history.data?.filter((entry) => entry.anime_id === id) ?? [],
     [history.history.data, id]
   );
+  const animeHistoryMap = useMemo(() => {
+    const map = new Map<number, (typeof animeHistory)[0]>();
+    for (const entry of animeHistory) {
+      map.set(entry.episode_number, entry);
+    }
+    return map;
+  }, [animeHistory]);
+
   const resumeEpisode = useMemo(
     () => chooseResumeEpisode(animeHistory),
     [animeHistory]
@@ -250,6 +590,29 @@ export default function AnimeDetailScreen() {
   useEffect(() => {
     setIsSynopsisExpanded(false);
   }, [id]);
+
+  const handleOpenAnime = useCallback((targetId: number) => {
+    hapticLight();
+    router.push({
+      pathname: "/anime/[id]",
+      params: { id: String(targetId) },
+    } as never);
+  }, []);
+
+  const handleRateEpisode = useCallback(
+    (episodeNumber: number, currentScore?: number) => {
+      if (!auth.user) {
+        router.push("/auth" as never);
+        return;
+      }
+      hapticLight();
+      ratings.setRating.mutate({
+        episode: episodeNumber,
+        score: currentScore ? (currentScore % 10) + 1 : 8,
+      });
+    },
+    [auth.user, ratings.setRating]
+  );
 
   if (invalidId) {
     return (
@@ -275,22 +638,7 @@ export default function AnimeDetailScreen() {
   }
 
   if (anime.isPending) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.topNav}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.back()}
-            style={({ pressed }) => [styles.iconBtn, pressed && styles.btnPressed]}
-          >
-            <AppIcon name="arrow-left" size={20} color="#FFFFFF" />
-          </Pressable>
-          <Text style={styles.navTitle}>Detail Anime</Text>
-          <View style={{ width: 40 }} />
-        </View>
-        <LoadingState label="Memuat informasi anime..." />
-      </SafeAreaView>
-    );
+    return <AnimeDetailSkeleton />;
   }
 
   if (anime.isError || !anime.data) {
@@ -326,45 +674,51 @@ export default function AnimeDetailScreen() {
   const studioDisplay = getStudioDisplay(data?.studios);
   const producersDisplay = getProducersDisplay(data?.studios, studioDisplay);
   const releasedDisplay = getReleasedDisplay(data?.startDate, data?.endDate);
-  const openEpisode = (episodeNumber: number) => {
-    const isFuture = isConfirmedFutureRelease({
-      episodeNumber,
-      episodes: canonicalEpisodeRows,
-      status: data.status,
-      nextAiringEpisode: data.nextAiringEpisode,
-      hasConfirmedEpisodeList: episodes.isSuccess && canonicalEpisodeRows.length > 0,
-    });
 
-    if (isFuture) {
-      hapticLight();
-      let msg = `Episode ${episodeNumber} belum resmi ditayangkan.`;
-      if (data.nextAiringEpisode?.episode === episodeNumber && data.nextAiringEpisode?.airingAt) {
-        const dateStr = new Date(data.nextAiringEpisode.airingAt * 1000).toLocaleDateString("id-ID", {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-        msg = `Episode ${episodeNumber} dijadwalkan tayang pada ${dateStr} WIB. Silakan nantikan penayangannya ya!`;
-      } else {
-        msg = `Episode ${episodeNumber} belum resmi ditayangkan. Nantikan tanggal rilis resminya ya!`;
+  const openEpisode = useCallback(
+    (episodeNumber: number) => {
+      if (!data) return;
+      const isFuture = isConfirmedFutureRelease({
+        episodeNumber,
+        episodes: canonicalEpisodeRows,
+        status: data.status,
+        nextAiringEpisode: data.nextAiringEpisode,
+        hasConfirmedEpisodeList: episodes.isSuccess && canonicalEpisodeRows.length > 0,
+      });
+
+      if (isFuture) {
+        hapticLight();
+        let msg = `Episode ${episodeNumber} belum resmi ditayangkan.`;
+        if (data.nextAiringEpisode?.episode === episodeNumber && data.nextAiringEpisode?.airingAt) {
+          const dateStr = new Date(data.nextAiringEpisode.airingAt * 1000).toLocaleDateString("id-ID", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          msg = `Episode ${episodeNumber} dijadwalkan tayang pada ${dateStr} WIB. Silakan nantikan penayangannya ya!`;
+        } else {
+          msg = `Episode ${episodeNumber} belum resmi ditayangkan. Nantikan tanggal rilis resminya ya!`;
+        }
+        Alert.alert("Episode Belum Tayang", msg, [{ text: "Mengerti" }]);
+        return;
       }
-      Alert.alert("Episode Belum Tayang", msg, [{ text: "Mengerti" }]);
-      return;
-    }
 
-    hapticLight();
-    router.push({
-      pathname: "/watch/[id]",
-      params: {
-        id: String(id),
-        episode: String(episodeNumber),
-        title,
-        image: data.coverImage?.extraLarge || data.coverImage?.large || "",
-      },
-    } as never);
-  };
+      hapticLight();
+      router.push({
+        pathname: "/watch/[id]",
+        params: {
+          id: String(id),
+          episode: String(episodeNumber),
+          title,
+          image: data.coverImage?.extraLarge || data.coverImage?.large || "",
+        },
+      } as never);
+    },
+    [canonicalEpisodeRows, data, episodes.isSuccess, id, title]
+  );
+
   const lastAvailableEpisode =
     episodeRows.at(-1)?.number ?? Math.max(data.episodes ?? 1, 1);
   const displayedResume = Math.min(resumeEpisode, lastAvailableEpisode);
@@ -429,7 +783,8 @@ export default function AnimeDetailScreen() {
               source={{ uri: bannerUri }}
               style={StyleSheet.absoluteFill}
               contentFit="cover"
-              transition={200}
+              priority="high"
+              transition={150}
               cachePolicy="memory-disk"
             />
           ) : null}
@@ -454,7 +809,8 @@ export default function AnimeDetailScreen() {
                 source={{ uri: posterUri }}
                 style={styles.posterImage}
                 contentFit="cover"
-                transition={200}
+                priority="high"
+                transition={150}
                 cachePolicy="memory-disk"
               />
             ) : (
@@ -804,66 +1160,13 @@ export default function AnimeDetailScreen() {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.relationRailContent}
                 >
-                  {group.relations.map((relation) => {
-                    const relationTitle = animeTitle(relation.anime);
-                    const rawCover =
-                      relation.anime.coverImage?.large ||
-                      relation.anime.coverImage?.extraLarge ||
-                      "";
-                    const cover = rawCover
-                      ? getOptimizedImageUri(rawCover, POSTER_W)
-                      : "";
-                    return (
-                      <Pressable
-                        key={relation.id}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Buka ${relation.label}: ${relationTitle}`}
-                        onPress={() => {
-                          hapticLight();
-                          router.push({
-                            pathname: "/anime/[id]",
-                            params: { id: String(relation.id) },
-                          } as never);
-                        }}
-                        style={({ pressed }) => [
-                          styles.relationCard,
-                          pressed && styles.btnPressed,
-                        ]}
-                      >
-                        <View style={styles.relationPosterWrap}>
-                          {cover ? (
-                            <Image
-                              source={{ uri: cover }}
-                              style={StyleSheet.absoluteFill}
-                              contentFit="cover"
-                              transition={150}
-                              cachePolicy="memory-disk"
-                            />
-                          ) : (
-                            <Text style={styles.fallbackPosterLabel}>ANIME</Text>
-                          )}
-                          <View style={styles.relationBadgePill}>
-                            <Text style={styles.relationBadgeText}>
-                              {relation.label}
-                            </Text>
-                          </View>
-                        </View>
-                        <Text style={styles.relationAnimeTitle} numberOfLines={2}>
-                          {relationTitle}
-                        </Text>
-                        <Text style={styles.relationMetaText} numberOfLines={1}>
-                          {[
-                            relation.anime.format,
-                            relation.anime.episodes
-                              ? `${relation.anime.episodes} EP`
-                              : null,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ") || "Detail"}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                  {group.relations.map((relation) => (
+                    <RelationCardItem
+                      key={relation.id}
+                      relation={relation}
+                      onPress={handleOpenAnime}
+                    />
+                  ))}
                 </ScrollView>
               </View>
             ))}
@@ -893,65 +1196,13 @@ export default function AnimeDetailScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.recommendationsRail}
             >
-              {recommendations.data.map((rec) => {
-                const recTitle = animeTitle(rec);
-                const rawCover =
-                  rec.coverImage?.extraLarge || rec.coverImage?.large || "";
-                const cover = rawCover
-                  ? getOptimizedImageUri(rawCover, POSTER_W)
-                  : "";
-                return (
-                  <Pressable
-                    key={rec.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Buka rekomendasi: ${recTitle}`}
-                    onPress={() => {
-                      hapticLight();
-                      router.push({
-                        pathname: "/anime/[id]",
-                        params: { id: String(rec.id) },
-                      } as never);
-                    }}
-                    style={({ pressed }) => [
-                      styles.recCard,
-                      pressed && styles.btnPressed,
-                    ]}
-                  >
-                    <View style={styles.recPosterWrap}>
-                      {cover ? (
-                        <Image
-                          source={{ uri: cover }}
-                          style={StyleSheet.absoluteFill}
-                          contentFit="cover"
-                          transition={150}
-                          cachePolicy="memory-disk"
-                        />
-                      ) : (
-                        <Text style={styles.fallbackPosterLabel}>ANIME</Text>
-                      )}
-                      {rec.averageScore ? (
-                        <View style={styles.recScoreBadge}>
-                          <AppIcon name="star" size={10} color="#F5C518" />
-                          <Text style={styles.recScoreText}>
-                            {(rec.averageScore / 10).toFixed(1)}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                    <Text style={styles.recCardTitle} numberOfLines={2}>
-                      {recTitle}
-                    </Text>
-                    <Text style={styles.recMetaText} numberOfLines={1}>
-                      {[
-                        rec.format,
-                        rec.episodes ? `${rec.episodes} Ep` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+              {recommendations.data.map((rec) => (
+                <RecommendationCardItem
+                  key={rec.id}
+                  rec={rec}
+                  onPress={handleOpenAnime}
+                />
+              ))}
             </ScrollView>
           </View>
         ) : null}
@@ -1105,18 +1356,7 @@ export default function AnimeDetailScreen() {
               >
                 {pagedEpisodeRows.map((episode) => {
                   const score = ratings.scoreFor(episode.number);
-                  const seen = animeHistory.find(
-                    (entry) => entry.episode_number === episode.number
-                  );
-                  const progress = seen
-                    ? Math.min(
-                        100,
-                        Math.round(
-                          (seen.progress / Math.max(seen.duration, 1)) * 100
-                        )
-                      )
-                    : 0;
-
+                  const seen = animeHistoryMap.get(episode.number);
                   const isFuture = isConfirmedFutureRelease({
                     episodeNumber: episode.number,
                     episodes: canonicalEpisodeRows,
@@ -1124,7 +1364,6 @@ export default function AnimeDetailScreen() {
                     nextAiringEpisode: data.nextAiringEpisode,
                     hasConfirmedEpisodeList: episodes.isSuccess && canonicalEpisodeRows.length > 0,
                   });
-
                   const airingLabel = isFuture
                     ? (data.nextAiringEpisode?.episode === episode.number && data.nextAiringEpisode?.airingAt
                         ? formatAiringDate(data.nextAiringEpisode.airingAt)
@@ -1132,148 +1371,17 @@ export default function AnimeDetailScreen() {
                     : null;
 
                   return (
-                    <View
+                    <EpisodeCardItem
                       key={episode.number}
-                      style={[
-                        styles.episodeItemRow,
-                        twoPane && styles.episodeItemRowWide,
-                      ]}
-                    >
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Tonton episode ${episode.number}: ${
-                          episode.title || "Episode " + episode.number
-                        }`}
-                        onPress={() => openEpisode(episode.number)}
-                        style={({ pressed }) => [
-                          styles.episodeItemPressable,
-                          pressed && styles.btnPressed,
-                        ]}
-                      >
-                        {/* 16:9 Thumbnail Box */}
-                        <View style={[styles.episodeThumbnailWrap, isFuture && { opacity: 0.65 }]}>
-                          {episode.thumbnail ? (
-                            <Image
-                              source={{ uri: episode.thumbnail }}
-                              style={StyleSheet.absoluteFill}
-                              contentFit="cover"
-                              transition={150}
-                              cachePolicy="memory-disk"
-                            />
-                          ) : (
-                            <View
-                              style={[
-                                StyleSheet.absoluteFill,
-                                styles.thumbnailFallback,
-                              ]}
-                            >
-                              <AppIcon
-                                name="movie-play-outline"
-                                size={22}
-                                color="#64748B"
-                              />
-                            </View>
-                          )}
-                          <View style={styles.episodeThumbnailOverlay} />
-                          <View style={styles.episodeNumberBadge}>
-                            <Text style={styles.episodeNumberText}>
-                              {String(episode.number).padStart(2, "0")}
-                            </Text>
-                          </View>
-                          <View style={[styles.thumbPlayIconWrap, isFuture && styles.thumbPlayIconWrapUpcoming]}>
-                            <AppIcon name={isFuture ? "clock-outline" : "play"} size={13} color="#FFFFFF" />
-                          </View>
-                          {seen ? (
-                            <View style={styles.thumbnailProgressTrack}>
-                              <View
-                                style={[
-                                  styles.thumbnailProgressFill,
-                                  { width: `${progress}%` },
-                                ]}
-                              />
-                            </View>
-                          ) : null}
-                        </View>
-
-                        {/* Title and metadata */}
-                        <View style={styles.episodeInfoCol}>
-                          <Text
-                            style={styles.episodeTitleText}
-                            numberOfLines={2}
-                          >
-                            {episode.title || `Episode ${episode.number}`}
-                          </Text>
-
-                          <View style={styles.episodeBadgeStatusRow}>
-                            {isFuture ? (
-                              <View style={styles.upcomingPill}>
-                                <AppIcon name="clock-outline" size={10} color="#C0C0C0" />
-                                <Text style={styles.upcomingPillText}>
-                                  {airingLabel}
-                                </Text>
-                              </View>
-                            ) : seen ? (
-                              <View style={styles.watchedPill}>
-                                <Text style={styles.watchedPillText}>
-                                  {progress}% Ditonton
-                                </Text>
-                              </View>
-                            ) : (
-                              <View style={styles.readyPill}>
-                                <Text style={styles.readyPillText}>
-                                  Siap Nonton
-                                </Text>
-                              </View>
-                            )}
-
-                            {episode.isFiller ? (
-                              <View style={styles.fillerPill}>
-                                <Text style={styles.fillerPillText}>
-                                  FILLER
-                                </Text>
-                              </View>
-                            ) : null}
-                          </View>
-                        </View>
-                      </Pressable>
-
-                      {/* Episode rating button */}
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Beri nilai episode ${episode.number}`}
-                        onPress={(event) => {
-                          event.stopPropagation();
-                          if (!auth.user) {
-                            router.push("/auth" as never);
-                            return;
-                          }
-                          hapticLight();
-                          ratings.setRating.mutate({
-                            episode: episode.number,
-                            score: score ? (score % 10) + 1 : 8,
-                          });
-                        }}
-                        style={({ pressed }) => [
-                          styles.ratingPillBtn,
-                          score ? styles.ratingPillBtnActive : null,
-                          pressed && styles.btnPressed,
-                        ]}
-                      >
-                        <AppIcon
-                          name={score ? "star" : "star-outline"}
-                          size={13}
-                          color={score ? "#F5C518" : "#94A3B8"}
-                        />
-                        <Text
-                          style={[
-                            styles.ratingPillText,
-                            score ? styles.ratingPillTextActive : null,
-                          ]}
-                        >
-                          {score ? `${score}` : "Nilai"}
-                        </Text>
-                      </Pressable>
-                    </View>
+                      episode={episode}
+                      seen={seen}
+                      score={score}
+                      isFuture={isFuture}
+                      airingLabel={airingLabel}
+                      twoPane={twoPane}
+                      onOpen={openEpisode}
+                      onRate={handleRateEpisode}
+                    />
                   );
                 })}
               </View>
@@ -1282,7 +1390,19 @@ export default function AnimeDetailScreen() {
         </View>
 
         {/* Community Comments */}
-        <AnimeComments animeId={id} />
+        {renderComments ? (
+          <AnimeComments animeId={id} />
+        ) : (
+          <View style={styles.sectionCard}>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardHeaderIndicator} />
+              <Text style={styles.cardSectionTitle}>Diskusi Komunitas</Text>
+            </View>
+            <View style={{ paddingVertical: 20, alignItems: "center" }}>
+              <ActivityIndicator size="small" color="#38BDF8" />
+            </View>
+          </View>
+        )}
 
         {/* Space on bottom */}
         <View style={{ height: 40 }} />
