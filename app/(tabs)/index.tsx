@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, memo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -27,13 +27,11 @@ import { SkeletonCard, SkeletonRail, SkeletonHero } from "@/components/skeleton"
 import { NotificationSheet } from "@/components/notification-sheet";
 import { AppIcon } from "@/components/app-icon";
 import { InAppEpisodeAlertMonitor } from "@/hooks/use-in-app-episode-alerts";
-import { useWatchHistory } from "@/hooks/use-watch-history";
-import { useBookmarks } from "@/hooks/use-bookmarks";
 import { useNotifications } from "@/hooks/use-notifications";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { useExp } from "@/providers/exp-toast-provider";
 import { EXP_RULES } from "@/lib/user-level";
-import { HomeTopLeaderboard } from "@/components/home-top-leaderboard";
+import { HomeLeaderboardSlider } from "@/components/home-leaderboard-slider";
 import { HomePublicDiscussionBar } from "@/components/home-public-discussion-bar";
 
 export const SERIES_GENRES = [
@@ -57,6 +55,264 @@ export const SERIES_GENRES = [
 
 let memoryCachedHome: { trending: any[]; popular: any[]; upcoming: any[] } | null = null;
 
+// ══════════════════════════════════════════════════════════════
+// 2. FEATURED CAROUSEL BANNER (MEMOIZED UNTUK CEGAH RE-RENDER LAYAR HOME)
+// ══════════════════════════════════════════════════════════════
+const HomeHeroBanner = memo(function HomeHeroBanner({
+  trendingList,
+}: {
+  trendingList: any[];
+}) {
+  const [activeBannerIndex, setActiveBannerIndex] = useState(0);
+  const touchStartX = useRef<number>(0);
+  const prefetch = usePrefetchAnime();
+  const heroList = useMemo(() => trendingList.slice(0, 5), [trendingList]);
+  const heroCount = heroList.length;
+
+  // Auto-slide featured banner setiap 5 detik terisolasi hanya di dalam komponen banner
+  useEffect(() => {
+    if (heroCount <= 1) return;
+    const timer = setInterval(() => {
+      setActiveBannerIndex((prev) => (prev + 1) % heroCount);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [heroCount]);
+
+  if (!heroCount) return null;
+  const currentHero = heroList[activeBannerIndex % heroCount] || heroList[0];
+  if (!currentHero) return null;
+
+  return (
+    <View
+      style={styles.heroSection}
+      onTouchStart={(e) => {
+        touchStartX.current = e.nativeEvent.pageX;
+      }}
+      onTouchEnd={(e) => {
+        if (heroCount <= 1) return;
+        const dx = e.nativeEvent.pageX - touchStartX.current;
+        if (dx > 45) {
+          hapticLight();
+          setActiveBannerIndex((prev) => (prev - 1 + heroCount) % heroCount);
+        } else if (dx < -45) {
+          hapticLight();
+          setActiveBannerIndex((prev) => (prev + 1) % heroCount);
+        }
+      }}
+    >
+      <Pressable
+        onPress={() => {
+          hapticLight();
+          prefetch(currentHero.id);
+          router.push((`/anime/${currentHero.id}`) as never);
+        }}
+        style={({ pressed }) => [styles.heroCard, pressed && styles.btnPressed]}
+      >
+        <Image
+          source={{
+            uri: currentHero.bannerImage
+              ? getOptimizedImageUri(currentHero.bannerImage, BANNER_W)
+              : currentHero.coverImage?.extraLarge
+                ? getOptimizedImageUri(currentHero.coverImage.extraLarge, BANNER_W)
+                : currentHero.coverImage?.large || "",
+          }}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          transition={300}
+          cachePolicy="memory-disk"
+        />
+        {/* Gradient Dark Overlay */}
+        <View style={styles.heroDarkMask} />
+
+        {/* Top Badges */}
+        <View style={styles.heroTopBadges}>
+          <View style={styles.populerBadge}>
+            <Text style={styles.populerBadgeText}>POPULER</Text>
+          </View>
+          <View style={styles.scoreBadge}>
+            <Text style={styles.scoreStarText}>★</Text>
+            <Text style={styles.scoreValueText}>
+              {currentHero.averageScore
+                ? (currentHero.averageScore / 10).toFixed(1)
+                : "8.2"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Bottom Details */}
+        <View style={styles.heroBottomContent}>
+          <Text style={styles.heroTitle} numberOfLines={2}>
+            {animeTitle(currentHero)}
+          </Text>
+
+          <View style={styles.heroMetaRow}>
+            <View style={styles.heroEpsBadge}>
+              <Text style={styles.heroEpsBadgeText}>
+                {currentHero.episodes ? `${currentHero.episodes} Eps` : "Ongoing"}
+              </Text>
+            </View>
+            <Text style={styles.heroSubText}>Sub Indo</Text>
+            <View style={styles.heroHdBadge}>
+              <Text style={styles.heroHdBadgeText}>HD</Text>
+            </View>
+          </View>
+
+          {/* Interactive Action Buttons */}
+          <View style={styles.heroActionsRow}>
+            <Pressable
+              onPress={() => {
+                hapticLight();
+                prefetch(currentHero.id);
+                router.push((`/anime/${currentHero.id}`) as never);
+              }}
+              style={({ pressed }) => [
+                styles.heroTontonBtn,
+                pressed && styles.btnPressed,
+              ]}
+            >
+              <AppIcon name="play" size={13} color="#FFFFFF" />
+              <Text style={styles.heroTontonText}>Tonton Sekarang</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                hapticLight();
+                prefetch(currentHero.id);
+                router.push((`/anime/${currentHero.id}`) as never);
+              }}
+              style={({ pressed }) => [
+                styles.heroDetailBtn,
+                pressed && styles.btnPressed,
+              ]}
+            >
+              <AppIcon name="movie-open-outline" size={15} color="#E2E8F0" />
+              <Text style={styles.heroDetailText}>Detail</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Pressable>
+
+      {/* Carousel Dot Indicators */}
+      <View style={styles.heroDotsRow}>
+        {heroList.map((_, idx) => {
+          const isActive = idx === (activeBannerIndex % heroCount);
+          return (
+            <Pressable
+              key={idx}
+              onPress={() => {
+                hapticLight();
+                setActiveBannerIndex(idx);
+              }}
+              hitSlop={10}
+              style={[
+                styles.heroDot,
+                isActive ? styles.heroDotActive : styles.heroDotInactive,
+              ]}
+            />
+          );
+        })}
+      </View>
+    </View>
+  );
+});
+
+// ══════════════════════════════════════════════════════════════
+// 6. TOP 10 ANIME TERPOPULER (MEMOIZED UNTUK EFISIENSI GPU & CPU)
+// ══════════════════════════════════════════════════════════════
+const HomeTop10Section = memo(function HomeTop10Section({
+  items,
+}: {
+  items: any[];
+}) {
+  const prefetch = usePrefetchAnime();
+  if (!items?.length) return null;
+
+  return (
+    <View style={styles.sectionWrap}>
+      <View style={styles.sectionHeaderRow}>
+        <View style={styles.sectionHeaderLeft}>
+          <View style={styles.verticalBar} />
+          <Text style={styles.sectionTitleText}>Top 10 Anime Terpopuler</Text>
+        </View>
+        <Pressable
+          onPress={() =>
+            router.push({
+              pathname: "/search",
+              params: { sort: "POPULARITY_DESC", title: "Top 10 Anime" },
+            } as never)
+          }
+        >
+          <Text style={styles.rankingLinkText}>Ranking Lengkap &gt;</Text>
+        </Pressable>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.horizontalRailContent}
+      >
+        {items.map((item) => {
+          const isFinished =
+            item.status?.toUpperCase() === "FINISHED" ||
+            item.status?.toUpperCase() === "COMPLETED";
+          const statusBadge = isFinished
+            ? "TAMAT"
+            : item.nextAiringEpisode?.episode
+              ? `EP ${item.nextAiringEpisode.episode}`
+              : typeof item.episodes === "number" && item.episodes > 0
+                ? `EP ${item.episodes}`
+                : item.status?.toUpperCase() === "RELEASING"
+                  ? "ONGOING"
+                  : null;
+
+          return (
+            <Pressable
+              key={item.id}
+              onPress={() => {
+                hapticLight();
+                prefetch(item.id);
+                router.push((`/anime/${item.id}`) as never);
+              }}
+              style={({ pressed }) => [styles.animeCardWrap, pressed && styles.btnPressed]}
+            >
+              <View style={styles.animePosterWrap}>
+                <Image
+                  source={{
+                    uri: getOptimizedImageUri(
+                      item.coverImage?.extraLarge || item.coverImage?.large || "",
+                      POSTER_W
+                    ),
+                  }}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="cover"
+                  transition={0}
+                  cachePolicy="memory-disk"
+                />
+                {statusBadge ? (
+                  <View style={styles.cardStatusBadge}>
+                    <Text style={styles.cardStatusBadgeText}>{statusBadge}</Text>
+                  </View>
+                ) : null}
+                <View style={styles.cardScoreBadge}>
+                  <Text style={styles.cardScoreStar}>★</Text>
+                  <Text style={styles.cardScoreValue}>
+                    {item.averageScore
+                      ? (item.averageScore / 10).toFixed(2)
+                      : "8.50"}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.animeCardTitle} numberOfLines={1}>
+                {animeTitle(item)}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+});
+
 export default function HomeScreen() {
   const { width: windowWidth } = useWindowDimensions();
   // 16 horizontal padding on each side = 32 total. 3 gaps of 8px between 4 items = 24.
@@ -64,7 +320,6 @@ export default function HomeScreen() {
   const prefetch = usePrefetchAnime();
   const nsfw = useNsfwPreference();
   const auth = useAnirakuAuth();
-  const bookmarks = useBookmarks();
   const { grantXp } = useExp();
   const dailyLoginChecked = useRef(false);
 
@@ -86,7 +341,6 @@ export default function HomeScreen() {
   const unreadNotifCount = notifications.data?.filter((n) => !n.read).length || 0;
   const params = useLocalSearchParams<{ openMailbox?: string; giftId?: string }>();
   const [notifSheetVisible, setNotifSheetVisible] = useState(false);
-  const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const [selectedGenre, setSelectedGenre] = useState<string>("Action");
 
   useEffect(() => {
@@ -170,17 +424,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const trendingList = home.data?.trending || [];
-  const heroCount = Math.min(trendingList.length, 5);
-  const touchStartX = useRef<number>(0);
-
-  // Auto-slide featured banner setiap 5 detik
-  useEffect(() => {
-    if (heroCount <= 1) return;
-    const timer = setInterval(() => {
-      setActiveBannerIndex((prev) => (prev + 1) % heroCount);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [heroCount, activeBannerIndex]);
+  const top10Popular = useMemo(() => trendingList.slice(0, 10), [trendingList]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -216,10 +460,6 @@ export default function HomeScreen() {
       </SafeAreaView>
     );
   }
-
-  const heroList = trendingList.slice(0, 5);
-  const currentHero = heroList[activeBannerIndex % (heroList.length || 1)] || trendingList[0];
-  const top10Popular = trendingList.slice(0, 10);
 
   const displayName =
     auth.user?.user_metadata?.full_name ||
@@ -320,138 +560,7 @@ export default function HomeScreen() {
         {/* ══════════════════════════════════════════════════════════════
             2. FEATURED CAROUSEL BANNER (LIQUID GLASS)
             ══════════════════════════════════════════════════════════════ */}
-        {currentHero ? (
-          <View
-            style={styles.heroSection}
-            onTouchStart={(e) => {
-              touchStartX.current = e.nativeEvent.pageX;
-            }}
-            onTouchEnd={(e) => {
-              if (heroCount <= 1) return;
-              const dx = e.nativeEvent.pageX - touchStartX.current;
-              if (dx > 45) {
-                hapticLight();
-                setActiveBannerIndex((prev) => (prev - 1 + heroCount) % heroCount);
-              } else if (dx < -45) {
-                hapticLight();
-                setActiveBannerIndex((prev) => (prev + 1) % heroCount);
-              }
-            }}
-          >
-            <Pressable
-              onPress={() => {
-                hapticLight();
-                prefetch(currentHero.id);
-                router.push((`/anime/${currentHero.id}`) as never);
-              }}
-              style={({ pressed }) => [styles.heroCard, pressed && styles.btnPressed]}
-            >
-              <Image
-                source={{
-                  uri: currentHero.bannerImage
-                    ? getOptimizedImageUri(currentHero.bannerImage, BANNER_W)
-                    : currentHero.coverImage?.extraLarge
-                      ? getOptimizedImageUri(currentHero.coverImage.extraLarge, BANNER_W)
-                      : currentHero.coverImage?.large || "",
-                }}
-                style={StyleSheet.absoluteFill}
-                contentFit="cover"
-                transition={400}
-                cachePolicy="memory-disk"
-              />
-              {/* Gradient Dark Overlay */}
-              <View style={styles.heroDarkMask} />
-
-              {/* Top Badges */}
-              <View style={styles.heroTopBadges}>
-                <View style={styles.populerBadge}>
-                  <Text style={styles.populerBadgeText}>POPULER</Text>
-                </View>
-                <View style={styles.scoreBadge}>
-                  <Text style={styles.scoreStarText}>★</Text>
-                  <Text style={styles.scoreValueText}>
-                    {currentHero.averageScore
-                      ? (currentHero.averageScore / 10).toFixed(1)
-                      : "8.2"}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Bottom Details */}
-              <View style={styles.heroBottomContent}>
-                <Text style={styles.heroTitle} numberOfLines={2}>
-                  {animeTitle(currentHero)}
-                </Text>
-
-                <View style={styles.heroMetaRow}>
-                  <View style={styles.heroEpsBadge}>
-                    <Text style={styles.heroEpsBadgeText}>
-                      {currentHero.episodes ? `${currentHero.episodes} Eps` : "Ongoing"}
-                    </Text>
-                  </View>
-                  <Text style={styles.heroSubText}>Sub Indo</Text>
-                  <View style={styles.heroHdBadge}>
-                    <Text style={styles.heroHdBadgeText}>HD</Text>
-                  </View>
-                </View>
-
-                {/* Interactive Action Buttons */}
-                <View style={styles.heroActionsRow}>
-                  <Pressable
-                    onPress={() => {
-                      hapticLight();
-                      prefetch(currentHero.id);
-                      router.push((`/anime/${currentHero.id}`) as never);
-                    }}
-                    style={({ pressed }) => [
-                      styles.heroTontonBtn,
-                      pressed && styles.btnPressed,
-                    ]}
-                  >
-                    <AppIcon name="play" size={13} color="#FFFFFF" />
-                    <Text style={styles.heroTontonText}>Tonton Sekarang</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => {
-                      hapticLight();
-                      prefetch(currentHero.id);
-                      router.push((`/anime/${currentHero.id}`) as never);
-                    }}
-                    style={({ pressed }) => [
-                      styles.heroDetailBtn,
-                      pressed && styles.btnPressed,
-                    ]}
-                  >
-                    <AppIcon name="movie-open-outline" size={15} color="#E2E8F0" />
-                    <Text style={styles.heroDetailText}>Detail</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </Pressable>
-
-            {/* Carousel Dot Indicators */}
-            <View style={styles.heroDotsRow}>
-              {heroList.map((_, idx) => {
-                const isActive = idx === (activeBannerIndex % (heroList.length || 1));
-                return (
-                  <Pressable
-                    key={idx}
-                    onPress={() => {
-                      hapticLight();
-                      setActiveBannerIndex(idx);
-                    }}
-                    hitSlop={10}
-                    style={[
-                      styles.heroDot,
-                      isActive ? styles.heroDotActive : styles.heroDotInactive,
-                    ]}
-                  />
-                );
-              })}
-            </View>
-          </View>
-        ) : null}
+        <HomeHeroBanner trendingList={trendingList} />
 
         {/* ══════════════════════════════════════════════════════════════
             4.5 PUBLIC DISKUSI (AKSES LANGSUNG KE CHAT GLOBAL)
@@ -459,9 +568,9 @@ export default function HomeScreen() {
         <HomePublicDiscussionBar />
 
         {/* ══════════════════════════════════════════════════════════════
-            5. TOP LEADERBOARD CARD (REALTIME)
+            5. TOP LEADERBOARD & TOP AFINITAS SLIDER (REALTIME ROW)
             ══════════════════════════════════════════════════════════════ */}
-        <HomeTopLeaderboard />
+        <HomeLeaderboardSlider />
 
         {/* ══════════════════════════════════════════════════════════════
             5.5. ANIME TERBARU (REKOMENDASI ANIME TERBARU)
@@ -477,90 +586,7 @@ export default function HomeScreen() {
         {/* ══════════════════════════════════════════════════════════════
             6. TOP 10 ANIME TERPOPULER
             ══════════════════════════════════════════════════════════════ */}
-        <View style={styles.sectionWrap}>
-          <View style={styles.sectionHeaderRow}>
-            <View style={styles.sectionHeaderLeft}>
-              <View style={styles.verticalBar} />
-              <Text style={styles.sectionTitleText}>Top 10 Anime Terpopuler</Text>
-            </View>
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: "/search",
-                  params: { sort: "POPULARITY_DESC", title: "Top 10 Anime" },
-                } as never)
-              }
-            >
-              <Text style={styles.rankingLinkText}>Ranking Lengkap &gt;</Text>
-            </Pressable>
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.horizontalRailContent}
-          >
-            {top10Popular.map((item) => {
-              const isFinished =
-                item.status?.toUpperCase() === "FINISHED" ||
-                item.status?.toUpperCase() === "COMPLETED";
-              const statusBadge = isFinished
-                ? "TAMAT"
-                : item.nextAiringEpisode?.episode
-                  ? `EP ${item.nextAiringEpisode.episode}`
-                  : typeof item.episodes === "number" && item.episodes > 0
-                    ? `EP ${item.episodes}`
-                    : item.status?.toUpperCase() === "RELEASING"
-                      ? "ONGOING"
-                      : null;
-
-              return (
-                <Pressable
-                  key={item.id}
-                  onPress={() => {
-                    hapticLight();
-                    prefetch(item.id);
-                    router.push((`/anime/${item.id}`) as never);
-                  }}
-                  style={({ pressed }) => [styles.animeCardWrap, pressed && styles.btnPressed]}
-                >
-                  <View style={styles.animePosterWrap}>
-                    <Image
-                      source={{
-                        uri: getOptimizedImageUri(
-                          item.coverImage?.extraLarge || item.coverImage?.large || "",
-                          POSTER_W
-                        ),
-                      }}
-                      style={StyleSheet.absoluteFill}
-                      contentFit="cover"
-                      transition={150}
-                      cachePolicy="memory-disk"
-                    />
-                    {/* Status Badge (Pojok Kiri Atas: EP ... / TAMAT, Warna Putih, Tanpa Titik) */}
-                    {statusBadge ? (
-                      <View style={styles.cardStatusBadge}>
-                        <Text style={styles.cardStatusBadgeText}>{statusBadge}</Text>
-                      </View>
-                    ) : null}
-                    {/* Rating Tag */}
-                    <View style={styles.cardScoreBadge}>
-                      <Text style={styles.cardScoreStar}>★</Text>
-                      <Text style={styles.cardScoreValue}>
-                        {item.averageScore
-                          ? (item.averageScore / 10).toFixed(2)
-                          : "8.50"}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.animeCardTitle} numberOfLines={1}>
-                    {animeTitle(item)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
+        <HomeTop10Section items={top10Popular} />
 
         {/* ══════════════════════════════════════════════════════════════
             7. OTHER ANIME RAILS (TRENDING, ONGOING, POPULAR, MOVIES)

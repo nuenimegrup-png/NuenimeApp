@@ -77,11 +77,43 @@ export interface RealLeaderboardItem {
   xp: number;
 }
 
+// ─── IN-MEMORY CACHE UNTUK PERFORMA TINGGI & HILANGKAN LAG ───
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const bondsCache = new Map<string, CacheEntry<RealAffinityBond[]>>();
+const privacyCache = new Map<string, CacheEntry<PrivacyOption>>();
+const invitesCache = new Map<string, CacheEntry<RealAffinityInvite[]>>();
+const historyCache = new Map<string, CacheEntry<RealAffinityHistory[]>>();
+const leaderboardCache = new Map<string, CacheEntry<RealLeaderboardItem[]>>();
+const CACHE_TTL_MS = 30_000;
+
+export function clearAffinityCache(userId?: string) {
+  if (userId) {
+    bondsCache.delete(userId);
+    privacyCache.delete(userId);
+    invitesCache.delete(userId);
+    historyCache.delete(userId);
+  } else {
+    bondsCache.clear();
+    privacyCache.clear();
+    invitesCache.clear();
+    historyCache.clear();
+  }
+  leaderboardCache.clear();
+}
+
 /**
- * Mengambil pengaturan privasi afinitas pengguna dari Supabase
+ * Mengambil pengaturan privasi afinitas pengguna dari Supabase (dengan in-memory cache)
  */
-export async function getAffinityPrivacy(userId: string): Promise<PrivacyOption> {
+export async function getAffinityPrivacy(userId: string, forceRefresh = false): Promise<PrivacyOption> {
   if (!userId || userId === "guest") return "publik";
+  const cached = privacyCache.get(userId);
+  if (!forceRefresh && cached && Date.now() - cached.timestamp < 60_000) {
+    return cached.data;
+  }
   try {
     const { data, error } = await supabase
       .from("user_affinity_settings")
@@ -89,8 +121,9 @@ export async function getAffinityPrivacy(userId: string): Promise<PrivacyOption>
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (error || !data) return "publik";
-    return (data.privacy as PrivacyOption) || "publik";
+    const val = (!error && data?.privacy) ? (data.privacy as PrivacyOption) : "publik";
+    privacyCache.set(userId, { data: val, timestamp: Date.now() });
+    return val;
   } catch {
     return "publik";
   }
@@ -101,6 +134,7 @@ export async function getAffinityPrivacy(userId: string): Promise<PrivacyOption>
  */
 export async function setAffinityPrivacy(userId: string, privacy: PrivacyOption): Promise<boolean> {
   if (!userId || userId === "guest") return false;
+  clearAffinityCache(userId);
   try {
     const { error } = await supabase
       .from("user_affinity_settings")
@@ -119,17 +153,24 @@ export async function setAffinityPrivacy(userId: string, privacy: PrivacyOption)
 }
 
 /**
- * Mengambil ikatan aktif pengguna yang terhubung dengan profil nyata di Supabase
+ * Mengambil ikatan aktif pengguna yang terhubung dengan profil nyata di Supabase (dengan in-memory cache)
  */
-export async function getUserAffinityBonds(userId: string): Promise<RealAffinityBond[]> {
+export async function getUserAffinityBonds(userId: string, forceRefresh = false): Promise<RealAffinityBond[]> {
   if (!userId || userId === "guest") return [];
+  const cached = bondsCache.get(userId);
+  if (!forceRefresh && cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
   try {
     const { data: rows, error } = await supabase
       .from("user_affinity_bonds")
       .select("id, tier_id, slot_index, friend_id, xp, level, streak_days, created_at, last_interaction_at")
       .eq("user_id", userId);
 
-    if (error || !rows || rows.length === 0) return [];
+    if (error || !rows || rows.length === 0) {
+      bondsCache.set(userId, { data: [], timestamp: Date.now() });
+      return [];
+    }
 
     // Ambil detail profil teman
     const friendIds = Array.from(new Set(rows.map((r) => r.friend_id)));
@@ -140,7 +181,7 @@ export async function getUserAffinityBonds(userId: string): Promise<RealAffinity
 
     const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
 
-    return rows.map((r) => {
+    const result: RealAffinityBond[] = rows.map((r) => {
       const p = profileMap.get(r.friend_id);
       const name = p?.display_name || p?.username || "Teman Nuenime";
       const initial = (name[0] || "T").toUpperCase();
@@ -171,16 +212,23 @@ export async function getUserAffinityBonds(userId: string): Promise<RealAffinity
         lastInteractionAt: r.last_interaction_at,
       };
     });
+
+    bondsCache.set(userId, { data: result, timestamp: Date.now() });
+    return result;
   } catch {
     return [];
   }
 }
 
 /**
- * Mengambil ajakan afinitas tertunda (pending invites)
+ * Mengambil ajakan afinitas tertunda (pending invites) (dengan in-memory cache)
  */
-export async function getUserAffinityInvites(userId: string): Promise<RealAffinityInvite[]> {
+export async function getUserAffinityInvites(userId: string, forceRefresh = false): Promise<RealAffinityInvite[]> {
   if (!userId || userId === "guest") return [];
+  const cached = invitesCache.get(userId);
+  if (!forceRefresh && cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
   try {
     const { data: rows, error } = await supabase
       .from("user_affinity_invites")
@@ -188,7 +236,10 @@ export async function getUserAffinityInvites(userId: string): Promise<RealAffini
       .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
       .eq("status", "pending");
 
-    if (error || !rows || rows.length === 0) return [];
+    if (error || !rows || rows.length === 0) {
+      invitesCache.set(userId, { data: [], timestamp: Date.now() });
+      return [];
+    }
 
     const otherIds = rows.map((r) => (r.sender_id === userId ? r.receiver_id : r.sender_id));
     const { data: profiles } = await supabase
@@ -198,7 +249,7 @@ export async function getUserAffinityInvites(userId: string): Promise<RealAffini
 
     const pMap = new Map((profiles || []).map((p) => [p.id, p]));
 
-    return rows.map((r) => {
+    const result: RealAffinityInvite[] = rows.map((r) => {
       const isSender = r.sender_id === userId;
       const otherId = isSender ? r.receiver_id : r.sender_id;
       const p = pMap.get(otherId);
@@ -226,6 +277,9 @@ export async function getUserAffinityInvites(userId: string): Promise<RealAffini
         }),
       };
     });
+
+    invitesCache.set(userId, { data: result, timestamp: Date.now() });
+    return result;
   } catch {
     return [];
   }
@@ -259,10 +313,14 @@ export async function getFriendsSlotUsage(
 }
 
 /**
- * Mengambil riwayat ikatan afinitas
+ * Mengambil riwayat ikatan afinitas (dengan in-memory cache)
  */
-export async function getUserAffinityHistory(userId: string): Promise<RealAffinityHistory[]> {
+export async function getUserAffinityHistory(userId: string, forceRefresh = false): Promise<RealAffinityHistory[]> {
   if (!userId || userId === "guest") return [];
+  const cached = historyCache.get(userId);
+  if (!forceRefresh && cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
   try {
     const { data: rows, error } = await supabase
       .from("user_affinity_history")
@@ -271,7 +329,10 @@ export async function getUserAffinityHistory(userId: string): Promise<RealAffini
       .order("created_at", { ascending: false })
       .limit(30);
 
-    if (error || !rows || rows.length === 0) return [];
+    if (error || !rows || rows.length === 0) {
+      historyCache.set(userId, { data: [], timestamp: Date.now() });
+      return [];
+    }
 
     const targetIds = rows.map((r) => r.target_user_id);
     const { data: profiles } = await supabase
@@ -281,7 +342,7 @@ export async function getUserAffinityHistory(userId: string): Promise<RealAffini
 
     const pMap = new Map((profiles || []).map((p) => [p.id, p]));
 
-    return rows.map((r) => {
+    const result: RealAffinityHistory[] = rows.map((r) => {
       const p = pMap.get(r.target_user_id);
       const name = p?.display_name || p?.username || "Pengguna";
       return {
@@ -301,15 +362,22 @@ export async function getUserAffinityHistory(userId: string): Promise<RealAffini
         reason: r.reason || "Tidak ada keterangan.",
       };
     });
+
+    historyCache.set(userId, { data: result, timestamp: Date.now() });
+    return result;
   } catch {
     return [];
   }
 }
 
 /**
- * Mengambil Top Afinitas Leaderboard dari database nyata Supabase
+ * Mengambil Top Afinitas Leaderboard dari database nyata Supabase (dengan in-memory cache)
  */
-export async function getRealTopAffinityLeaderboard(tierId: TierId): Promise<RealLeaderboardItem[]> {
+export async function getRealTopAffinityLeaderboard(tierId: TierId, forceRefresh = false): Promise<RealLeaderboardItem[]> {
+  const cached = leaderboardCache.get(tierId);
+  if (!forceRefresh && cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
   try {
     const { data, error } = await supabase.rpc("get_top_affinity_leaderboard", {
       p_tier_id: tierId,
@@ -324,14 +392,18 @@ export async function getRealTopAffinityLeaderboard(tierId: TierId): Promise<Rea
         hint: error.hint,
       });
       // Fallback: Query tabel database langsung agar leaderboard tetap tampil sempurna
-      return await getLeaderboardDirectFallback(tierId, 25);
+      const fallback = await getLeaderboardDirectFallback(tierId, 25);
+      leaderboardCache.set(tierId, { data: fallback, timestamp: Date.now() });
+      return fallback;
     }
 
     if (!data || !Array.isArray(data)) {
-      return await getLeaderboardDirectFallback(tierId, 25);
+      const fallback = await getLeaderboardDirectFallback(tierId, 25);
+      leaderboardCache.set(tierId, { data: fallback, timestamp: Date.now() });
+      return fallback;
     }
 
-    return data.map((row: any) => ({
+    const result: RealLeaderboardItem[] = data.map((row: any) => ({
       id: row.bond_id,
       tierId: row.tier_id as TierId,
       userA: {
@@ -354,6 +426,9 @@ export async function getRealTopAffinityLeaderboard(tierId: TierId): Promise<Rea
       level: Number(row.level) || 1,
       xp: Number(row.xp) || 0,
     }));
+
+    leaderboardCache.set(tierId, { data: result, timestamp: Date.now() });
+    return result;
   } catch (err) {
     console.error("[Affinity Leaderboard Exception]:", err);
     return await getLeaderboardDirectFallback(tierId, 25);
@@ -473,6 +548,7 @@ export async function sendAffinityInvite(
     });
 
     if (!rpcErr && rpcRes && typeof rpcRes === "object") {
+      if (rpcRes.success) clearAffinityCache();
       return {
         success: Boolean(rpcRes.success),
         message: rpcRes.message || (rpcRes.success ? "Ajakan afinitas berhasil dikirim." : "Gagal mengirim ajakan."),
@@ -540,6 +616,7 @@ export async function sendAffinityInvite(
       return { success: false, message: insertErr.message };
     }
 
+    clearAffinityCache();
     return { success: true, message: "Ajakan afinitas berhasil dikirim." };
   } catch (err: any) {
     return { success: false, message: err?.message || "Gagal mengirim ajakan." };
@@ -564,6 +641,7 @@ export async function acceptAffinityInvite(
     });
 
     if (!rpcErr && rpcRes && typeof rpcRes === "object") {
+      if (rpcRes.success) clearAffinityCache();
       return {
         success: Boolean(rpcRes.success),
         message: rpcRes.message || (rpcRes.success ? "Tautan Afinitas Persahabatan berhasil dibuat!" : "Gagal membuat ikatan."),
@@ -693,6 +771,7 @@ export async function acceptAffinityInvite(
       .neq("id", inviteId)
       .or(`and(sender_id.eq.${senderId},receiver_id.eq.${receiverId}),and(sender_id.eq.${receiverId},receiver_id.eq.${senderId})`);
 
+    clearAffinityCache();
     return {
       success: true,
       message: "Tautan Afinitas Persahabatan berhasil dibuat!",
@@ -725,6 +804,7 @@ export async function cancelAffinityInvite(
       reason: "Ajakan dibatalkan oleh pengguna.",
     });
 
+    clearAffinityCache(userId);
     return true;
   } catch {
     return false;
@@ -754,6 +834,7 @@ export async function rejectAffinityInvite(
       reason: "Ajakan ditolak oleh pengguna.",
     });
 
+    clearAffinityCache(userId);
     return true;
   } catch {
     return false;
@@ -793,6 +874,7 @@ export async function boostAffinityBondXp(
     });
 
     if (!error && data && typeof data === "object") {
+      if (data.success) clearAffinityCache();
       return {
         success: Boolean(data.success),
         message: data.message || (data.success ? "Sapaan berhasil dikirim! (+200 XP)" : "Gagal mengirim sapaan."),
@@ -875,6 +957,7 @@ export async function breakAffinityBond(
     });
 
     if (error || !data) return false;
+    if (data.success) clearAffinityCache();
     return Boolean(data.success);
   } catch {
     return false;

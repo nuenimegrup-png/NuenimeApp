@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   Modal,
@@ -42,15 +43,16 @@ import {
 
 // ─── GEOMETRY CONSTANTS (Identik dengan D:\affinity\src\utils\affinityGeometry.ts) ───
 const CONSTELLATION_WIDTH = 440;
-const CONSTELLATION_HEIGHT = 216;
-const CORE_CENTER = { x: 220, y: 44 };
+const CONSTELLATION_HEIGHT = 224;
+const CORE_CENTER = { x: 220, y: 38 };
 const CORE_RADIUS = 25;
-const ACTIVE_TIER_CENTER = { x: 220, y: 108 };
-const ACTIVE_TIER_RADIUS = 20;
-const TIER_CREST_RADIUS = 23;
+const ACTIVE_TIER_CENTER = { x: 220, y: 116 };
+const ACTIVE_TIER_RADIUS = 22;
+const TIER_CREST_RADIUS = 22;
 const TIER_CREST_SIZE = TIER_CREST_RADIUS * 2;
-const TIER_ICON_SIZE = 30;
+const TIER_ICON_SIZE = 28;
 const SATELLITE_RADIUS = 18;
+const SATELLITE_SIZE = SATELLITE_RADIUS * 2;
 
 function toPctX(x: number): string {
   return `${(x / CONSTELLATION_WIDTH) * 100}%`;
@@ -61,22 +63,22 @@ function toPctY(y: number): string {
 
 function computeConstellationSlots(slotCount: number) {
   const safeCount = Math.max(1, slotCount);
-  const startY = ACTIVE_TIER_CENTER.y + ACTIVE_TIER_RADIUS;
+  const startX = ACTIVE_TIER_CENTER.x;
+  const startY = ACTIVE_TIER_CENTER.y;
 
   if (safeCount === 1) {
-    const center = { x: 220, y: 176 };
-    const endY = center.y - SATELLITE_RADIUS;
+    const center = { x: 220, y: 184 };
     return [
       {
         slotIndex: 0,
         center,
-        curvePath: `M ${ACTIVE_TIER_CENTER.x} ${startY} L ${center.x} ${endY}`,
+        curvePath: `M ${startX} ${startY} L ${center.x} ${center.y}`,
       },
     ];
   }
 
   const maxHalfSpanX = safeCount >= 5 ? 162 : 144;
-  const baseArcY = 178;
+  const baseArcY = 184;
   const edgeLiftY = 14;
 
   return Array.from({ length: safeCount }, (_, idx) => {
@@ -85,14 +87,22 @@ function computeConstellationSlots(slotCount: number) {
     const y = Number((baseArcY - t * t * edgeLiftY).toFixed(2));
     const center = { x, y };
 
-    const endY = Number((y - SATELLITE_RADIUS).toFixed(2));
+    if (t === 0) {
+      // Slot tengah: garis vertikal lurus sempurna masuk ke pusat satelit
+      return {
+        slotIndex: idx,
+        center,
+        curvePath: `M ${startX} ${startY} L ${x} ${y}`,
+      };
+    }
+
     const ctrlX = Number((ACTIVE_TIER_CENTER.x + t * maxHalfSpanX * 0.45).toFixed(2));
-    const ctrlY = Number(((startY + endY) / 2 - 6).toFixed(2));
+    const ctrlY = Number(((startY + y) / 2).toFixed(2));
 
     return {
       slotIndex: idx,
       center,
-      curvePath: `M ${ACTIVE_TIER_CENTER.x} ${startY} Q ${ctrlX} ${ctrlY} ${x} ${endY}`,
+      curvePath: `M ${startX} ${startY} Q ${ctrlX} ${ctrlY} ${x} ${y}`,
     };
   });
 }
@@ -220,6 +230,12 @@ export default function AffinityScreen() {
     targetAvatar?: string;
     targetBorder?: string;
     isVisitor?: string;
+    screen?: string;
+    view?: string;
+    mode?: string;
+    tab?: string;
+    initialScreen?: string;
+    tier?: TierId;
   }>();
 
   const isVisiting = Boolean(
@@ -252,9 +268,25 @@ export default function AffinityScreen() {
     }
   }, [isVisiting, targetOwnerId, routeParams.targetBorder, auth.profile?.equipped_border]);
 
+  const isLeaderboardParam = Boolean(
+    routeParams.view === "leaderboard" ||
+      routeParams.mode === "leaderboard" ||
+      routeParams.tab === "leaderboard" ||
+      routeParams.screen === "leaderboard" ||
+      routeParams.initialScreen === "leaderboard"
+  );
+
+  const initialTier: TierId = (
+    routeParams.tier && ["pasangan", "orang_kepercayaan", "sahabat", "saudara"].includes(routeParams.tier)
+      ? (routeParams.tier as TierId)
+      : "pasangan"
+  );
+
   // Screens & Navigation
-  const [activeScreen, setActiveScreen] = useState<ActiveScreen>("affinity");
-  const [selectedTier, setSelectedTier] = useState<TierId>("pasangan");
+  const [activeScreen, setActiveScreen] = useState<ActiveScreen>(
+    isLeaderboardParam ? "leaderboard" : "affinity"
+  );
+  const [selectedTier, setSelectedTier] = useState<TierId>(initialTier);
   const [privacy, setPrivacy] = useState<PrivacyOption>("publik");
 
   // Real Database States (No Dummy Data)
@@ -264,6 +296,8 @@ export default function AffinityScreen() {
   const [friendsList, setFriendsList] = useState<FriendProfile[]>([]);
   const [leaderboardItems, setLeaderboardItems] = useState<RealLeaderboardItem[]>([]);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
+  const [loadingFriends, setLoadingFriends] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [friendsSlotUsage, setFriendsSlotUsage] = useState<Record<string, number>>({});
 
   // Modals
@@ -274,22 +308,39 @@ export default function AffinityScreen() {
   const [confirmEndBond, setConfirmEndBond] = useState(false);
   const [friendSearchQuery, setFriendSearchQuery] = useState("");
   const [historyFilterCategory, setHistoryFilterCategory] = useState<HistoryCategory>("dibatalkan");
-  const [leaderboardTab, setLeaderboardTab] = useState<TierId>("pasangan");
+  const [leaderboardTab, setLeaderboardTab] = useState<TierId>(initialTier);
 
-  // 1. Sinkronisasi Data Afinitas Real dari Supabase
+  // Sync routeParams jika layar dibuka dari Home Affinity Card atau link navigasi
+  useEffect(() => {
+    if (isLeaderboardParam) {
+      setActiveScreen("leaderboard");
+    }
+    if (routeParams.tier && ["pasangan", "orang_kepercayaan", "sahabat", "saudara"].includes(routeParams.tier)) {
+      setLeaderboardTab(routeParams.tier as TierId);
+      setSelectedTier(routeParams.tier as TierId);
+    }
+  }, [
+    isLeaderboardParam,
+    routeParams.view,
+    routeParams.mode,
+    routeParams.tab,
+    routeParams.screen,
+    routeParams.initialScreen,
+    routeParams.tier,
+  ]);
+
+  // 1. Sinkronisasi Data Afinitas Real dari Supabase (Ringan: tanpa fetch history & leaderboard di awal)
   const reloadAffinityData = useCallback(async () => {
     if (!targetOwnerId) return;
     try {
-      const [realPrivacy, realBonds, realInvites, realHistory] = await Promise.all([
+      const [realPrivacy, realBonds, realInvites] = await Promise.all([
         getAffinityPrivacy(targetOwnerId),
         getUserAffinityBonds(targetOwnerId),
         getUserAffinityInvites(targetOwnerId),
-        getUserAffinityHistory(targetOwnerId),
       ]);
       setPrivacy(realPrivacy);
       setBonds(realBonds as any);
       setPendingInvites(realInvites as any);
-      setHistory(realHistory as any);
     } catch {}
   }, [targetOwnerId]);
 
@@ -297,9 +348,21 @@ export default function AffinityScreen() {
     reloadAffinityData();
   }, [reloadAffinityData]);
 
-  // 2. Sinkronisasi Daftar Teman Nyata (Real Friends Only)
+  // 2. Sinkronisasi Riwayat HANYA saat Modal Riwayat dibuka (Lazy Loading)
   useEffect(() => {
-    if (!auth.user?.id) return;
+    if (!isHistoryOpen || !targetOwnerId) return;
+    setLoadingHistory(true);
+    getUserAffinityHistory(targetOwnerId)
+      .then((res) => setHistory(res as any))
+      .catch(() => setHistory([]))
+      .finally(() => setLoadingHistory(false));
+  }, [isHistoryOpen, targetOwnerId]);
+
+  // 3. Sinkronisasi Daftar Teman HANYA saat Modal Ajak Teman dibuka (Lazy Loading)
+  useEffect(() => {
+    if (inviteModalSlot === null || !auth.user?.id) return;
+    if (friendsList.length > 0) return;
+    setLoadingFriends(true);
     getFriends(auth.user.id)
       .then((real) => {
         if (!real || real.length === 0) {
@@ -318,10 +381,11 @@ export default function AffinityScreen() {
         }));
         setFriendsList(mapped);
       })
-      .catch(() => setFriendsList([]));
-  }, [auth.user?.id]);
+      .catch(() => setFriendsList([]))
+      .finally(() => setLoadingFriends(false));
+  }, [inviteModalSlot, auth.user?.id, friendsList.length]);
 
-  // 2b. Sinkronisasi slot terpakai masing-masing teman saat modal ajak teman dibuka
+  // 3b. Sinkronisasi slot terpakai masing-masing teman saat modal ajak teman dibuka
   useEffect(() => {
     if (inviteModalSlot !== null && friendsList.length > 0) {
       getFriendsSlotUsage(
@@ -335,8 +399,9 @@ export default function AffinityScreen() {
     }
   }, [inviteModalSlot, selectedTier, friendsList]);
 
-  // 3. Sinkronisasi Top Afinitas Leaderboard Nyata dari Database
+  // 4. Sinkronisasi Top Afinitas Leaderboard HANYA saat tab/layar Leaderboard aktif (Lazy Loading)
   useEffect(() => {
+    if (activeScreen !== "leaderboard") return;
     setLoadingLeaderboard(true);
     getRealTopAffinityLeaderboard(leaderboardTab)
       .then((items) => {
@@ -348,7 +413,7 @@ export default function AffinityScreen() {
       .finally(() => {
         setLoadingLeaderboard(false);
       });
-  }, [leaderboardTab]);
+  }, [activeScreen, leaderboardTab]);
 
   const activeTierConfig = useMemo(
     () => TIER_CONFIGS.find((t) => t.id === selectedTier) || TIER_CONFIGS[0],
@@ -359,10 +424,54 @@ export default function AffinityScreen() {
   const remainingSlots = activeTierConfig.maxSlots - activeBonds.length - activePending.length;
   const totalOccupied = bonds.length;
 
+  // Optimasi Lookup Slot Konstelasi O(1) & Memoized Satellites
+  const satellites = useMemo(
+    () => computeConstellationSlots(activeTierConfig.maxSlots),
+    [activeTierConfig.maxSlots]
+  );
+  const bondsBySlot = useMemo(() => {
+    const map = new Map<number, ActiveBond>();
+    for (const b of activeBonds) {
+      map.set(b.slotIndex, b);
+    }
+    return map;
+  }, [activeBonds]);
+  const pendingBySlot = useMemo(() => {
+    const map = new Map<number, PendingInvite>();
+    for (const p of activePending) {
+      map.set(p.slotIndex, p);
+    }
+    return map;
+  }, [activePending]);
+
+  // Optimasi Lookup Teman di Modal Ajak Teman
+  const bondedFriendIds = useMemo(() => new Set(bonds.map((b) => b.friend.id)), [bonds]);
+  const pendingFriendMap = useMemo(() => {
+    const map = new Map<string, PendingInvite>();
+    for (const p of pendingInvites) {
+      map.set(p.friend.id, p);
+    }
+    return map;
+  }, [pendingInvites]);
+
+  const filteredFriends = useMemo(() => {
+    if (!friendSearchQuery.trim()) return friendsList;
+    const q = friendSearchQuery.toLowerCase();
+    return friendsList.filter(
+      (f) => f.name.toLowerCase().includes(q) || f.handle.toLowerCase().includes(q)
+    );
+  }, [friendsList, friendSearchQuery]);
+
+  const filteredHistory = useMemo(() => {
+    return history.filter((h) => h.category === historyFilterCategory);
+  }, [history, historyFilterCategory]);
+
   // Handlers
   const handleBack = () => {
     hapticLight();
-    if (activeScreen === "leaderboard") {
+    if (isLeaderboardParam) {
+      router.back();
+    } else if (activeScreen === "leaderboard") {
       setActiveScreen("affinity");
     } else {
       router.back();
@@ -554,8 +663,6 @@ export default function AffinityScreen() {
 
   // ─── RENDER: ORBITAL BOND GRAPH (Persis D:\affinity\src\components\OrbitalBondGraph.tsx) ───
   const renderOrbitalGraph = () => {
-    const satellites = computeConstellationSlots(activeTierConfig.maxSlots);
-
     return (
       <View style={styles.constellationCard}>
         {/* Header Identitas & Total Bond */}
@@ -591,19 +698,19 @@ export default function AffinityScreen() {
             <Ellipse
               cx={CORE_CENTER.x}
               cy={CORE_CENTER.y}
-              rx={212}
-              ry={136}
+              rx={186}
+              ry={82}
               fill="none"
-              stroke="rgba(255, 255, 255, 0.06)"
+              stroke="rgba(255, 255, 255, 0.05)"
               strokeWidth={1}
             />
 
             {/* Core to Active Tier spine */}
             <Line
               x1={CORE_CENTER.x}
-              y1={CORE_CENTER.y + CORE_RADIUS}
+              y1={CORE_CENTER.y}
               x2={ACTIVE_TIER_CENTER.x}
-              y2={ACTIVE_TIER_CENTER.y - ACTIVE_TIER_RADIUS}
+              y2={ACTIVE_TIER_CENTER.y}
               stroke="rgba(255, 255, 255, 0.24)"
               strokeWidth={1.4}
               strokeLinecap="round"
@@ -611,12 +718,8 @@ export default function AffinityScreen() {
 
             {/* Bezier Constellation Tethers */}
             {satellites.map((sat) => {
-              const bond = bonds.find(
-                (b) => b.tierId === activeTierConfig.id && b.slotIndex === sat.slotIndex
-              );
-              const pending = pendingInvites.find(
-                (p) => p.tierId === activeTierConfig.id && p.slotIndex === sat.slotIndex
-              );
+              const bond = bondsBySlot.get(sat.slotIndex);
+              const pending = pendingBySlot.get(sat.slotIndex);
 
               return (
                 <Path
@@ -675,12 +778,8 @@ export default function AffinityScreen() {
 
           {/* Wide-Arc Slot Satellites dengan Sinkronisasi Border */}
           {satellites.map((sat) => {
-            const bond = bonds.find(
-              (b) => b.tierId === activeTierConfig.id && b.slotIndex === sat.slotIndex
-            );
-            const pending = pendingInvites.find(
-              (p) => p.tierId === activeTierConfig.id && p.slotIndex === sat.slotIndex
-            );
+            const bond = bondsBySlot.get(sat.slotIndex);
+            const pending = pendingBySlot.get(sat.slotIndex);
 
             return (
               <Pressable
@@ -726,7 +825,7 @@ export default function AffinityScreen() {
                   </View>
                 ) : (
                   <View style={styles.satelliteEmptyWrap}>
-                    <AppIcon name="plus" size={16} color="#CBD5E1" />
+                    <AppIcon name="plus" size={14} color="#CBD5E1" />
                   </View>
                 )}
               </Pressable>
@@ -965,6 +1064,14 @@ export default function AffinityScreen() {
           })}
         </View>
 
+        {/* Loading Indicator */}
+        {loadingLeaderboard && (
+          <View style={{ paddingVertical: 24, alignItems: "center", gap: 8 }}>
+            <ActivityIndicator size="small" color="#38BDF8" />
+            <Text style={{ fontSize: 12, color: "#94A3B8" }}>Memuat peringkat afinitas...</Text>
+          </View>
+        )}
+
         {/* Jika belum ada pasangan di leaderboard */}
         {!loadingLeaderboard && leaderboardItems.length === 0 && (
           <View style={styles.emptyLeaderboardCard}>
@@ -1149,161 +1256,169 @@ export default function AffinityScreen() {
       )}
 
       {/* ─── MODAL: DETAIL BOND (Persis D:\affinity\src\components\BondDetailModal.tsx) ─── */}
-      <Modal visible={selectedBond !== null} transparent animationType="fade">
-        <View style={styles.sheetOverlay}>
-          <View style={styles.sheetContent}>
-            {/* Mobile Drag Handle */}
-            <View style={styles.sheetDragHandle} />
+      {selectedBond !== null && (
+        <Modal visible={true} transparent animationType="fade" onRequestClose={() => setSelectedBond(null)}>
+          <View style={styles.sheetOverlay}>
+            <View style={styles.sheetContent}>
+              {/* Mobile Drag Handle */}
+              <View style={styles.sheetDragHandle} />
 
-            {selectedBond && (
-              <>
-                <View style={styles.sheetTopRow}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
+              <View style={styles.sheetTopRow}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 14, flex: 1, minWidth: 0 }}>
+                  <View style={styles.friendAvatarWrap}>
                     <BorderAvatar
                       size={48}
                       avatarUrl={selectedBond.friend.avatarUrl}
                       borderId={selectedBond.friend.equippedBorder}
                       fallbackText={selectedBond.friend.name}
                     />
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.sheetTitle} numberOfLines={1}>
-                        {selectedBond.friend.name}
-                      </Text>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
-                        <Image source={TIER_ICONS[selectedBond.tierId]} style={{ width: 14, height: 14 }} contentFit="contain" />
-                        <Text style={styles.sheetSubText}>{activeTierConfig.labelId}</Text>
-                        <Text style={styles.sheetSubText}>·</Text>
-                        <Text style={styles.sheetSubText}>Sejak {selectedBond.sinceDate}</Text>
-                      </View>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.sheetTitle} numberOfLines={1}>
+                      {selectedBond.friend.name}
+                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
+                      <Image source={TIER_ICONS[selectedBond.tierId]} style={{ width: 14, height: 14 }} contentFit="contain" />
+                      <Text style={styles.sheetSubText}>{activeTierConfig.labelId}</Text>
+                      <Text style={styles.sheetSubText}>·</Text>
+                      <Text style={styles.sheetSubText}>Sejak {selectedBond.sinceDate}</Text>
                     </View>
                   </View>
-                  <Pressable onPress={() => setSelectedBond(null)} style={styles.sheetCloseBtn}>
-                    <AppIcon name="close" size={18} color="#94A3B8" />
-                  </Pressable>
                 </View>
+                <Pressable onPress={() => setSelectedBond(null)} style={styles.sheetCloseBtn}>
+                  <AppIcon name="close" size={18} color="#94A3B8" />
+                </Pressable>
+              </View>
 
-                {/* XP & Streak Summary Card */}
-                {(() => {
-                  const progress = getXpProgressInLevel(selectedBond.xp);
-                  return (
-                    <View style={styles.sheetSummaryCard}>
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                        <Text style={styles.summaryLvText}>Bond Lv {progress.level}</Text>
-                        <Text style={styles.summaryXpText}>{formatXp(selectedBond.xp)} XP</Text>
-                      </View>
-                      <View style={styles.summaryBarBg}>
-                        <View style={[styles.summaryBarFill, { width: `${progress.percent}%` }]} />
-                      </View>
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                          <AppIcon name="fire" size={14} color="#CBD5E1" />
-                          <Text style={styles.summaryInteraksiText}>{selectedBond.streakDays} interaksi</Text>
-                        </View>
-                        <Text style={styles.summaryIntoLvText}>
-                          {formatXp(progress.currentIntoLevel)} / {formatXp(progress.levelSpan)} ke Lv {Math.min(30, progress.level + 1)}
-                        </Text>
-                      </View>
+              {/* XP & Streak Summary Card */}
+              {(() => {
+                const progress = getXpProgressInLevel(selectedBond.xp);
+                return (
+                  <View style={styles.sheetSummaryCard}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <Text style={styles.summaryLvText}>Bond Lv {progress.level}</Text>
+                      <Text style={styles.summaryXpText}>{formatXp(selectedBond.xp)} XP</Text>
                     </View>
-                  );
-                })()}
-
-                {/* Actions */}
-                <View style={{ gap: 10, marginTop: 16 }}>
-                  {isGreetedToday(selectedBond.lastInteractionAt) ? (
-                    <View style={styles.greetedDisabledBtn}>
-                      <AppIcon name="check-circle-outline" size={16} color="#94A3B8" />
-                      <Text style={styles.greetedDisabledText}>Sudah Disapa Hari Ini (1x/hari)</Text>
+                    <View style={styles.summaryBarBg}>
+                      <View style={[styles.summaryBarFill, { width: `${progress.percent}%` }]} />
                     </View>
-                  ) : (
-                    <Pressable
-                      style={({ pressed }) => [styles.primaryWhiteBtn, pressed && styles.btnPressed]}
-                      onPress={() => handleBoostXp(selectedBond.id)}
-                    >
-                      <AppIcon name="star-four-points" size={16} color="#0A0D14" />
-                      <Text style={styles.primaryWhiteBtnText}>Kirim Sapaan (+200 XP)</Text>
-                    </Pressable>
-                  )}
-
-                  {!confirmEndBond ? (
-                    <Pressable
-                      style={styles.unlinkBtn}
-                      onPress={() => setConfirmEndBond(true)}
-                    >
-                      <AppIcon name="link-off" size={16} color="#FB7185" />
-                      <Text style={styles.unlinkBtnText}>Putuskan Bond</Text>
-                    </Pressable>
-                  ) : (
-                    <View style={styles.confirmEndCard}>
-                      <Text style={styles.confirmEndDesc}>
-                        Putuskan bond {activeTierConfig.labelId} dengan{" "}
-                        <Text style={{ fontWeight: "700", color: "#FFFFFF" }}>{selectedBond.friend.name}</Text>? Riwayat bond akan tercatat di tab Putus.
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <AppIcon name="fire" size={14} color="#CBD5E1" />
+                        <Text style={styles.summaryInteraksiText}>{selectedBond.streakDays} interaksi</Text>
+                      </View>
+                      <Text style={styles.summaryIntoLvText}>
+                        {formatXp(progress.currentIntoLevel)} / {formatXp(progress.levelSpan)} ke Lv {Math.min(30, progress.level + 1)}
                       </Text>
-                      <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-                        <Pressable style={styles.cancelEndBtn} onPress={() => setConfirmEndBond(false)}>
-                          <Text style={styles.cancelEndBtnText}>Batal</Text>
-                        </Pressable>
-                        <Pressable style={styles.doEndBtn} onPress={() => handleEndBond(selectedBond.id)}>
-                          <Text style={styles.doEndBtnText}>Ya, Putuskan</Text>
-                        </Pressable>
-                      </View>
                     </View>
-                  )}
-                </View>
-              </>
-            )}
+                  </View>
+                );
+              })()}
+
+              {/* Actions */}
+              <View style={{ gap: 10, marginTop: 16 }}>
+                {isGreetedToday(selectedBond.lastInteractionAt) ? (
+                  <View style={styles.greetedDisabledBtn}>
+                    <AppIcon name="check-circle-outline" size={16} color="#94A3B8" />
+                    <Text style={styles.greetedDisabledText}>Sudah Disapa Hari Ini (1x/hari)</Text>
+                  </View>
+                ) : (
+                  <Pressable
+                    style={({ pressed }) => [styles.primaryWhiteBtn, pressed && styles.btnPressed]}
+                    onPress={() => handleBoostXp(selectedBond.id)}
+                  >
+                    <AppIcon name="star-four-points" size={16} color="#0A0D14" />
+                    <Text style={styles.primaryWhiteBtnText}>Kirim Sapaan (+200 XP)</Text>
+                  </Pressable>
+                )}
+
+                {!confirmEndBond ? (
+                  <Pressable
+                    style={styles.unlinkBtn}
+                    onPress={() => setConfirmEndBond(true)}
+                  >
+                    <AppIcon name="link-off" size={16} color="#FB7185" />
+                    <Text style={styles.unlinkBtnText}>Putuskan Bond</Text>
+                  </Pressable>
+                ) : (
+                  <View style={styles.confirmEndCard}>
+                    <Text style={styles.confirmEndDesc}>
+                      Putuskan bond {activeTierConfig.labelId} dengan{" "}
+                      <Text style={{ fontWeight: "700", color: "#FFFFFF" }}>{selectedBond.friend.name}</Text>? Riwayat bond akan tercatat di tab Putus.
+                    </Text>
+                    <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                      <Pressable style={styles.cancelEndBtn} onPress={() => setConfirmEndBond(false)}>
+                        <Text style={styles.cancelEndBtnText}>Batal</Text>
+                      </Pressable>
+                      <Pressable style={styles.doEndBtn} onPress={() => handleEndBond(selectedBond.id)}>
+                        <Text style={styles.doEndBtnText}>Ya, Putuskan</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
       {/* ─── MODAL: AJAK TEMAN (Persis D:\affinity\src\components\InviteFriendModal.tsx) ─── */}
-      <Modal visible={inviteModalSlot !== null} transparent animationType="fade">
-        <View style={styles.sheetOverlay}>
-          <View style={styles.sheetContent}>
-            <View style={styles.sheetDragHandle} />
+      {inviteModalSlot !== null && (
+        <Modal visible={true} transparent animationType="fade" onRequestClose={() => setInviteModalSlot(null)}>
+          <View style={styles.sheetOverlay}>
+            <View style={styles.sheetContent}>
+              <View style={styles.sheetDragHandle} />
 
-            <View style={styles.sheetTopRow}>
-              <View>
-                <Text style={styles.sheetTitle}>Ajak Teman</Text>
-                <Text style={styles.sheetSubText}>
-                  Slot {activeTierConfig.labelId} #{ (inviteModalSlot ?? 0) + 1 }
-                </Text>
-              </View>
-              <Pressable onPress={() => setInviteModalSlot(null)} style={styles.sheetCloseBtn}>
-                <AppIcon name="close" size={18} color="#94A3B8" />
-              </Pressable>
-            </View>
-
-            {/* Search Input */}
-            <View style={styles.searchBarWrap}>
-              <AppIcon name="magnify" size={16} color="#64748B" />
-              <TextInput
-                placeholder="Cari teman..."
-                placeholderTextColor="#64748B"
-                value={friendSearchQuery}
-                onChangeText={setFriendSearchQuery}
-                style={styles.searchInput}
-              />
-            </View>
-
-            <ScrollView style={{ maxHeight: 300 }}>
-              {friendsList.length === 0 ? (
-                <View style={styles.emptyFriendsBox}>
-                  <AppIcon name="account-search-outline" size={32} color="#64748B" />
-                  <Text style={styles.emptyFriendsTitle}>Belum Ada Teman</Text>
-                  <Text style={styles.emptyFriendsSub}>
-                    Kunjungi profil pengguna lain dan tambahkan sebagai teman untuk mengajak mereka ke lingkaran afinitas!
+              <View style={styles.sheetTopRow}>
+                <View>
+                  <Text style={styles.sheetTitle}>Ajak Teman</Text>
+                  <Text style={styles.sheetSubText}>
+                    Slot {activeTierConfig.labelId} #{ (inviteModalSlot ?? 0) + 1 }
                   </Text>
                 </View>
-              ) : (
-                friendsList
-                  .filter(
-                    (f) =>
-                      f.name.toLowerCase().includes(friendSearchQuery.toLowerCase()) ||
-                      f.handle.toLowerCase().includes(friendSearchQuery.toLowerCase())
-                  )
-                  .map((friend) => {
-                    const bonded = bonds.find((b) => b.friend.id === friend.id);
-                    const pending = pendingInvites.find((p) => p.friend.id === friend.id);
+                <Pressable onPress={() => setInviteModalSlot(null)} style={styles.sheetCloseBtn}>
+                  <AppIcon name="close" size={18} color="#94A3B8" />
+                </Pressable>
+              </View>
+
+              {/* Search Input */}
+              <View style={styles.searchBarWrap}>
+                <AppIcon name="magnify" size={16} color="#64748B" />
+                <TextInput
+                  placeholder="Cari teman..."
+                  placeholderTextColor="#64748B"
+                  value={friendSearchQuery}
+                  onChangeText={setFriendSearchQuery}
+                  style={styles.searchInput}
+                />
+              </View>
+
+              <ScrollView
+                style={{ maxHeight: 320 }}
+                contentContainerStyle={{ paddingHorizontal: 6, paddingVertical: 4 }}
+                showsVerticalScrollIndicator={false}
+              >
+                {loadingFriends ? (
+                  <View style={{ paddingVertical: 28, alignItems: "center", gap: 8 }}>
+                    <ActivityIndicator size="small" color="#38BDF8" />
+                    <Text style={{ fontSize: 12, color: "#94A3B8" }}>Memuat daftar teman...</Text>
+                  </View>
+                ) : filteredFriends.length === 0 ? (
+                  <View style={styles.emptyFriendsBox}>
+                    <AppIcon name="account-search-outline" size={32} color="#64748B" />
+                    <Text style={styles.emptyFriendsTitle}>
+                      {friendSearchQuery.trim() ? "Teman Tidak Ditemukan" : "Belum Ada Teman"}
+                    </Text>
+                    <Text style={styles.emptyFriendsSub}>
+                      {friendSearchQuery.trim()
+                        ? "Tidak ada teman yang cocok dengan kata kunci pencarian."
+                        : "Kunjungi profil pengguna lain dan tambahkan sebagai teman untuk mengajak mereka ke lingkaran afinitas!"}
+                    </Text>
+                  </View>
+                ) : (
+                  filteredFriends.map((friend) => {
+                    const bonded = bondedFriendIds.has(friend.id);
+                    const pending = pendingFriendMap.get(friend.id);
                     const friendTierUsed = friendsSlotUsage[friend.id] || 0;
                     const isFriendSlotFull = friendTierUsed >= activeTierConfig.maxSlots;
                     const isMySlotFull = remainingSlots <= 0;
@@ -1352,12 +1467,14 @@ export default function AffinityScreen() {
 
                     return (
                       <View key={friend.id} style={styles.friendRow}>
-                        <BorderAvatar
-                          size={42}
-                          avatarUrl={friend.avatarUrl}
-                          borderId={friend.equippedBorder}
-                          fallbackText={friend.name}
-                        />
+                        <View style={styles.friendAvatarWrap}>
+                          <BorderAvatar
+                            size={42}
+                            avatarUrl={friend.avatarUrl}
+                            borderId={friend.equippedBorder}
+                            fallbackText={friend.name}
+                          />
+                        </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text style={styles.listBondName} numberOfLines={1}>
                             {friend.name}
@@ -1387,110 +1504,117 @@ export default function AffinityScreen() {
                       </View>
                     );
                   })
-              )}
-            </ScrollView>
+                )}
+              </ScrollView>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
       {/* ─── MODAL: PRIVACY SHEET (Persis D:\affinity\src\components\PrivacySheet.tsx) ─── */}
-      <Modal visible={isPrivacyOpen} transparent animationType="fade">
-        <View style={styles.sheetOverlay}>
-          <View style={styles.sheetContent}>
-            <View style={styles.sheetDragHandle} />
+      {isPrivacyOpen && (
+        <Modal visible={true} transparent animationType="fade" onRequestClose={() => setIsPrivacyOpen(false)}>
+          <View style={styles.sheetOverlay}>
+            <View style={styles.sheetContent}>
+              <View style={styles.sheetDragHandle} />
 
-            <View style={styles.sheetTopRow}>
-              <View>
-                <Text style={styles.sheetTitle}>Privasi Bond</Text>
-                <Text style={styles.sheetSubText}>Atur siapa yang bisa melihat daftar bond di profilmu.</Text>
+              <View style={styles.sheetTopRow}>
+                <View>
+                  <Text style={styles.sheetTitle}>Privasi Bond</Text>
+                  <Text style={styles.sheetSubText}>Atur siapa yang bisa melihat daftar bond di profilmu.</Text>
+                </View>
+                <Pressable onPress={() => setIsPrivacyOpen(false)} style={styles.sheetCloseBtn}>
+                  <AppIcon name="close" size={18} color="#94A3B8" />
+                </Pressable>
               </View>
-              <Pressable onPress={() => setIsPrivacyOpen(false)} style={styles.sheetCloseBtn}>
-                <AppIcon name="close" size={18} color="#94A3B8" />
-              </Pressable>
-            </View>
 
-            <View style={styles.privacyOptionContainer}>
-              {(["publik", "teman", "privat"] as PrivacyOption[]).map((opt) => {
-                const isSelected = privacy === opt;
-                return (
-                  <Pressable
-                    key={opt}
-                    onPress={() => handleSelectPrivacy(opt)}
-                    style={[styles.privacyRowItem, isSelected && styles.privacyRowItemActive]}
-                  >
-                    <AppIcon
-                      name={opt === "publik" ? "earth" : opt === "teman" ? "account-multiple" : "lock"}
-                      size={18}
-                      color={isSelected ? "#FFFFFF" : "#94A3B8"}
-                    />
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.privacyOptionTitle}>
-                        {opt === "publik" ? "Publik" : opt === "teman" ? "Teman saja" : "Privat"}
-                      </Text>
-                      <Text style={styles.privacyOptionDesc}>
-                        {opt === "publik"
-                          ? "Semua orang bisa melihat daftar bond kamu."
-                          : opt === "teman"
-                          ? "Hanya teman yang bisa melihat bond kamu."
-                          : "Tidak ada yang bisa melihat bond kamu."}
-                      </Text>
-                    </View>
-                    {isSelected && <AppIcon name="check" size={18} color="#FFFFFF" />}
-                  </Pressable>
-                );
-              })}
+              <View style={styles.privacyOptionContainer}>
+                {(["publik", "teman", "privat"] as PrivacyOption[]).map((opt) => {
+                  const isSelected = privacy === opt;
+                  return (
+                    <Pressable
+                      key={opt}
+                      onPress={() => handleSelectPrivacy(opt)}
+                      style={[styles.privacyRowItem, isSelected && styles.privacyRowItemActive]}
+                    >
+                      <AppIcon
+                        name={opt === "publik" ? "earth" : opt === "teman" ? "account-multiple" : "lock"}
+                        size={18}
+                        color={isSelected ? "#FFFFFF" : "#94A3B8"}
+                      />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.privacyOptionTitle}>
+                          {opt === "publik" ? "Publik" : opt === "teman" ? "Teman saja" : "Privat"}
+                        </Text>
+                        <Text style={styles.privacyOptionDesc}>
+                          {opt === "publik"
+                            ? "Semua orang bisa melihat daftar bond kamu."
+                            : opt === "teman"
+                            ? "Hanya teman yang bisa melihat bond kamu."
+                            : "Tidak ada yang bisa melihat bond kamu."}
+                        </Text>
+                      </View>
+                      {isSelected && <AppIcon name="check" size={18} color="#FFFFFF" />}
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
       {/* ─── MODAL: RIWAYAT SHEET (Persis D:\affinity\src\components\HistorySheet.tsx) ─── */}
-      <Modal visible={isHistoryOpen} transparent animationType="fade">
-        <View style={styles.sheetOverlay}>
-          <View style={styles.sheetContent}>
-            <View style={styles.sheetDragHandle} />
+      {isHistoryOpen && (
+        <Modal visible={true} transparent animationType="fade" onRequestClose={() => setIsHistoryOpen(false)}>
+          <View style={styles.sheetOverlay}>
+            <View style={styles.sheetContent}>
+              <View style={styles.sheetDragHandle} />
 
-            <View style={styles.sheetTopRow}>
-              <View>
-                <Text style={styles.sheetTitle}>Riwayat Ajakan</Text>
-                <Text style={styles.sheetSubText}>
-                  Ajakan yang dibatalkan/ditolak/kedaluwarsa & bond yang berakhir.
-                </Text>
-              </View>
-              <Pressable onPress={() => setIsHistoryOpen(false)} style={styles.sheetCloseBtn}>
-                <AppIcon name="close" size={18} color="#94A3B8" />
-              </Pressable>
-            </View>
-
-            {/* Category Filter Tabs */}
-            <View style={styles.historyCategoryRow}>
-              {(["dibatalkan", "ditolak", "kedaluwarsa", "putus"] as HistoryCategory[]).map((cat) => {
-                const isSelected = historyFilterCategory === cat;
-                return (
-                  <Pressable
-                    key={cat}
-                    onPress={() => setHistoryFilterCategory(cat)}
-                    style={[styles.historyCatTab, isSelected && styles.historyCatTabActive]}
-                  >
-                    <Text style={[styles.historyCatText, isSelected && styles.historyCatTextActive]}>
-                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <ScrollView style={{ maxHeight: 300 }}>
-              {history.filter((h) => h.category === historyFilterCategory).length === 0 ? (
-                <View style={{ paddingVertical: 24, alignItems: "center" }}>
-                  <Text style={{ fontSize: 12, color: "#64748B" }}>
-                    Tidak ada riwayat untuk kategori ini.
+              <View style={styles.sheetTopRow}>
+                <View>
+                  <Text style={styles.sheetTitle}>Riwayat Ajakan</Text>
+                  <Text style={styles.sheetSubText}>
+                    Ajakan yang dibatalkan/ditolak/kedaluwarsa & bond yang berakhir.
                   </Text>
                 </View>
-              ) : (
-                history
-                  .filter((h) => h.category === historyFilterCategory)
-                  .map((item) => (
+                <Pressable onPress={() => setIsHistoryOpen(false)} style={styles.sheetCloseBtn}>
+                  <AppIcon name="close" size={18} color="#94A3B8" />
+                </Pressable>
+              </View>
+
+              {/* Category Filter Tabs */}
+              <View style={styles.historyCategoryRow}>
+                {(["dibatalkan", "ditolak", "kedaluwarsa", "putus"] as HistoryCategory[]).map((cat) => {
+                  const isSelected = historyFilterCategory === cat;
+                  return (
+                    <Pressable
+                      key={cat}
+                      onPress={() => setHistoryFilterCategory(cat)}
+                      style={[styles.historyCatTab, isSelected && styles.historyCatTabActive]}
+                    >
+                      <Text style={[styles.historyCatText, isSelected && styles.historyCatTextActive]}>
+                        {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <ScrollView style={{ maxHeight: 300 }}>
+                {loadingHistory ? (
+                  <View style={{ paddingVertical: 24, alignItems: "center", gap: 8 }}>
+                    <ActivityIndicator size="small" color="#38BDF8" />
+                    <Text style={{ fontSize: 12, color: "#94A3B8" }}>Memuat riwayat...</Text>
+                  </View>
+                ) : filteredHistory.length === 0 ? (
+                  <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                    <Text style={{ fontSize: 12, color: "#64748B" }}>
+                      Tidak ada riwayat untuk kategori ini.
+                    </Text>
+                  </View>
+                ) : (
+                  filteredHistory.map((item) => (
                     <View key={item.id} style={styles.historyRowItem}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.historyFriendName}>{item.friend.name}</Text>
@@ -1499,11 +1623,12 @@ export default function AffinityScreen() {
                       </View>
                     </View>
                   ))
-              )}
-            </ScrollView>
+                )}
+              </ScrollView>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -1658,15 +1783,18 @@ const styles = StyleSheet.create({
   },
   satelliteNode: {
     position: "absolute",
-    borderRadius: 999,
+    width: SATELLITE_SIZE,
+    height: SATELLITE_SIZE,
+    borderRadius: SATELLITE_RADIUS,
     alignItems: "center",
     justifyContent: "center",
     overflow: "visible",
     transform: [{ translateX: -SATELLITE_RADIUS }, { translateY: -SATELLITE_RADIUS }],
   },
   satelliteBondWrap: {
-    width: "100%",
-    height: "100%",
+    width: SATELLITE_SIZE,
+    height: SATELLITE_SIZE,
+    borderRadius: SATELLITE_RADIUS,
     alignItems: "center",
     justifyContent: "center",
     overflow: "visible",
@@ -1688,8 +1816,9 @@ const styles = StyleSheet.create({
     color: "#F1F5F9",
   },
   satellitePendingWrap: {
-    width: "100%",
-    height: "100%",
+    width: SATELLITE_SIZE,
+    height: SATELLITE_SIZE,
+    borderRadius: SATELLITE_RADIUS,
     alignItems: "center",
     justifyContent: "center",
     overflow: "visible",
@@ -1709,11 +1838,11 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   satelliteEmptyWrap: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 999,
+    width: SATELLITE_SIZE,
+    height: SATELLITE_SIZE,
+    borderRadius: SATELLITE_RADIUS,
     borderWidth: 1.5,
-    borderColor: "rgba(255, 255, 255, 0.18)",
+    borderColor: "rgba(255, 255, 255, 0.25)",
     borderStyle: "dashed",
     backgroundColor: "#181E2B",
     alignItems: "center",
@@ -2399,9 +2528,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 10,
+    paddingHorizontal: 8,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255, 255, 255, 0.04)",
     gap: 12,
+    overflow: "visible",
+  },
+  friendAvatarWrap: {
+    width: 48,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "visible",
+    marginLeft: 4,
   },
   friendBioText: {
     fontSize: 11,

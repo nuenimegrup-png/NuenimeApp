@@ -1,9 +1,10 @@
+import React, { memo } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import type { Anime } from "@/lib/types";
 import { AnimeCard } from "@/components/anime-card";
 
-export function AnimeRail({
+export const AnimeRail = memo(function AnimeRail({
   label,
   title,
   items,
@@ -50,7 +51,7 @@ export function AnimeRail({
       />
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   section: { gap: 12 },

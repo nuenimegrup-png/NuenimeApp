@@ -37,6 +37,9 @@ import { isSpecialRole } from "@/lib/admin-service";
 import { UserVerificationBadge } from "@/components/user-verification-badge";
 import { ProfileCityPlaque } from "@/components/profile-city-plaque";
 import { ProfileAffinityShowcase } from "@/components/profile-affinity-showcase";
+import { ProfileLikeButton } from "@/components/profile-like-button";
+import { ProfileGiftShowcase } from "@/components/profile-gift-showcase";
+import { ProfileGiftModal } from "@/components/profile-gift-modal";
 import { useQuery } from "@tanstack/react-query";
 import { getAnimeByIds } from "@/lib/anilist";
 import { animeTitle } from "@/lib/types";
@@ -90,6 +93,7 @@ export default function PublicUserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showGiftModal, setShowGiftModal] = useState(false);
 
   // Real User Data Collections
   const [userComments, setUserComments] = useState<any[]>([]);
@@ -613,6 +617,14 @@ export default function PublicUserProfileScreen() {
 
         {/* ─── 2. AVATAR CENTERED DENGAN BORDER ASLI (PERSIS SCREENSHOT 2) ─── */}
         <View style={styles.profileHeaderBox}>
+          {/* Widget Gift Showcase di Kiri Samping Profil (Mobile Legends Style) */}
+          <ProfileGiftShowcase
+            userId={id}
+            userName={targetUser.displayName || targetUser.username}
+            style={styles.profileGiftShowcase}
+            onPress={() => setShowGiftModal(true)}
+          />
+
           {/* Widget Afinitas Showcase di Kanan (di bawah / di belakang avatar utama) */}
           <ProfileAffinityShowcase
             userId={id}
@@ -645,6 +657,11 @@ export default function PublicUserProfileScreen() {
                 <UserVerificationBadge role={targetUser.role} isVip={targetUser.isVip} size={17} />
               </View>
               <Text style={styles.userTagText}>{cleanMemberNum}</Text>
+              <ProfileLikeButton
+                targetUserId={id}
+                isOwnProfile={isOwnProfile}
+                targetUsername={targetUser.displayName}
+              />
             </View>
 
             {/* Level Pill, Role Tag, & Teman Pill */}
@@ -1384,6 +1401,15 @@ export default function PublicUserProfileScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* ─── MODAL KIRIM GIFT (MOBILE LEGENDS STYLE) ─── */}
+      <ProfileGiftModal
+        visible={showGiftModal}
+        onClose={() => setShowGiftModal(false)}
+        targetUserId={id}
+        targetUserName={targetUser.displayName || targetUser.username || "Pengguna"}
+        targetUserAvatar={targetUser.avatarUrl}
+      />
     </SafeAreaView>
   );
 }
@@ -1512,12 +1538,21 @@ const styles = StyleSheet.create({
     left: 14,
     zIndex: 15,
   },
+  profileGiftShowcase: {
+    position: "absolute",
+    right: "50%",
+    marginRight: 48,
+    width: 60,
+    top: 24,
+    zIndex: 2,
+    elevation: 2,
+  },
   profileAffinityShowcase: {
     position: "absolute",
     left: "50%",
-    marginLeft: 26,
-    right: 14,
-    top: 26,
+    marginLeft: 22,
+    width: 122,
+    top: 24,
     zIndex: 1,
     elevation: 1,
   },

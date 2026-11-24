@@ -71,7 +71,7 @@ export async function listLocalWatchEntries(): Promise<LocalWatchEntry[]> {
       const parsed = parseLocalWatchEntry(Number(match[1]), Number(match[2]), value);
       if (parsed) entries.push(parsed);
     }
-    return entries.sort((a, b) => b.savedAt - a.savedAt);
+    return entries.sort((a, b) => b.savedAt - a.savedAt).slice(0, 50);
   } catch {
     return [];
   }
@@ -84,7 +84,20 @@ export function useWatchHistory() {
   const [synced, setSynced] = useState(false);
   const syncedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const history = useQuery({ queryKey, enabled: Boolean(user), queryFn: async () => { const { data, error } = await supabase.from("watch_history").select("*").eq("user_id", user!.id).order("timestamp", { ascending: false }); if (error) throw error; return data ?? []; } });
+  const history = useQuery({
+    queryKey,
+    enabled: Boolean(user),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("watch_history")
+        .select("*")
+        .eq("user_id", user!.id)
+        .order("timestamp", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
   // Offline open: keep the last synced rows in AsyncStorage so Library +
   // resume rails render with zero network. Fresh server data always wins

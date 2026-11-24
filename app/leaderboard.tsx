@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { AppIcon } from "@/components/app-icon";
@@ -29,6 +29,14 @@ import { useAnirakuAuth } from "@/providers/auth-provider";
 import { supabase } from "@/lib/supabase";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
 import { isSpecialRole } from "@/lib/admin-service";
+import {
+  getTopProfileLikesLeaderboard,
+  formatLikeCount,
+} from "@/lib/profile-likes-service";
+import {
+  getTopCharismaLeaderboard,
+  formatCharisma,
+} from "@/lib/profile-gifts-service";
 import {
   getFriendshipStatus,
   sendFriendRequest,
@@ -166,6 +174,8 @@ interface PodiumCardProps {
   currentUserId?: string | null;
   currentUsername?: string | null;
   onPress?: () => void;
+  isLikesMode?: boolean;
+  isCharismaMode?: boolean;
 }
 
 const PodiumCard = React.memo(function PodiumCard({
@@ -174,6 +184,8 @@ const PodiumCard = React.memo(function PodiumCard({
   currentUserId,
   currentUsername,
   onPress,
+  isLikesMode,
+  isCharismaMode,
 }: PodiumCardProps) {
   const isFirst = entry.rank === 1;
   const clr = rankColor(entry.rank);
@@ -310,12 +322,27 @@ const PodiumCard = React.memo(function PodiumCard({
         </View>
       </View>
 
-      {/* ── XP Counter ── */}
-      <View style={styles.podiumXpPill}>
-        <Text style={[styles.podiumXp, { color: clr }]}>
-          {formatXp(entry.xpGained)}
-        </Text>
-      </View>
+      {/* ── XP / Like / Charisma Counter ── */}
+      {isCharismaMode ? (
+        <View style={styles.podiumCharismaBadge}>
+          <Text style={styles.podiumCharismaText}>
+            {formatCharisma(entry.xpGained)} Charisma
+          </Text>
+        </View>
+      ) : isLikesMode ? (
+        <View style={styles.podiumLikeBadge}>
+          <AppIcon name="thumb-up" size={11} color="#EF4444" />
+          <Text style={styles.podiumLikeText}>
+            {formatLikeCount(entry.xpGained)}
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.podiumXpPill}>
+          <Text style={[styles.podiumXp, { color: clr }]}>
+            {formatXp(entry.xpGained)}
+          </Text>
+        </View>
+      )}
     </Pressable>
   );
 });
@@ -327,6 +354,8 @@ interface LeaderRowProps {
   currentUserId?: string | null;
   currentUsername?: string | null;
   onPress?: () => void;
+  isLikesMode?: boolean;
+  isCharismaMode?: boolean;
 }
 
 const LeaderRow = React.memo(function LeaderRow({
@@ -335,6 +364,8 @@ const LeaderRow = React.memo(function LeaderRow({
   currentUserId,
   currentUsername,
   onPress,
+  isLikesMode,
+  isCharismaMode,
 }: LeaderRowProps) {
   const clr = rankColor(entry.rank);
   const { currentTier, isInfinity } = getTierForLevel(entry.level, entry.role);
@@ -455,10 +486,24 @@ const LeaderRow = React.memo(function LeaderRow({
         </View>
       </View>
 
-      {/* XP Counter */}
-      <View style={styles.rowXpBox}>
-        <Text style={[styles.rowXpText, { color: clr }]}>{formatXp(entry.xpGained)}</Text>
-      </View>
+      {/* XP / Like / Charisma Counter */}
+      {isCharismaMode ? (
+        <View style={styles.rowCharismaBox}>
+          <Text style={styles.rowCharismaText}>
+            {formatCharisma(entry.xpGained)}
+          </Text>
+          <Text style={styles.rowCharismaSubText}>Charisma</Text>
+        </View>
+      ) : isLikesMode ? (
+        <View style={styles.rowLikeBox}>
+          <AppIcon name="thumb-up" size={13} color="#EF4444" />
+          <Text style={styles.rowLikeText}>{formatLikeCount(entry.xpGained)}</Text>
+        </View>
+      ) : (
+        <View style={styles.rowXpBox}>
+          <Text style={[styles.rowXpText, { color: clr }]}>{formatXp(entry.xpGained)}</Text>
+        </View>
+      )}
     </Pressable>
   );
 });
@@ -476,9 +521,28 @@ const PERIODS: { key: LeaderboardPeriod; label: string }[] = [
 ];
 
 export default function LeaderboardScreen() {
+  const routeParams = useLocalSearchParams<{ tab?: string; mode?: string }>();
+  const initialMode =
+    routeParams.tab === "charisma" || routeParams.mode === "charisma"
+      ? "charisma"
+      : routeParams.tab === "likes" || routeParams.mode === "likes"
+      ? "likes"
+      : "xp";
+  const [activeMenu, setActiveMenu] = useState<"xp" | "likes" | "charisma">(initialMode);
   const [period, setPeriod] = useState<LeaderboardPeriod>("alltime");
   const { user, profile } = useAnirakuAuth();
   const [localMyBorderId, setLocalMyBorderId] = useState<string | null>(null);
+
+  // Sync tab dari route params jika layar dibuka dari Home Cards
+  useEffect(() => {
+    if (routeParams.tab === "charisma" || routeParams.mode === "charisma") {
+      setActiveMenu("charisma");
+    } else if (routeParams.tab === "likes" || routeParams.mode === "likes") {
+      setActiveMenu("likes");
+    } else if (routeParams.tab === "xp" || routeParams.mode === "xp") {
+      setActiveMenu("xp");
+    }
+  }, [routeParams.tab, routeParams.mode]);
 
   // User Bottom Sheet Modal State
   const [selectedEntry, setSelectedEntry] = useState<LeaderboardEntry | null>(null);
@@ -609,12 +673,127 @@ export default function LeaderboardScreen() {
     queryFn: () => getLeaderboard(period, 50),
     staleTime: 60_000,
     retry: 2,
+    enabled: activeMenu === "xp",
   });
 
-  const entries = useMemo(() => {
+  const likesQuery = useQuery({
+    queryKey: ["leaderboard-likes"],
+    queryFn: () => getTopProfileLikesLeaderboard(50),
+    staleTime: 30_000,
+    retry: 2,
+    enabled: activeMenu === "likes",
+  });
+
+  const charismaQuery = useQuery({
+    queryKey: ["leaderboard-charisma"],
+    queryFn: () => getTopCharismaLeaderboard(50),
+    staleTime: 30_000,
+    retry: 2,
+    enabled: activeMenu === "charisma",
+  });
+
+  // Realtime update saat ada interaksi like profil atau gift baru
+  useEffect(() => {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let isMounted = true;
+    const channelName = `leaderboard-realtime-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    try {
+      channel = supabase
+        .channel(channelName)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "user_profile_likes" },
+          () => {
+            if (isMounted) {
+              likesQuery.refetch();
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "user_profile_gifts" },
+          () => {
+            if (isMounted) {
+              charismaQuery.refetch();
+            }
+          }
+        )
+        .subscribe();
+    } catch {}
+
+    return () => {
+      isMounted = false;
+      if (channel) {
+        try {
+          void channel.unsubscribe();
+          void supabase.removeChannel(channel);
+        } catch {}
+      }
+    };
+  }, []);
+
+  const xpEntries = useMemo(() => {
     return (data ?? []).filter((e) => !isSpecialRole(e.role));
   }, [data]);
-  const top3 = entries.slice(0, 3);
+
+  const likesEntries = useMemo(() => {
+    return (likesQuery.data ?? []).map((item) => ({
+      rank: item.rank,
+      userId: item.userId,
+      username: item.username,
+      displayName: item.displayName,
+      avatarUrl: item.avatarUrl,
+      memberNumber: item.memberNumber,
+      level: item.level,
+      isVip: item.isVip,
+      xpGained: item.likesCount,
+      periodStart: "",
+      periodEnd: "",
+      equippedBorder: item.equippedBorder,
+      role: item.role,
+    }));
+  }, [likesQuery.data]);
+
+  const charismaEntries = useMemo(() => {
+    return (charismaQuery.data ?? []).map((item) => ({
+      rank: item.rank,
+      userId: item.userId,
+      username: item.username,
+      displayName: item.displayName,
+      avatarUrl: item.avatarUrl,
+      memberNumber: item.memberNumber,
+      level: item.level,
+      isVip: item.isVip,
+      xpGained: item.charismaCount,
+      periodStart: "",
+      periodEnd: "",
+      equippedBorder: item.equippedBorder,
+      role: item.role,
+    }));
+  }, [charismaQuery.data]);
+
+  const activeEntries =
+    activeMenu === "charisma"
+      ? charismaEntries
+      : activeMenu === "likes"
+      ? likesEntries
+      : xpEntries;
+
+  const isCurrentLoading =
+    activeMenu === "charisma"
+      ? charismaQuery.isLoading
+      : activeMenu === "likes"
+      ? likesQuery.isLoading
+      : isLoading;
+
+  const isCurrentRefetching =
+    activeMenu === "charisma"
+      ? charismaQuery.isRefetching
+      : activeMenu === "likes"
+      ? likesQuery.isRefetching
+      : isRefetching;
+
+  const top3 = activeEntries.slice(0, 3);
 
   // Re-order podium: 2nd (kiri) | 1st (tengah lebih tinggi) | 3rd (kanan)
   const podiumOrder =
@@ -626,7 +805,7 @@ export default function LeaderboardScreen() {
       ? [null, top3[0], null]
       : [];
 
-  const rest = entries.slice(3);
+  const rest = activeEntries.slice(3);
   const periodLabel = getPeriodLabel(period);
 
   const handleRefresh = useCallback(async () => {
@@ -634,8 +813,14 @@ export default function LeaderboardScreen() {
     getEquippedBorderId(user?.id)
       .then((id) => setLocalMyBorderId(id))
       .catch(() => {});
-    await refetch();
-  }, [refetch, user?.id]);
+    if (activeMenu === "charisma") {
+      await charismaQuery.refetch();
+    } else if (activeMenu === "likes") {
+      await likesQuery.refetch();
+    } else {
+      await refetch();
+    }
+  }, [activeMenu, charismaQuery, likesQuery, refetch, user?.id]);
 
   const renderLeaderRow = useCallback(
     ({ item }: { item: LeaderboardEntry }) => (
@@ -645,9 +830,11 @@ export default function LeaderboardScreen() {
         currentUserId={user?.id}
         currentUsername={profile?.username}
         onPress={() => handleSelectEntry(item)}
+        isLikesMode={activeMenu === "likes"}
+        isCharismaMode={activeMenu === "charisma"}
       />
     ),
-    [localMyBorderId, user?.id, profile?.username, handleSelectEntry]
+    [localMyBorderId, user?.id, profile?.username, handleSelectEntry, activeMenu]
   );
 
   return (
@@ -666,57 +853,181 @@ export default function LeaderboardScreen() {
         >
           <AppIcon name="arrow-left" size={22} color="#FFFFFF" />
         </Pressable>
-        <Text style={styles.headerTitle}>Leaderboard XP</Text>
+        <Text style={styles.headerTitle}>
+          {activeMenu === "charisma"
+            ? "Leaderboard Charisma"
+            : activeMenu === "likes"
+            ? "Leaderboard Like"
+            : "Leaderboard XP"}
+        </Text>
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Period Tabs (Ramping & Proporsional, tidak meregang ke bawah) */}
-      <View style={styles.tabWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.tabScrollView}
-          contentContainerStyle={styles.tabRow}
+      {/* ── Menu Switcher Tab: Peringkat XP vs Top Like vs Top Charisma ── */}
+      <View style={styles.menuSwitcherContainer}>
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityLabel="Menu Leaderboard XP"
+          onPress={() => {
+            hapticLight();
+            setActiveMenu("xp");
+          }}
+          style={[
+            styles.menuSwitcherBtn,
+            activeMenu === "xp" && styles.menuSwitcherBtnActiveXp,
+          ]}
         >
-          {PERIODS.map((p) => {
-            const isActive = period === p.key;
-            return (
-              <Pressable
-                key={p.key}
-                onPress={() => {
-                  hapticLight();
-                  setPeriod(p.key);
-                }}
-                style={[styles.tabBtn, isActive && styles.tabBtnActive]}
-              >
-                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
-                  {p.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+          <AppIcon
+            name="trophy"
+            size={14}
+            color={activeMenu === "xp" ? "#38BDF8" : "#94A3B8"}
+          />
+          <Text
+            style={[
+              styles.menuSwitcherText,
+              activeMenu === "xp" && styles.menuSwitcherTextActiveXp,
+            ]}
+          >
+            Peringkat XP
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityLabel="Menu Leaderboard Top Like"
+          onPress={() => {
+            hapticLight();
+            setActiveMenu("likes");
+          }}
+          style={[
+            styles.menuSwitcherBtn,
+            activeMenu === "likes" && styles.menuSwitcherBtnActiveLikes,
+          ]}
+        >
+          <AppIcon
+            name="thumb-up"
+            size={13}
+            color={activeMenu === "likes" ? "#EF4444" : "#94A3B8"}
+          />
+          <Text
+            style={[
+              styles.menuSwitcherText,
+              activeMenu === "likes" && styles.menuSwitcherTextActiveLikes,
+            ]}
+          >
+            Top Like
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityLabel="Menu Leaderboard Top Charisma"
+          onPress={() => {
+            hapticLight();
+            setActiveMenu("charisma");
+          }}
+          style={[
+            styles.menuSwitcherBtn,
+            activeMenu === "charisma" && styles.menuSwitcherBtnActiveCharisma,
+          ]}
+        >
+          <AppIcon
+            name="trophy"
+            size={14}
+            color={activeMenu === "charisma" ? "#F59E0B" : "#94A3B8"}
+          />
+          <Text
+            style={[
+              styles.menuSwitcherText,
+              activeMenu === "charisma" && styles.menuSwitcherTextActiveCharisma,
+            ]}
+          >
+            Top Charisma
+          </Text>
+        </Pressable>
       </View>
 
-      {/* Period date label */}
-      <Text style={styles.periodDateLabel}>{periodLabel}</Text>
+      {/* Konten Menu XP: Period Tabs */}
+      {activeMenu === "xp" ? (
+        <>
+          <View style={styles.tabWrapper}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.tabScrollView}
+              contentContainerStyle={styles.tabRow}
+            >
+              {PERIODS.map((p) => {
+                const isActive = period === p.key;
+                return (
+                  <Pressable
+                    key={p.key}
+                    onPress={() => {
+                      hapticLight();
+                      setPeriod(p.key);
+                    }}
+                    style={[styles.tabBtn, isActive && styles.tabBtnActive]}
+                  >
+                    <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+                      {p.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+          <Text style={styles.periodDateLabel}>{periodLabel}</Text>
+        </>
+      ) : activeMenu === "likes" ? (
+        <View style={styles.likesSubtitleWrapper}>
+          <Text style={styles.likesSubtitleText}>
+            Profil dengan like terbanyak dari komunitas Nuenime.
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.likesSubtitleWrapper}>
+          <Text style={styles.likesSubtitleText}>
+            Profil dengan Charisma terbanyak yang diperoleh dari kiriman gift.
+          </Text>
+        </View>
+      )}
 
-      {isLoading ? (
+      {isCurrentLoading ? (
         <ChibiLoading size={80} style={{ marginTop: 60 }} />
-      ) : entries.length === 0 ? (
+      ) : activeEntries.length === 0 ? (
         <View style={styles.empty}>
-          <AppIcon name="trophy-outline" size={48} color="#334155" />
+          <AppIcon
+            name={
+              activeMenu === "charisma"
+                ? "trophy"
+                : activeMenu === "likes"
+                ? "thumb-up"
+                : "trophy-outline"
+            }
+            size={48}
+            color={
+              activeMenu === "charisma"
+                ? "#F59E0B"
+                : activeMenu === "likes"
+                ? "#EF4444"
+                : "#334155"
+            }
+          />
           <Text style={styles.emptyTitle}>Belum Ada Data</Text>
           <Text style={styles.emptyDesc}>
-            Papan peringkat{" "}
-            {period === "daily"
-              ? "harian"
-              : period === "weekly"
-              ? "mingguan"
-              : period === "monthly"
-              ? "bulanan"
-              : "all-time"}{" "}
-            akan terisi saat pengguna mulai aktif beraktivitas.
+            {activeMenu === "charisma"
+              ? "Papan peringkat Charisma akan terisi saat pengguna saling mengirimkan gift profil."
+              : activeMenu === "likes"
+              ? "Papan peringkat like profil akan terisi saat pengguna saling memberikan like akun."
+              : `Papan peringkat ${
+                  period === "daily"
+                    ? "harian"
+                    : period === "weekly"
+                    ? "mingguan"
+                    : period === "monthly"
+                    ? "bulanan"
+                    : "all-time"
+                } akan terisi saat pengguna mulai aktif beraktivitas.`}
           </Text>
         </View>
       ) : (
@@ -730,9 +1041,15 @@ export default function LeaderboardScreen() {
           removeClippedSubviews={Platform.OS !== "web"}
           refreshControl={
             <RefreshControl
-              refreshing={isRefetching}
+              refreshing={isCurrentRefetching}
               onRefresh={handleRefresh}
-              tintColor="#38BDF8"
+              tintColor={
+                activeMenu === "charisma"
+                  ? "#F59E0B"
+                  : activeMenu === "likes"
+                  ? "#EF4444"
+                  : "#38BDF8"
+              }
             />
           }
           ListHeaderComponent={
@@ -749,6 +1066,8 @@ export default function LeaderboardScreen() {
                         currentUserId={user?.id}
                         currentUsername={profile?.username}
                         onPress={() => handleSelectEntry(entry)}
+                        isLikesMode={activeMenu === "likes"}
+                        isCharismaMode={activeMenu === "charisma"}
                       />
                     ) : (
                       <View key={`empty-${idx}`} style={styles.podiumEmpty} />
@@ -966,6 +1285,73 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: 0.3,
+  },
+
+  // Menu Switcher: Peringkat XP vs Top Like Profil
+  menuSwitcherContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 8,
+    backgroundColor: "rgba(18, 24, 38, 0.7)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    padding: 3,
+    gap: 4,
+  },
+  menuSwitcherBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 11,
+  },
+  menuSwitcherBtnActiveXp: {
+    backgroundColor: "rgba(56, 189, 248, 0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.45)",
+  },
+  menuSwitcherBtnActiveLikes: {
+    backgroundColor: "rgba(239, 68, 68, 0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.45)",
+  },
+  menuSwitcherBtnActiveCharisma: {
+    backgroundColor: "rgba(245, 158, 11, 0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.45)",
+  },
+  menuSwitcherText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 11.5,
+    color: "#94A3B8",
+  },
+  menuSwitcherTextActiveXp: {
+    color: "#38BDF8",
+    fontFamily: "Nunito-Black",
+  },
+  menuSwitcherTextActiveLikes: {
+    color: "#EF4444",
+    fontFamily: "Nunito-Black",
+  },
+  menuSwitcherTextActiveCharisma: {
+    color: "#F59E0B",
+    fontFamily: "Nunito-Black",
+  },
+  likesSubtitleWrapper: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  likesSubtitleText: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 12,
+    color: "#94A3B8",
+    textAlign: "center",
   },
 
   // Tabs (Fixed Height & Ramping)
@@ -1209,6 +1595,40 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 0.2,
   },
+  podiumLikeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderColor: "rgba(239, 68, 68, 0.35)",
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginTop: 3,
+  },
+  podiumLikeText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 10.5,
+    color: "#EF4444",
+  },
+  podiumCharismaBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(245, 158, 11, 0.16)",
+    borderColor: "rgba(245, 158, 11, 0.45)",
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginTop: 3,
+    gap: 3,
+  },
+  podiumCharismaText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 9.5,
+    color: "#F59E0B",
+  },
 
   // Rest header
   restHeader: {
@@ -1349,6 +1769,39 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: "#F1F5F9",
     letterSpacing: 0.2,
+  },
+  rowLikeBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderColor: "rgba(239, 68, 68, 0.35)",
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginLeft: 6,
+  },
+  rowLikeText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 12,
+    color: "#EF4444",
+  },
+  rowCharismaBox: {
+    alignItems: "flex-end",
+    justifyContent: "center",
+    minWidth: 64,
+    marginLeft: 6,
+  },
+  rowCharismaText: {
+    fontFamily: "Nunito-Black",
+    fontSize: 13,
+    color: "#F59E0B",
+  },
+  rowCharismaSubText: {
+    fontFamily: "Nunito-Regular",
+    fontSize: 9.5,
+    color: "#64748B",
   },
   separator: {
     height: 1,

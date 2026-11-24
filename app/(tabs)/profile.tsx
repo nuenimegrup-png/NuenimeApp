@@ -50,6 +50,9 @@ import { animeTitle } from "@/lib/types";
 import { loadAccountSettings } from "@/lib/user-settings";
 import { ProfileCityPlaque } from "@/components/profile-city-plaque";
 import { ProfileAffinityShowcase } from "@/components/profile-affinity-showcase";
+import { ProfileLikeButton } from "@/components/profile-like-button";
+import { ProfileGiftShowcase } from "@/components/profile-gift-showcase";
+import { ProfileGiftModal } from "@/components/profile-gift-modal";
 
 const DEFAULT_BANNER =
   "https://imagepaste.org/i/jqbvxwm5.png";
@@ -173,6 +176,7 @@ export default function ProfileScreen() {
 
   // ─── Avatar Change & Cooldown State ───
   const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [showGiftModal, setShowGiftModal] = useState(false);
   const [avatarMode, setAvatarMode] = useState<"choice" | "google" | "link">("choice");
   const [avatarUrlInput, setAvatarUrlInput] = useState("");
   const [googleQuery, setGoogleQuery] = useState("");
@@ -1118,6 +1122,14 @@ export default function ProfileScreen() {
 
         {/* ─── 2. USER IDENTITY SECTION ─── */}
         <View style={styles.profileHeaderBox}>
+          {/* Widget Gift Showcase di Kiri Samping Profil (Mobile Legends Style) */}
+          <ProfileGiftShowcase
+            userId={auth.user?.id}
+            userName={displayName}
+            style={styles.profileGiftShowcase}
+            onPress={() => setShowGiftModal(true)}
+          />
+
           {/* Widget Afinitas Showcase di Kanan (di bawah / di belakang avatar utama) */}
           <ProfileAffinityShowcase
             userId={auth.user?.id}
@@ -1177,6 +1189,13 @@ export default function ProfileScreen() {
                 <UserVerificationBadge role={auth.profile?.role} isVip={auth.profile?.is_vip} size={17} />
               </View>
               <Text style={styles.userTagText}>{userTag}</Text>
+              {auth.user?.id && (
+                <ProfileLikeButton
+                  targetUserId={auth.user.id}
+                  isOwnProfile={true}
+                  targetUsername={displayName}
+                />
+              )}
             </View>
 
             {/* Level Pill, Role Tag (Khusus), & Teman Pill */}
@@ -2197,6 +2216,15 @@ export default function ProfileScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* ─── MODAL KOLEKSI GIFT (MOBILE LEGENDS STYLE) ─── */}
+      <ProfileGiftModal
+        visible={showGiftModal}
+        onClose={() => setShowGiftModal(false)}
+        targetUserId={auth.user?.id || ""}
+        targetUserName={displayName}
+        targetUserAvatar={avatar}
+      />
     </SafeAreaView>
   );
 }
@@ -2719,12 +2747,21 @@ const styles = StyleSheet.create({
     left: 14,
     zIndex: 15,
   },
+  profileGiftShowcase: {
+    position: "absolute",
+    right: "50%",
+    marginRight: 48,
+    width: 60,
+    top: 24,
+    zIndex: 2,
+    elevation: 2,
+  },
   profileAffinityShowcase: {
     position: "absolute",
     left: "50%",
-    marginLeft: 26,
-    right: 14,
-    top: 26,
+    marginLeft: 22,
+    width: 122,
+    top: 24,
     zIndex: 1,
     elevation: 1,
   },

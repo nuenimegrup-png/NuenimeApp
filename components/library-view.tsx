@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Platform,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -17,6 +19,7 @@ import { useBookmarks } from "@/hooks/use-bookmarks";
 import { useNotifications } from "@/hooks/use-notifications";
 import { useWatchHistory } from "@/hooks/use-watch-history";
 import { EmptyState, ErrorState, LoadingState } from "@/components/async-state";
+import { Skeleton } from "@/components/skeleton";
 import { AppIcon } from "@/components/app-icon";
 import { FirstRunImportPrompt } from "@/components/first-run-import-prompt";
 import { showChoiceSheet } from "@/components/choice-sheet";
@@ -118,6 +121,29 @@ function watchedPercent(row: any): number {
   const duration = Number(row?.duration);
   if (!Number.isFinite(progress) || !Number.isFinite(duration) || duration <= 0) return 0;
   return Math.min(100, Math.max(0, Math.round((progress / duration) * 100)));
+}
+
+function HistorySkeleton() {
+  return (
+    <View style={styles.listContent}>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <View key={i} style={styles.glassCard}>
+          <View style={styles.historyContentWrap}>
+            <Skeleton style={styles.cardPoster} />
+            <View style={styles.cardBody}>
+              <View style={styles.badgeRow}>
+                <Skeleton style={{ width: 48, height: 18, borderRadius: 6 }} />
+                <Skeleton style={{ width: 80, height: 14, borderRadius: 4 }} />
+              </View>
+              <Skeleton style={{ width: "85%", height: 16, borderRadius: 4, marginTop: 6 }} />
+              <Skeleton style={{ width: "100%", height: 4, borderRadius: 2, marginTop: 8 }} />
+              <Skeleton style={{ width: 110, height: 12, borderRadius: 4, marginTop: 6 }} />
+            </View>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 type LibraryViewProps = {
@@ -260,7 +286,9 @@ export function LibraryView({
       : tab === "bookmarks"
       ? bookmarks.bookmarks
       : notifications.notifications;
-  const allRecords: any[] = tab === "history" && fallbackRows?.length ? fallbackRows : data.data ?? [];
+  const rawRecords: any[] = tab === "history" && fallbackRows?.length ? fallbackRows : data.data ?? [];
+  // Batasi history maksimal 50 riwayat terbaru sesuai permintaan
+  const allRecords: any[] = tab === "history" ? rawRecords.slice(0, 50) : rawRecords;
   const canRemoveHistory = tab === "history";
   const activeSort = sortOptionsFor(tab).includes(sort) ? sort : "recent";
 
@@ -281,7 +309,9 @@ export function LibraryView({
         : searched
       : sortRecords(tab, activeSort, statusSearched);
   const isGrid = tab === "bookmarks" && layout === "grid";
-  const pending = data.isPending && !(tab === "history" && fallbackRows?.length);
+  const pending =
+    (data.isPending && !(tab === "history" && fallbackRows?.length)) ||
+    (data.isLoading && !allRecords.length);
 
   const confirmRemoveHistory = (row: any) => {
     const animeId = Number(row?.anime_id);
@@ -630,7 +660,11 @@ export function LibraryView({
     : undefined;
 
   const content = pending ? (
-    <LoadingState label="Menyelaraskan data..." />
+    tab === "history" ? (
+      <HistorySkeleton />
+    ) : (
+      <LoadingState label="Menyelaraskan data..." />
+    )
   ) : data.isError ? (
     <ErrorState
       message="Gagal memuat data saat ini."
@@ -654,6 +688,17 @@ export function LibraryView({
         { paddingBottom: variant === "route" ? 40 : 110 },
       ]}
       showsVerticalScrollIndicator={false}
+      initialNumToRender={8}
+      maxToRenderPerBatch={10}
+      windowSize={5}
+      removeClippedSubviews={Platform.OS !== "web"}
+      refreshControl={
+        <RefreshControl
+          refreshing={data.isFetching && !pending}
+          onRefresh={() => void data.refetch()}
+          tintColor="#38BDF8"
+        />
+      }
       renderItem={renderItem}
     />
   );
@@ -733,7 +778,15 @@ export function LibraryView({
 
       {/* 2. Section Header: Subtitle & Total Count Badge */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{sectionTitle[tab]}</Text>
+        <View style={styles.sectionTitleWrap}>
+          <Text style={styles.sectionTitle}>{sectionTitle[tab]}</Text>
+          {data.isFetching && !pending ? (
+            <View style={styles.syncingPill}>
+              <ActivityIndicator size="small" color="#38BDF8" style={styles.syncSpinner} />
+              <Text style={styles.syncingText}>Memperbarui</Text>
+            </View>
+          ) : null}
+        </View>
         <View style={styles.countBadge}>
           <Text style={styles.countBadgeText}>
             {records.length} {tab === "alerts" ? "Notifikasi" : "Anime"}
@@ -1051,6 +1104,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginTop: 6,
     marginBottom: 10,
+    gap: 8,
+  },
+  sectionTitleWrap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  syncingPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.25)",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  syncSpinner: {
+    transform: [{ scale: 0.65 }],
+  },
+  syncingText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 10.5,
+    color: "#38BDF8",
   },
   sectionTitle: {
     fontFamily: "Nunito-Black",
@@ -1297,21 +1377,15 @@ const styles = StyleSheet.create({
 
   // Liquid Glass Row Card
   glassCard: {
-    backgroundColor: "rgba(22, 27, 38, 0.72)",
+    backgroundColor: "#131824",
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.11)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
     padding: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     marginBottom: 10,
-    ...(Platform.OS === "web"
-      ? ({
-          backdropFilter: "blur(18px)",
-          WebkitBackdropFilter: "blur(18px)",
-        } as any)
-      : {}),
   },
   cardPoster: {
     width: 68,
@@ -1420,20 +1494,14 @@ const styles = StyleSheet.create({
 
   // Grid Card
   gridCard: {
-    backgroundColor: "rgba(22, 27, 38, 0.72)",
+    backgroundColor: "#131824",
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.11)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
     padding: 8,
     gap: 6,
     flexGrow: 0,
     flexShrink: 0,
-    ...(Platform.OS === "web"
-      ? ({
-          backdropFilter: "blur(18px)",
-          WebkitBackdropFilter: "blur(18px)",
-        } as any)
-      : {}),
   },
   gridImageWrapper: {
     width: "100%",

@@ -117,7 +117,8 @@ export const ProfileAffinityShowcase: React.FC<ProfileAffinityShowcaseProps> = R
         }
       },
       enabled: Boolean(activeUserId && activeUserId !== "guest"),
-      staleTime: 30 * 1000,
+      staleTime: 60 * 1000,
+      gcTime: 5 * 60 * 1000,
     });
 
     const activeBond = useMemo<RealAffinityBond | null>(() => {
@@ -134,8 +135,8 @@ export const ProfileAffinityShowcase: React.FC<ProfileAffinityShowcaseProps> = R
       return null;
     }
 
-    // Jika tidak ada ikatan dan bukan owner, sembunyikan
-    if (!activeBond && !isOwner) {
+    // Jika tidak ada ikatan, sembunyikan sepenuhnya (tidak ada icon dan tidak ada garis detak jantung)
+    if (!activeBond) {
       return null;
     }
 
@@ -157,46 +158,6 @@ export const ProfileAffinityShowcase: React.FC<ProfileAffinityShowcaseProps> = R
         });
       }
     };
-
-    // State jika belum ada ikatan (Hanya tampil untuk pemilik akun, tanpa background apapun)
-    if (!activeBond) {
-      return (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Tautkan Afinitas Persahabatan"
-          onPress={handlePress}
-          // @ts-ignore
-          onClick={handlePress}
-          style={({ pressed }) => [
-            styles.container,
-            styles.containerEmpty,
-            pressed && styles.pressed,
-            Platform.OS === "web" && ({ cursor: "pointer" } as any),
-            style,
-          ]}
-        >
-          <Svg style={styles.waveSvg} viewBox="0 0 60 22" preserveAspectRatio="none">
-            <Path
-              d="M 0 11 L 18 11 L 24 16 L 31 3 L 38 19 L 43 11 L 60 11"
-              stroke="rgba(244, 63, 94, 0.6)"
-              strokeWidth={1.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </Svg>
-          <View style={styles.emptyIconBadge}>
-            <Image
-              source={TIER_ICONS.pasangan}
-              style={{ width: 22, height: 22, opacity: 0.8 }}
-              contentFit="contain"
-            />
-            <View style={styles.emptyPlusBadge}>
-              <Text style={styles.emptyPlusText}>+</Text>
-            </View>
-          </View>
-        </Pressable>
-      );
-    }
 
     const theme = TIER_THEMES[activeBond.tierId] || TIER_THEMES.pasangan;
     const tierIcon = TIER_ICONS[activeBond.tierId] || TIER_ICONS.pasangan;
@@ -274,14 +235,14 @@ export const ProfileAffinityShowcase: React.FC<ProfileAffinityShowcaseProps> = R
           />
         </Svg>
 
-        {/* ─── 4. Avatar Teman / Pasangan di Sisi Kanan (Diperbesar Proporsional) ─── */}
+        {/* ─── 4. Avatar Teman / Pasangan di Sisi Kanan (Diperbesar Proporsional & Digeser Lebih ke Kiri) ─── */}
         {activeBond.friend.equippedBorder ? (
           <View style={styles.borderAvatarWrapper}>
             <BorderAvatar
               avatarUrl={activeBond.friend.avatarUrl}
               fallbackText={friendInitial}
               borderId={activeBond.friend.equippedBorder}
-              avatarSize={30}
+              avatarSize={36}
               disabled
             />
           </View>
@@ -320,6 +281,7 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     paddingVertical: 0,
     paddingHorizontal: 0,
+    maxWidth: 126,
   },
   containerEmpty: {
     gap: 4,
@@ -330,17 +292,17 @@ const styles = StyleSheet.create({
   },
   waveSvg: {
     flex: 1,
-    height: 26,
+    height: 24,
   },
   iconWrapper: {
-    width: 30,
-    height: 30,
+    width: 28,
+    height: 28,
     alignItems: "center",
     justifyContent: "center",
   },
   tierIconImg: {
-    width: 28,
-    height: 28,
+    width: 26,
+    height: 26,
   },
   borderAvatarWrapper: {
     marginLeft: 0,
@@ -348,10 +310,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   avatarFrame: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    borderWidth: 1.8,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 2,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
@@ -370,31 +332,7 @@ const styles = StyleSheet.create({
   },
   avatarInitial: {
     color: "#F8FAFC",
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
-  },
-  emptyIconBadge: {
-    position: "relative",
-    width: 24,
-    height: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyPlusBadge: {
-    position: "absolute",
-    bottom: -2,
-    right: -3,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#F43F5E",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyPlusText: {
-    color: "#FFFFFF",
-    fontSize: 9,
-    fontWeight: "bold",
-    lineHeight: 12,
   },
 });

@@ -1,8 +1,10 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import {
+  ActivityIndicator,
+  DeviceEventEmitter,
   FlatList,
   Platform,
   Pressable,
@@ -14,60 +16,17 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { getAiringScheduleWindow, type AiringScheduleWindow } from "@/lib/anilist";
-import { APP_CONFIG } from "@/lib/app-config";
+import { currentWeekWindow, getAiringScheduleWindow } from "@/lib/anilist";
 import { animeTitle } from "@/lib/types";
-import type { AiringScheduleItem, AiringSchedulePage } from "@/lib/types";
-import { useNotifyMe } from "@/hooks/use-notify-me";
-import { ErrorState, LoadingState, EmptyState } from "@/components/async-state";
+import type { AiringScheduleItem } from "@/lib/types";
+import { NOTIFY_ME_CHANGED_EVENT } from "@/lib/airing-reminders";
+import { ErrorState, EmptyState } from "@/components/async-state";
+import { Skeleton } from "@/components/skeleton";
 import { AppIcon } from "@/components/app-icon";
-import { hapticLight } from "@/lib/haptics";
+import { hapticLight, hapticSuccess } from "@/lib/haptics";
 
-/** Same slim media fragment lib/anilist.ts ships for schedule rows. */
-const SCHEDULE_MEDIA_FIELDS = `id type title { romaji english native } coverImage { large extraLarge } format status averageScore popularity`;
-
-type ArchivePage = {
-  pageInfo?: { currentPage?: number; hasNextPage?: boolean; total?: number | null };
-  airingSchedules?: AiringScheduleItem[];
-};
-
-// Archive round trips are spaced so rapid "previous day" taps cannot burn AniList rate limit
-let nextArchiveRequestAt = 0;
-const ARCHIVE_REQUEST_INTERVAL_MS = 2_500;
-
-async function fetchAiringArchive(window: AiringScheduleWindow): Promise<AiringSchedulePage> {
-  const query = `query AiringArchive($startAt: Int, $endAt: Int) {
-    first: Page(page: 1, perPage: 50) { pageInfo { currentPage hasNextPage total } airingSchedules(airingAt_greater: $startAt, airingAt_lesser: $endAt, sort: [TIME]) { airingAt episode media { ${SCHEDULE_MEDIA_FIELDS} } } }
-    second: Page(page: 2, perPage: 50) { airingSchedules(airingAt_greater: $startAt, airingAt_lesser: $endAt, sort: [TIME]) { airingAt episode media { ${SCHEDULE_MEDIA_FIELDS} } } }
-  }`;
-  const now = Date.now();
-  const scheduledAt = Math.max(now, nextArchiveRequestAt);
-  nextArchiveRequestAt = scheduledAt + ARCHIVE_REQUEST_INTERVAL_MS;
-  if (scheduledAt > now) await new Promise<void>((resolve) => { setTimeout(resolve, scheduledAt - now); });
-  const response = await fetch(APP_CONFIG.anilistGraphqlUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ query, variables: { startAt: window.startAt, endAt: window.endAt } }),
-  });
-  if (response.status === 429) throw new Error("AniList sedang sibuk. Tunggu sebentar dan coba lagi.");
-  const payload = (await response.json().catch(() => null)) as {
-    data?: { first?: ArchivePage; second?: ArchivePage };
-    errors?: Array<{ message?: string }>;
-  } | null;
-  if (!response.ok || payload?.errors?.length || !payload?.data?.first) {
-    throw new Error(payload?.errors?.[0]?.message || "Gagal memuat jadwal tayang anime.");
-  }
-  const first = payload.data.first;
-  const airingSchedules = [...(first.airingSchedules ?? []), ...(payload.data.second?.airingSchedules ?? [])];
-  return {
-    pageInfo: {
-      currentPage: first.pageInfo?.currentPage ?? 1,
-      hasNextPage: Boolean(first.pageInfo?.hasNextPage),
-      total: first.pageInfo?.total ?? airingSchedules.length,
-    },
-    airingSchedules,
-  };
-}
+const ID_DAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"] as const;
+const NOTIFY_ME_KEY = "aniraku.notify-me.v1";
 
 function startOfLocalDay(value: Date) {
   const start = new Date(value);
@@ -79,24 +38,95 @@ function localDayKey(value: Date) {
   return `${value.getFullYear()}-${value.getMonth() + 1}-${value.getDate()}`;
 }
 
-const ID_DAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"] as const;
-
-type DayGroup = {
+type DayInfo = {
   key: string;
   dayName: string;
   dateLabel: string;
-  items: AiringScheduleItem[];
 };
 
-/** Memoized timeline item row with authentic Liquid Glass card */
+function getUpcoming7Days(): DayInfo[] {
+  const days: DayInfo[] = [];
+  const start = startOfLocalDay(new Date());
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    days.push({
+      key: localDayKey(d),
+      dayName: ID_DAYS[d.getDay()] || "Senin",
+      dateLabel: `${d.getDate()} ${d.toLocaleDateString("id-ID", { month: "short" })}`,
+    });
+  }
+  return days;
+}
+
+/** Hook global satu pintu untuk reminder anime (mengurangi 50x AsyncStorage I/O per render) */
+function useScheduleReminders() {
+  const [remindedSet, setRemindedSet] = useState<Set<number>>(() => new Set());
+
+  const loadReminders = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(NOTIFY_ME_KEY);
+      if (raw) {
+        const map = JSON.parse(raw);
+        if (map && typeof map === "object") {
+          const ids = new Set(
+            Object.keys(map)
+              .map(Number)
+              .filter((id) => Number.isInteger(id) && id > 0)
+          );
+          setRemindedSet(ids);
+          return;
+        }
+      }
+      setRemindedSet(new Set());
+    } catch {
+      setRemindedSet(new Set());
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadReminders();
+    const sub = DeviceEventEmitter.addListener(NOTIFY_ME_CHANGED_EVENT, loadReminders);
+    return () => sub.remove();
+  }, [loadReminders]);
+
+  const toggleReminder = useCallback(async (animeId: number) => {
+    hapticSuccess();
+    setRemindedSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(animeId)) next.delete(animeId);
+      else next.add(animeId);
+      return next;
+    });
+
+    try {
+      const raw = await AsyncStorage.getItem(NOTIFY_ME_KEY);
+      const map = raw ? JSON.parse(raw) : {};
+      if (map[String(animeId)]) {
+        delete map[String(animeId)];
+      } else {
+        map[String(animeId)] = true;
+      }
+      await AsyncStorage.setItem(NOTIFY_ME_KEY, JSON.stringify(map));
+    } catch {}
+    DeviceEventEmitter.emit(NOTIFY_ME_CHANGED_EVENT);
+  }, []);
+
+  return { remindedSet, toggleReminder };
+}
+
+/** Memoized timeline item row - Ultra ringan tanpa hooks berat di dalam baris */
 const TimelineScheduleRow = memo(function TimelineScheduleRow({
   item,
   isLast,
+  isReminded,
+  onToggleReminder,
 }: {
   item: AiringScheduleItem;
   isLast: boolean;
+  isReminded: boolean;
+  onToggleReminder: () => void;
 }) {
-  const notify = useNotifyMe(item.media.id);
   const date = new Date(item.airingAt * 1000);
   const anime = item.media;
   const title = animeTitle(anime);
@@ -107,15 +137,16 @@ const TimelineScheduleRow = memo(function TimelineScheduleRow({
 
   const isAired = item.airingAt * 1000 <= Date.now();
 
-  // Score & popularity formatting from live AniList metadata (no longer dummy data)
-  const scoreVal = typeof anime.averageScore === "number" && anime.averageScore > 0
-    ? (anime.averageScore / 10).toFixed(1)
-    : "—";
-  const popVal = typeof anime.popularity === "number" && anime.popularity > 0
-    ? anime.popularity >= 1000
-      ? `${(anime.popularity / 1000).toFixed(anime.popularity >= 10000 ? 0 : 1)}K`
-      : String(anime.popularity)
-    : "—";
+  const scoreVal =
+    typeof anime.averageScore === "number" && anime.averageScore > 0
+      ? (anime.averageScore / 10).toFixed(1)
+      : "—";
+  const popVal =
+    typeof anime.popularity === "number" && anime.popularity > 0
+      ? anime.popularity >= 1000
+        ? `${(anime.popularity / 1000).toFixed(anime.popularity >= 10000 ? 0 : 1)}K`
+        : String(anime.popularity)
+      : "—";
 
   return (
     <View style={styles.timelineRow}>
@@ -126,7 +157,7 @@ const TimelineScheduleRow = memo(function TimelineScheduleRow({
         {!isLast ? <View style={styles.timelineLine} /> : null}
       </View>
 
-      {/* Right Column: Liquid Glass Anime Card */}
+      {/* Right Column: Sleek Anime Card */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Buka ${title}`}
@@ -149,7 +180,7 @@ const TimelineScheduleRow = memo(function TimelineScheduleRow({
             {title}
           </Text>
           <Text style={styles.cardEpisode}>Episode {item.episode}</Text>
-          <Text style={styles.cardStatus}>
+          <Text style={[styles.cardStatus, isAired && styles.cardStatusAired]}>
             {isAired ? "Sudah Tayang" : "Menunggu Update"}
           </Text>
 
@@ -168,23 +199,20 @@ const TimelineScheduleRow = memo(function TimelineScheduleRow({
         {/* Bell Alert Toggle */}
         <Pressable
           accessibilityRole="switch"
-          accessibilityState={{ checked: notify.enabled }}
-          accessibilityLabel={notify.enabled ? `Pengingat aktif untuk ${title}` : `Ingatkan ${title}`}
+          accessibilityState={{ checked: isReminded }}
+          accessibilityLabel={isReminded ? `Pengingat aktif untuk ${title}` : `Ingatkan ${title}`}
           hitSlop={10}
-          onPress={() => {
-            hapticLight();
-            void notify.toggle();
-          }}
+          onPress={onToggleReminder}
           style={({ pressed }) => [
             styles.bellBtn,
-            notify.enabled && styles.bellBtnActive,
+            isReminded && styles.bellBtnActive,
             pressed && styles.btnPressed,
           ]}
         >
           <AppIcon
-            name={notify.enabled ? "bell" : "bell-outline"}
+            name={isReminded ? "bell" : "bell-outline"}
             size={16}
-            color={notify.enabled ? "#38BDF8" : "rgba(255, 255, 255, 0.45)"}
+            color={isReminded ? "#38BDF8" : "rgba(255, 255, 255, 0.45)"}
           />
         </Pressable>
       </Pressable>
@@ -192,29 +220,43 @@ const TimelineScheduleRow = memo(function TimelineScheduleRow({
   );
 });
 
-let memoryScheduleCache: AiringSchedulePage | null = null;
+/** Skeleton loading timeline modern & estetik untuk feedback instan */
+const ScheduleSkeleton = memo(function ScheduleSkeleton() {
+  return (
+    <View style={styles.listContent}>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <View key={i} style={styles.timelineRow}>
+          <View style={styles.timelineCol}>
+            <Skeleton style={{ width: 38, height: 13, borderRadius: 4, marginBottom: 8 }} />
+            <View style={styles.timelineDot} />
+            {i < 4 ? <View style={styles.timelineLine} /> : null}
+          </View>
+          <View style={styles.glassCard}>
+            <Skeleton style={styles.cardPoster} />
+            <View style={styles.cardInfo}>
+              <Skeleton style={{ width: "80%", height: 16, borderRadius: 4 }} />
+              <Skeleton style={{ width: "42%", height: 12, borderRadius: 4, marginTop: 6 }} />
+              <Skeleton style={{ width: "55%", height: 11, borderRadius: 4, marginTop: 5 }} />
+              <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
+                <Skeleton style={{ width: 44, height: 12, borderRadius: 4 }} />
+                <Skeleton style={{ width: 34, height: 12, borderRadius: 4 }} />
+              </View>
+            </View>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+});
 
 export default function ScheduleScreen() {
-  const [dayOffset, setDayOffset] = useState(0);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-  const [cachedSchedule, setCachedSchedule] = useState<AiringSchedulePage | null>(memoryScheduleCache);
-
-  // Ambil cache jadwal lokal secara instan pada startup agar tampilan langsung muncul tanpa loading
-  useEffect(() => {
-    void AsyncStorage.getItem("nuenime.cache.schedule.v1").then((raw) => {
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (parsed && Array.isArray(parsed.airingSchedules) && parsed.airingSchedules.length > 0) {
-            memoryScheduleCache = parsed;
-            setCachedSchedule(parsed);
-          }
-        } catch {}
-      }
-    });
-  }, []);
-
   const [todayKey, setTodayKey] = useState(() => localDayKey(new Date()));
+
+  // 1. Hook reminders global (hanya 1 listener & 1 set untuk semua row)
+  const { remindedSet, toggleReminder } = useScheduleReminders();
+
+  // 2. Update hari jika berganti tanggal di latar belakang
   useEffect(() => {
     const timer = setInterval(() => {
       setTodayKey((prev) => {
@@ -225,57 +267,40 @@ export default function ScheduleScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  const window = useMemo(() => {
-    const start = startOfLocalDay(new Date());
-    start.setDate(start.getDate() + dayOffset);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 7);
-    return { startAt: Math.floor(start.getTime() / 1000), endAt: Math.floor(end.getTime() / 1000) };
-  }, [dayOffset, todayKey]);
+  // 3. 7 hari ke depan dihitung instan lokal (0ms rendering untuk tab hari)
+  const upcomingDays = useMemo(() => getUpcoming7Days(), [todayKey]);
+  const safeIndex = Math.min(selectedDayIndex, Math.max(0, upcomingDays.length - 1));
+  const activeDay = upcomingDays[safeIndex] || upcomingDays[0];
+  const nextDay = upcomingDays.length > 1 ? upcomingDays[(safeIndex + 1) % upcomingDays.length] : null;
+
+  // 4. Query jadwal mingguan dari AniList (cocok dengan queryKey startup prefetch)
+  const scheduleWindow = useMemo(() => currentWeekWindow(), [todayKey]);
 
   const schedule = useQuery({
-    queryKey: ["schedule", window.startAt, window.endAt],
-    queryFn: () => (dayOffset < 0 ? fetchAiringArchive(window) : getAiringScheduleWindow(window)),
-    placeholderData: dayOffset === 0 ? cachedSchedule ?? undefined : undefined,
+    queryKey: ["schedule", scheduleWindow.startAt, scheduleWindow.endAt],
+    queryFn: () => getAiringScheduleWindow(scheduleWindow),
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
   });
 
-  // Simpan jadwal hari ini ke local cache untuk zero-delay loading
-  useEffect(() => {
-    if (dayOffset === 0 && schedule.data?.airingSchedules?.length) {
-      memoryScheduleCache = schedule.data;
-      void AsyncStorage.setItem("nuenime.cache.schedule.v1", JSON.stringify(schedule.data)).catch(() => {});
-    }
-  }, [dayOffset, schedule.data]);
+  // 5. Grouping anime berdasarkan tanggal lokal dengan performa O(N) efisien
+  const scheduleMap = useMemo(() => {
+    const map = new Map<string, AiringScheduleItem[]>();
+    if (!schedule.data?.airingSchedules) return map;
 
-  // Group schedules by local day
-  const dayGroups: DayGroup[] = useMemo(() => {
-    if (!schedule.data?.airingSchedules) return [];
-    const map = new Map<string, { dayName: string; dateLabel: string; items: AiringScheduleItem[] }>();
-
-    schedule.data.airingSchedules.forEach((item) => {
+    for (const item of schedule.data.airingSchedules) {
+      if (!item.media) continue;
       const d = new Date(item.airingAt * 1000);
-      const dayKey = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-      const dayName = ID_DAYS[d.getDay()] || "Senin";
-      const dateLabel = `${d.getDate()} ${d.toLocaleDateString("id-ID", { month: "short" })}`;
-
-      const current = map.get(dayKey) ?? { dayName, dateLabel, items: [] };
-      current.items.push(item);
-      map.set(dayKey, current);
-    });
-
-    return [...map.entries()].map(([key, val]) => ({
-      key,
-      dayName: val.dayName,
-      dateLabel: val.dateLabel,
-      items: val.items,
-    }));
+      const key = localDayKey(d);
+      const list = map.get(key) || [];
+      list.push(item);
+      map.set(key, list);
+    }
+    return map;
   }, [schedule.data]);
 
-  const safeIndex = Math.min(selectedDayIndex, Math.max(0, dayGroups.length - 1));
-  const currentGroup = dayGroups[safeIndex];
-  const nextGroup = dayGroups.length > 1 ? dayGroups[(safeIndex + 1) % dayGroups.length] : null;
+  const currentItems = scheduleMap.get(activeDay.key) || [];
+  const isLoading = schedule.isLoading || (schedule.isFetching && !schedule.data);
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
@@ -284,77 +309,98 @@ export default function ScheduleScreen() {
         <Text style={styles.headerTitle}>Jadwal Tayang</Text>
       </View>
 
-      {/* 2. Horizontal Day Chips Selection */}
-      {dayGroups.length > 0 ? (
-        <View style={styles.dayTabsWrapper}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.dayTabsScroll}
-          >
-            {dayGroups.map((group, idx) => {
-              const isActive = safeIndex === idx;
-              return (
-                <Pressable
-                  key={group.key}
-                  onPress={() => {
-                    hapticLight();
-                    setSelectedDayIndex(idx);
-                  }}
-                  style={({ pressed }) => [
-                    styles.dayTabPill,
-                    isActive && styles.dayTabPillActive,
-                    pressed && styles.btnPressed,
+      {/* 2. Horizontal Day Chips Selection (Selalu Tampil Instan 0ms) */}
+      <View style={styles.dayTabsWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.dayTabsScroll}
+        >
+          {upcomingDays.map((group, idx) => {
+            const isActive = safeIndex === idx;
+            return (
+              <Pressable
+                key={group.key}
+                accessibilityRole="button"
+                accessibilityLabel={`Pilih hari ${group.dayName}`}
+                onPress={() => {
+                  hapticLight();
+                  setSelectedDayIndex(idx);
+                }}
+                style={({ pressed }) => [
+                  styles.dayTabPill,
+                  isActive && styles.dayTabPillActive,
+                  pressed && styles.btnPressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.dayTabPillText,
+                    isActive && styles.dayTabPillTextActive,
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.dayTabPillText,
-                      isActive && styles.dayTabPillTextActive,
-                    ]}
-                  >
-                    {group.dayName}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-      ) : null}
+                  {group.dayName}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
 
-      {/* 3. Day Header Row: [Senin] on Left, [7 Anime] on Right */}
-      {currentGroup ? (
-        <View style={styles.dayInfoRow}>
-          <View style={styles.selectedDayPill}>
-            <Text style={styles.selectedDayPillText}>{currentGroup.dayName}</Text>
-          </View>
+      {/* 3. Day Header Row: [Hari] di Kiri, [Jumlah / Loading] di Kanan */}
+      <View style={styles.dayInfoRow}>
+        <View style={styles.selectedDayPill}>
+          <Text style={styles.selectedDayPillText}>{activeDay.dayName}</Text>
+          <Text style={styles.selectedDayDateText}>{activeDay.dateLabel}</Text>
+        </View>
+
+        <View style={styles.rightInfoWrap}>
+          {schedule.isFetching && !schedule.isLoading ? (
+            <View style={styles.syncingPill}>
+              <ActivityIndicator size="small" color="#38BDF8" style={styles.syncSpinner} />
+              <Text style={styles.syncingText}>Memperbarui</Text>
+            </View>
+          ) : null}
+
           <View style={styles.countBadgePill}>
             <Text style={styles.countBadgePillText}>
-              {currentGroup.items.length} Anime
+              {isLoading ? "Memuat..." : `${currentItems.length} Anime`}
             </Text>
           </View>
         </View>
-      ) : null}
+      </View>
 
       {/* 4. Main Timeline Content & States */}
-      {schedule.isPending ? (
-        <LoadingState label="Memuat jadwal tayang anime..." />
-      ) : schedule.isError || !schedule.data ? (
+      {isLoading ? (
+        <ScheduleSkeleton />
+      ) : schedule.isError && !schedule.data ? (
         <ErrorState
-          message={schedule.error?.message ?? "Gagal memuat jadwal tayang."}
+          message={schedule.error?.message ?? "Gagal memuat jadwal tayang anime."}
           onRetry={() => void schedule.refetch()}
         />
-      ) : !dayGroups.length || !currentGroup?.items.length ? (
-        <EmptyState label="Belum ada anime yang dijadwalkan untuk hari ini." />
+      ) : currentItems.length === 0 ? (
+        <EmptyState
+          label={`Belum ada anime yang dijadwalkan tayang pada hari ${activeDay.dayName}.`}
+          action={{
+            label: "Muat Ulang",
+            onPress: () => void schedule.refetch(),
+          }}
+        />
       ) : (
         <FlatList
-          data={currentGroup.items}
-          keyExtractor={(item, index) => `${item.media?.id ?? "anime"}:${item.episode}:${item.airingAt}:${index}`}
+          data={currentItems}
+          keyExtractor={(item, index) =>
+            `${item.media?.id ?? "anime"}:${item.episode}:${item.airingAt}:${index}`
+          }
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={5}
+          removeClippedSubviews={Platform.OS !== "web"}
           refreshControl={
             <RefreshControl
-              refreshing={schedule.isFetching && !schedule.isPending}
+              refreshing={schedule.isFetching && !isLoading}
               onRefresh={() => void schedule.refetch()}
               tintColor="#38BDF8"
             />
@@ -362,26 +408,29 @@ export default function ScheduleScreen() {
           renderItem={({ item, index }) => (
             <TimelineScheduleRow
               item={item}
-              isLast={index === currentGroup.items.length - 1}
+              isLast={index === currentItems.length - 1}
+              isReminded={remindedSet.has(item.media.id)}
+              onToggleReminder={() => toggleReminder(item.media.id)}
             />
           )}
         />
       )}
 
       {/* 5. Floating Bottom-Right Next Day Pill (e.g. "Selasa →") */}
-      {nextGroup ? (
+      {nextDay && (
         <Pressable
+          accessibilityRole="button"
           onPress={() => {
             hapticLight();
-            setSelectedDayIndex((prev) => (prev + 1) % dayGroups.length);
+            setSelectedDayIndex((prev) => (prev + 1) % upcomingDays.length);
           }}
           style={({ pressed }) => [styles.floatingNextBtn, pressed && styles.btnPressed]}
-          accessibilityLabel={`Pindah ke hari ${nextGroup.dayName}`}
+          accessibilityLabel={`Pindah ke hari ${nextDay.dayName}`}
         >
-          <Text style={styles.floatingNextText}>{nextGroup.dayName}</Text>
+          <Text style={styles.floatingNextText}>{nextDay.dayName}</Text>
           <AppIcon name="arrow-right" size={15} color="#FFFFFF" />
         </Pressable>
-      ) : null}
+      )}
     </SafeAreaView>
   );
 }
@@ -440,7 +489,7 @@ const styles = StyleSheet.create({
     fontFamily: "Nunito-Black",
   },
 
-  // ─── DAY INFO ROW: [Senin] & [7 Anime] ───
+  // ─── DAY INFO ROW: [Hari] & [Jumlah Anime] ───
   dayInfoRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -454,13 +503,45 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.18)",
     borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   selectedDayPillText: {
     fontFamily: "Nunito-Black",
     color: "#FFFFFF",
     fontSize: 13.5,
+  },
+  selectedDayDateText: {
+    fontFamily: "Nunito-SemiBold",
+    color: "#94A3B8",
+    fontSize: 11.5,
+  },
+  rightInfoWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  syncingPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.25)",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  syncSpinner: {
+    transform: [{ scale: 0.65 }],
+  },
+  syncingText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 10.5,
+    color: "#38BDF8",
   },
   countBadgePill: {
     backgroundColor: "rgba(255, 255, 255, 0.06)",
@@ -522,23 +603,17 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
 
-  // Right Column: Liquid Glass Anime Card
+  // Right Column: Sleek Solid Dark Card (Bebas CPU blur lag)
   glassCard: {
     flex: 1,
-    backgroundColor: "rgba(22, 27, 38, 0.72)",
+    backgroundColor: "#131824",
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.11)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
     padding: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    ...(Platform.OS === "web"
-      ? ({
-          backdropFilter: "blur(18px)",
-          WebkitBackdropFilter: "blur(18px)",
-        } as any)
-      : {}),
   },
   cardPoster: {
     width: 70,
@@ -568,6 +643,9 @@ const styles = StyleSheet.create({
     fontFamily: "Nunito-SemiBold",
     fontSize: 11,
     color: "#94A3B8",
+  },
+  cardStatusAired: {
+    color: "#38BDF8",
   },
   cardStatsRow: {
     flexDirection: "row",
@@ -614,7 +692,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 84,
     right: 18,
-    backgroundColor: "rgba(22, 27, 38, 0.94)",
+    backgroundColor: "#161B26",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.22)",
     borderRadius: 22,
@@ -624,12 +702,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     zIndex: 100,
-    ...(Platform.OS === "web"
-      ? ({
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-        } as any)
-      : {}),
   },
   floatingNextText: {
     fontFamily: "Nunito-Black",

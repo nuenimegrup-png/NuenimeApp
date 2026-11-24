@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -150,37 +150,38 @@ const HomePodiumItem = React.memo(function HomePodiumItem({ entry }: { entry: Le
 });
 
 // ── Main Home Top Leaderboard Card ──────────────────────────────────────────
-export function HomeTopLeaderboard() {
+export const HomeTopLeaderboard = React.memo(function HomeTopLeaderboard() {
   const queryClient = useQueryClient();
+  const lastInvalidateRef = useRef(0);
 
   const { data, isLoading } = useQuery({
     queryKey: ["home-top-leaderboard"],
     queryFn: () => getLeaderboard("alltime", 3),
-    staleTime: 30_000,
+    staleTime: 60_000,
     retry: 2,
   });
 
-  // Realtime listener Supabase untuk update otomatis seketika
+  // Realtime listener Supabase untuk update otomatis (dithrottle min 30 detik untuk cegah CPU lag)
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let isMounted = true;
     const channelName = `home-top-leaderboard-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    const throttledInvalidate = () => {
+      if (!isMounted) return;
+      const now = Date.now();
+      if (now - lastInvalidateRef.current < 30_000) return;
+      lastInvalidateRef.current = now;
+      queryClient.invalidateQueries({ queryKey: ["home-top-leaderboard"] });
+    };
 
     try {
       channel = supabase
         .channel(channelName)
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "profiles" },
-          () => {
-            queryClient.invalidateQueries({ queryKey: ["home-top-leaderboard"] });
-          }
-        )
-        .on(
-          "postgres_changes",
           { event: "*", schema: "public", table: "user_xp_transactions" },
-          () => {
-            queryClient.invalidateQueries({ queryKey: ["home-top-leaderboard"] });
-          }
+          throttledInvalidate
         )
         .subscribe();
     } catch (err) {
@@ -188,9 +189,11 @@ export function HomeTopLeaderboard() {
     }
 
     return () => {
+      isMounted = false;
       if (channel) {
         try {
-          supabase.removeChannel(channel).catch(() => {});
+          void channel.unsubscribe();
+          void supabase.removeChannel(channel);
         } catch {}
       }
     };
@@ -267,17 +270,19 @@ export function HomeTopLeaderboard() {
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   cardContainer: {
     width: "100%",
     borderRadius: 20,
     backgroundColor: "rgba(18, 24, 38, 0.7)",
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "rgba(255, 255, 255, 0.08)",
     padding: 14,
     gap: 8,
+    minHeight: 245,
+    justifyContent: "space-between",
     ...(Platform.OS === "web"
       ? ({
           backdropFilter: "blur(16px)",
@@ -341,13 +346,13 @@ const styles = StyleSheet.create({
   },
   podiumItemFirst: {
     paddingTop: 4,
-    minHeight: 185,
+    minHeight: 175,
     justifyContent: "flex-end",
     zIndex: 2,
   },
   podiumItemOther: {
     paddingTop: 10,
-    minHeight: 170,
+    minHeight: 160,
     justifyContent: "flex-end",
   },
   podiumItemEmpty: {

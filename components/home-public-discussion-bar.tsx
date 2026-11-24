@@ -11,7 +11,7 @@ import {
 
 const HOME_DISCUSSION_CACHE_KEY = "@nuenime_latest_discussion_msg";
 
-export function HomePublicDiscussionBar() {
+export const HomePublicDiscussionBar = React.memo(function HomePublicDiscussionBar() {
   const [latestSnippet, setLatestSnippet] = useState<{
     senderName: string;
     message: string;
@@ -112,7 +112,7 @@ export function HomePublicDiscussionBar() {
       </Pressable>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   outerWrapper: {

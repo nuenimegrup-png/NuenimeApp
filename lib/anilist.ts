@@ -415,8 +415,8 @@ export async function getAnimeByIds(ids: readonly number[]): Promise<Anime[]> {
 }
 
 const airingScheduleBatchQuery = `query AiringScheduleBatch($perPage: Int!, $startAt: Int, $endAt: Int) {
-  first: Page(page: 1, perPage: $perPage) { pageInfo { currentPage hasNextPage total } airingSchedules(notYetAired: true, airingAt_greater: $startAt, airingAt_lesser: $endAt, sort: [TIME]) { airingAt episode media { ${scheduleMediaFields} } } }
-  second: Page(page: 2, perPage: $perPage) { pageInfo { currentPage hasNextPage total } airingSchedules(notYetAired: true, airingAt_greater: $startAt, airingAt_lesser: $endAt, sort: [TIME]) { airingAt episode media { ${scheduleMediaFields} } } }
+  first: Page(page: 1, perPage: $perPage) { pageInfo { currentPage hasNextPage total } airingSchedules(airingAt_greater: $startAt, airingAt_lesser: $endAt, sort: [TIME]) { airingAt episode media { ${scheduleMediaFields} } } }
+  second: Page(page: 2, perPage: $perPage) { pageInfo { currentPage hasNextPage total } airingSchedules(airingAt_greater: $startAt, airingAt_lesser: $endAt, sort: [TIME]) { airingAt episode media { ${scheduleMediaFields} } } }
 }`;
 
 /**
