@@ -76,6 +76,7 @@ export function ProfileGiftModal({
   const [receivedLogs, setReceivedLogs] = useState<ReceivedGiftLog[]>([]);
   const [contributors, setContributors] = useState<GiftContributor[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [loadingSummary, setLoadingSummary] = useState(false);
 
   // Responsif mobile dialog max width
   const modalMaxWidth = Math.min(windowWidth - 24, 410);
@@ -90,11 +91,14 @@ export function ProfileGiftModal({
     }
 
     if (targetUserId) {
-      getUserGiftSummary(targetUserId).then((res) => {
-        setTotalReceivedValue(res.totalCharisma);
-        setGiftCounts(res.giftCounts || {});
-        setEquippedGiftId(res.equippedGiftId || null);
-      });
+      setLoadingSummary(true);
+      getUserGiftSummary(targetUserId)
+        .then((res) => {
+          setTotalReceivedValue(res.totalCharisma);
+          setGiftCounts(res.giftCounts || {});
+          setEquippedGiftId(res.equippedGiftId || null);
+        })
+        .finally(() => setLoadingSummary(false));
     }
   }, [visible, currentUserId, targetUserId]);
 
@@ -336,6 +340,7 @@ export function ProfileGiftModal({
                           isPreviewing && styles.spotlightGiftImgPreview,
                         ]}
                         contentFit="contain"
+                        cachePolicy="memory-disk"
                         transition={200}
                       />
                     </View>
@@ -407,6 +412,7 @@ export function ProfileGiftModal({
                           source={CRYSTAL_ICON}
                           style={styles.crystalIconSmall}
                           contentFit="contain"
+                          cachePolicy="memory-disk"
                         />
                         <Text style={styles.costValNumber}>
                           {(selectedGift.price * giftQuantity).toLocaleString("id-ID")}
@@ -418,6 +424,7 @@ export function ProfileGiftModal({
                           source={CRYSTAL_ICON}
                           style={styles.crystalIconTiny}
                           contentFit="contain"
+                          cachePolicy="memory-disk"
                         />
                         <Text style={styles.balanceInfoText}>
                           {userCrystalBalance.toLocaleString("id-ID")})
@@ -457,6 +464,12 @@ export function ProfileGiftModal({
                       </Pressable>
                     </View>
                   </ScrollView>
+                </View>
+              ) : loadingSummary ? (
+                /* ─── LOADING SKELETON / SPINNER VIEW ─── */
+                <View style={styles.loadingBox}>
+                  <ActivityIndicator size="small" color="#38BDF8" />
+                  <Text style={styles.loadingText}>Memuat Katalog Gift...</Text>
                 </View>
               ) : (
                 /* ─── 8 GIFTS GRID VIEW (Screenshot 1: Mobile Legends Style - 4 Kolom Rapi) ─── */
@@ -507,6 +520,7 @@ export function ProfileGiftModal({
                                 isOwnProfile && !isOwned && styles.giftCardImgLocked,
                               ]}
                               contentFit="contain"
+                              cachePolicy="memory-disk"
                             />
                           </View>
 
@@ -539,6 +553,7 @@ export function ProfileGiftModal({
                                 source={CRYSTAL_ICON}
                                 style={styles.crystalIconTiny}
                                 contentFit="contain"
+                                cachePolicy="memory-disk"
                               />
                               <Text style={styles.priceNumber}>
                                 {gift.price.toLocaleString("id-ID")}
@@ -726,6 +741,7 @@ export function ProfileGiftModal({
                     source={{ uri: equipModalGift.imageUrl }}
                     style={styles.equipGiftImg}
                     contentFit="contain"
+                    cachePolicy="memory-disk"
                   />
                 </View>
 

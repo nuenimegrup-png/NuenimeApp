@@ -275,20 +275,14 @@ export const HomeTopLeaderboard = React.memo(function HomeTopLeaderboard() {
 const styles = StyleSheet.create({
   cardContainer: {
     width: "100%",
+    backgroundColor: "#131A29",
     borderRadius: 20,
-    backgroundColor: "rgba(18, 24, 38, 0.7)",
     borderWidth: 1.5,
     borderColor: "rgba(255, 255, 255, 0.08)",
     padding: 14,
     gap: 8,
     minHeight: 245,
     justifyContent: "space-between",
-    ...(Platform.OS === "web"
-      ? ({
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
-        } as any)
-      : {}),
   },
 
   // Header

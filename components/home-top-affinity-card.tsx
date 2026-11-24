@@ -427,6 +427,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   cardContainer: {
+    backgroundColor: "#131A29",
     width: "100%",
     borderRadius: 20,
     borderWidth: 1.5,
@@ -438,8 +439,6 @@ const styles = StyleSheet.create({
     gap: 8,
     ...(Platform.OS === "web"
       ? ({
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
         cursor: "pointer",
       } as any)
       : {}),

@@ -204,11 +204,21 @@ export async function getEquippedProfileGift(userId: string): Promise<string | n
   return null;
 }
 
+const giftSummaryCache = new Map<string, { data: UserGiftSummary; timestamp: number }>();
+const GIFT_SUMMARY_CACHE_TTL = 20_000; // 20 detik in-memory cache
+
+export function invalidateUserGiftSummaryCache(userId?: string | null) {
+  if (userId) {
+    giftSummaryCache.delete(userId);
+  }
+}
+
 /**
  * Menyimpan ID gift yang terpasang di profil pengguna
  */
 export async function setEquippedProfileGift(userId: string, giftId: string | null): Promise<boolean> {
   if (!userId) return false;
+  invalidateUserGiftSummaryCache(userId);
   try {
     if (giftId) {
       await AsyncStorage.setItem(`nuenime.equipped_gift.${userId}`, giftId);
@@ -235,9 +245,20 @@ export async function setEquippedProfileGift(userId: string, giftId: string | nu
 /**
  * Mengambil ringkasan Charisma dan total Gift yang diterima pengguna
  */
-export async function getUserGiftSummary(userId: string): Promise<UserGiftSummary> {
+export async function getUserGiftSummary(
+  userId: string,
+  forceRefresh: boolean = false
+): Promise<UserGiftSummary> {
   if (!userId) {
     return { totalCharisma: 0, totalGiftsCount: 0, topGifts: [], giftCounts: {}, equippedGiftId: null };
+  }
+
+  // Cek in-memory cache agar super ringan, 0ms, dan hemat CPU
+  if (!forceRefresh) {
+    const cached = giftSummaryCache.get(userId);
+    if (cached && Date.now() - cached.timestamp < GIFT_SUMMARY_CACHE_TTL) {
+      return cached.data;
+    }
   }
 
   const equippedGiftId = await getEquippedProfileGift(userId);
@@ -263,13 +284,16 @@ export async function getUserGiftSummary(userId: string): Promise<UserGiftSummar
         giftCounts[item.giftId] = item.totalQuantity;
       }
 
-      return {
+      const summaryResult: UserGiftSummary = {
         totalCharisma: Number(rpcData.total_charisma ?? 0),
         totalGiftsCount: Number(rpcData.total_gifts_count ?? 0),
         topGifts,
         giftCounts,
         equippedGiftId,
       };
+
+      giftSummaryCache.set(userId, { data: summaryResult, timestamp: Date.now() });
+      return summaryResult;
     }
   } catch (err) {
     console.warn("[getUserGiftSummary] RPC query:", err);
@@ -283,7 +307,9 @@ export async function getUserGiftSummary(userId: string): Promise<UserGiftSummar
       .eq("recipient_id", userId);
 
     if (error || !data) {
-      return { totalCharisma: 0, totalGiftsCount: 0, topGifts: [], giftCounts: {}, equippedGiftId };
+      const fallbackEmpty: UserGiftSummary = { totalCharisma: 0, totalGiftsCount: 0, topGifts: [], giftCounts: {}, equippedGiftId };
+      giftSummaryCache.set(userId, { data: fallbackEmpty, timestamp: Date.now() });
+      return fallbackEmpty;
     }
 
     let totalCharisma = 0;
@@ -314,9 +340,12 @@ export async function getUserGiftSummary(userId: string): Promise<UserGiftSummar
     }
 
     const topGifts = Array.from(map.values()).sort((a, b) => b.totalCharisma - a.totalCharisma);
-    return { totalCharisma, totalGiftsCount, topGifts, giftCounts, equippedGiftId };
+    const result: UserGiftSummary = { totalCharisma, totalGiftsCount, topGifts, giftCounts, equippedGiftId };
+    giftSummaryCache.set(userId, { data: result, timestamp: Date.now() });
+    return result;
   } catch {
-    return { totalCharisma: 0, totalGiftsCount: 0, topGifts: [], giftCounts: {}, equippedGiftId };
+    const fallbackEmpty: UserGiftSummary = { totalCharisma: 0, totalGiftsCount: 0, topGifts: [], giftCounts: {}, equippedGiftId };
+    return fallbackEmpty;
   }
 }
 
@@ -522,6 +551,8 @@ export async function sendProfileGift(params: {
     const prevChar = cached ? Number(cached) : 0;
     await AsyncStorage.setItem(summaryKey, String(prevChar + totalCharisma));
   } catch {}
+
+  invalidateUserGiftSummaryCache(recipientId);
 
   return {
     success: true,

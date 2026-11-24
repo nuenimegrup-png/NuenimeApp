@@ -2750,10 +2750,10 @@ const styles = StyleSheet.create({
   profileGiftShowcase: {
     position: "absolute",
     right: "50%",
-    marginRight: 48,
+    marginRight: 70,
     width: 56,
     height: 56,
-    top: 20,
+    top: 15,
     zIndex: 25,
     elevation: 25,
   },

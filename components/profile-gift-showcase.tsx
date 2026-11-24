@@ -38,7 +38,7 @@ export const ProfileGiftShowcase = React.memo(function ProfileGiftShowcase({
   onPress,
 }: ProfileGiftShowcaseProps) {
   // Query total charisma & top gift yang diterima pengguna
-  const { data: giftSummary } = useQuery({
+  const { data: giftSummary, isLoading } = useQuery({
     queryKey: ["profile-gift-summary", userId],
     queryFn: () => (userId ? getUserGiftSummary(userId) : null),
     staleTime: 30_000,
@@ -85,8 +85,9 @@ export const ProfileGiftShowcase = React.memo(function ProfileGiftShowcase({
     >
       <Image
         source={{ uri: displayImage }}
-        style={styles.giftImg}
+        style={[styles.giftImg, isLoading && styles.giftImgLoading]}
         contentFit="contain"
+        cachePolicy="memory-disk"
         transition={150}
       />
     </Pressable>
@@ -107,5 +108,8 @@ const styles = StyleSheet.create({
   giftImg: {
     width: 48,
     height: 48,
+  },
+  giftImgLoading: {
+    opacity: 0.6,
   },
 });

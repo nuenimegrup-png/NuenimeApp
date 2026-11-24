@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
   cardContainer: {
     width: "100%",
     borderRadius: 20,
-    backgroundColor: "rgba(18, 24, 38, 0.7)",
+    backgroundColor: "#131A29",
     borderWidth: 1.5,
     borderColor: "rgba(245, 158, 11, 0.35)", // Amber Gold khas Charisma
     padding: 14,
@@ -298,8 +298,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     ...(Platform.OS === "web"
       ? ({
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
           cursor: "pointer",
         } as any)
       : {}),
