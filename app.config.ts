@@ -13,7 +13,7 @@ const env = {
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
-  version: "1.0.2",
+  version: "1.0.3",
   orientation: "default",
   icon: "./assets/images/logo-app.png",
   scheme: env.scheme,
@@ -28,7 +28,7 @@ const config: ExpoConfig = {
     infoPlist: { ITSAppUsesNonExemptEncryption: false },
   },
   android: {
-    versionCode: 13,
+    versionCode: 14,
     adaptiveIcon: { backgroundColor: "#0E0E11", foregroundImage: "./assets/images/logo-app.png" },
     edgeToEdgeEnabled: true,
     softwareKeyboardLayoutMode: "resize",

@@ -9,7 +9,7 @@ on:
       tag:
         description: "Release tag to build (must match the version in app.config.ts)"
         required: false
-        default: "v1.0.2"
+        default: "v1.0.3"
 
 env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
@@ -192,11 +192,11 @@ jobs:
           body: |
             ## Nuenime ${{ env.RELEASE_TAG }}
 
-            - **Optimasi Performa Gacha**: Penghapusan bottleneck JS thread (mengganti native Glide downsampling caching memory-disk), pemisahan memoized card, dan startup instan 0ms tanpa freeze saat load banner berukuran besar atau banyak.
+            - **Perbaikan Tampilan Modal Koleksi Gift**: Menghilangkan bug dialog menciut di Android native sehingga popup modal kini tampil penuh, proporsional, dan menampilkan 8 katalog gift, saldo, serta status Charisma secara utuh.
+            - **Penyempurnaan Posisi Ikon Gift Showcase**: Menggeser posisi chibi hadiah di samping avatar utama agar memiliki jarak bernapas yang pas (~12-14px) dan tidak menempel atau tertutup pita/ornamen border.
+            - **Optimasi Performa Gacha**: Eliminasi bottleneck JS-thread, integrasi native Glide downsampling caching memory-disk, dan startup instan 0ms.
             - **Optimasi Tas & Inventori (Inventory)**: Pembersihan modal zombie yang tidak digunakan, penambahan skeleton loading responsif, memoized menu card, dan initial balance render instan dari cache profil lokal.
-            - **Penyempurnaan Tampilan Showcase Profil & Afinitas**: Penyesuaian presisi posisi chibi hadiah (gift showcase) dan grafik gelombang afinitas agar menempel pas di sisi avatar utama di seluruh tipe layar ponsel tanpa terpotong.
             - **Eliminasi Flash Data Dummy Profil**: Profil asli langsung dimuat dari cache lokal tanpa kedip atau jeda data default/dummy saat pertama kali dibuka.
-            - **Optimasi CPU & Efisiensi Memori**: Pengurangan konsumsi CPU, pencegahan double subscription channel realtime Supabase, dan perataan render flatlist.
 
             Download file APK di bawah ini dan pasang di perangkat Android Anda.
           files: ./artifacts/*.apk
