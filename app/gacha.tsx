@@ -857,7 +857,9 @@ export default function GachaScreen() {
               </Text>
               <Pressable
                 accessibilityRole="button"
-                onPress={() => loadData()}
+                onPress={() => {
+                  void loadData();
+                }}
                 style={({ pressed }) => [styles.reloadCatalogBtn, pressed && { opacity: 0.8 }]}
               >
                 <AppIcon name="refresh" size={15} color="#38BDF8" />
@@ -919,12 +921,12 @@ export default function GachaScreen() {
                       />
                     ))}
                   </View>
-              </View>
-            );
-          })
-        )}
+                </View>
+              );
+            })
+          )}
 
-        <View style={{ height: 100 }} />
+          <View style={{ height: 100 }} />
         </ScrollView>
 
         {/* ─── 9. FLOATING BOTTOM CONTROLS (SESUAI SCREENSHOT) ─── */}
@@ -1082,47 +1084,47 @@ export default function GachaScreen() {
                   contentContainerStyle={styles.multiResultGrid}
                   showsVerticalScrollIndicator={false}
                 >
-                {gachaResults.map((item, idx) => {
-                  const cfg = RARITY_CONFIG[item.rarity];
-                  return (
-                    <Pressable
-                      key={`${item.id}_${idx}`}
-                      onPress={() => {
-                        setShowResultModal(false);
-                        setPreviewItem(item);
-                      }}
-                      style={[
-                        styles.multiResultCard,
-                        { borderColor: cfg.borderColor, width: Math.floor((Math.min(windowWidth, 540) - 48 - 10) / 2) },
-                      ]}
-                    >
-                      <GachaOptimizedImage
-                        uri={item.image}
-                        style={styles.multiResultThumb}
-                        contentFit="cover"
-                        priority="normal"
-                      />
-                      <LinearGradient
-                        colors={["rgba(0,0,0,0.8)", "transparent"]}
-                        style={StyleSheet.absoluteFillObject}
-                      />
-                      <View style={[styles.multiRarityPill, { backgroundColor: cfg.color }]}>
-                        <Text style={styles.multiRarityPillText}>{item.rarity}</Text>
-                      </View>
-                      {item.isDuplicate && (
-                        <View style={styles.multiCardDupePill}>
-                          <Text style={styles.multiCardDupeText}>+500 💎</Text>
+                  {gachaResults.map((item, idx) => {
+                    const cfg = RARITY_CONFIG[item.rarity];
+                    return (
+                      <Pressable
+                        key={`${item.id}_${idx}`}
+                        onPress={() => {
+                          setShowResultModal(false);
+                          setPreviewItem(item);
+                        }}
+                        style={[
+                          styles.multiResultCard,
+                          { borderColor: cfg.borderColor, width: Math.floor((Math.min(windowWidth, 540) - 48 - 10) / 2) },
+                        ]}
+                      >
+                        <GachaOptimizedImage
+                          uri={item.image}
+                          style={styles.multiResultThumb}
+                          contentFit="cover"
+                          priority="normal"
+                        />
+                        <LinearGradient
+                          colors={["rgba(0,0,0,0.8)", "transparent"]}
+                          style={StyleSheet.absoluteFillObject}
+                        />
+                        <View style={[styles.multiRarityPill, { backgroundColor: cfg.color }]}>
+                          <Text style={styles.multiRarityPillText}>{item.rarity}</Text>
                         </View>
-                      )}
-                      <Text style={styles.multiResultName} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </>
-          )}
+                        {item.isDuplicate && (
+                          <View style={styles.multiCardDupePill}>
+                            <Text style={styles.multiCardDupeText}>+500 💎</Text>
+                          </View>
+                        )}
+                        <Text style={styles.multiResultName} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
 
             {/* ─── TOMBOL SIMPAN 10X (DESAIN PREMIUM OBSIDIAN-GLASS & EMERALD) ─── */}
             {lastSummonType === 10 && (
@@ -1798,9 +1800,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(10, 15, 26, 0.72)",
     ...(Platform.OS === "web"
       ? ({
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-        } as any)
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+      } as any)
       : {}),
     alignItems: "center",
     justifyContent: "center",

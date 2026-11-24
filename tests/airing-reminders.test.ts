@@ -68,7 +68,7 @@ describe("airing reminders", () => {
     ).toEqual({ animeId: 16498, title: "Attack on Titan", episode: 12, airingAt: 1_800_000_100 });
     expect(candidateFromAnime({ id: 9, title: { romaji: "Romaji Only" }, nextAiringEpisode: { episode: 2, airingAt: 100 } })?.title).toBe("Romaji Only");
     expect(candidateFromAnime({ id: 9, title: { native: "日本語" }, nextAiringEpisode: { episode: 2, airingAt: 100 } })?.title).toBe("日本語");
-    expect(candidateFromAnime({ id: 9, title: {}, nextAiringEpisode: { episode: 2, airingAt: 100 } })?.title).toBe("Your saved anime");
+    expect(candidateFromAnime({ id: 9, title: {}, nextAiringEpisode: { episode: 2, airingAt: 100 } })?.title).toBe("Anime");
     // No upcoming airing (finished / on break) or broken metadata → no reminder.
     expect(candidateFromAnime({ id: 9, title: {}, nextAiringEpisode: null })).toBeNull();
     expect(candidateFromAnime({ id: 9, title: {}, nextAiringEpisode: { episode: 0, airingAt: 100 } })).toBeNull();

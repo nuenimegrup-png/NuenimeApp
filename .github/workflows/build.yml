@@ -9,7 +9,7 @@ on:
       tag:
         description: "Release tag to build (must match the version in app.config.ts)"
         required: false
-        default: "v1.0.1"
+        default: "v1.0.2"
 
 env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
@@ -192,12 +192,11 @@ jobs:
           body: |
             ## Nuenime ${{ env.RELEASE_TAG }}
 
-            - **Fitur Baru Floating Mini Video Player**: Video dan audio tetap berputar lancar saat bernavigasi ke halaman lain. Dioptimalkan dengan *Zero Render Loop* (`useRef`), bebas lag, hemat CPU & baterai, serta *instant resume* tanpa jeda loading.
-            - **Perombakan Sistem Chat Global**: Tampilan dibatasi maksimal 30 pesan terbaru, otomatis langsung berada di pesan terbawah saat layar dibuka tanpa animasi scroll, smart auto-scroll natural, serta sorotan quote replay bersih 1 lapis border cyan.
-            - **Papan Menu Cepat Profil Simetris**: Penataan presisi 2 baris menu (Tas & Inventory, Nobar Anime, Lelang Anime, dan Fitur Penjelajah Dunia Nuenime RPG).
-            - **Perbaikan Safe WakeLock**: Siklus hidup Wake Lock terlindungi dengan Page Visibility API di Web untuk mencegah `NotAllowedError` saat tab di background.
-            - **Stabilitas Realtime Supabase**: Channel pooling, pencegahan subscription ganda, deduplikasi pesan ketat, dan auto-reconnect yang aman.
-            - **Optimasi Kompatibilitas Platform**: Penyesuaian `useNativeDriver`, pembersihan `shadow*` deprecation di web, dan pemisahan tombol bersarang (*nested button*) pada mini player.
+            - **Optimasi Performa Gacha**: Penghapusan bottleneck JS thread (mengganti native Glide downsampling caching memory-disk), pemisahan memoized card, dan startup instan 0ms tanpa freeze saat load banner berukuran besar atau banyak.
+            - **Optimasi Tas & Inventori (Inventory)**: Pembersihan modal zombie yang tidak digunakan, penambahan skeleton loading responsif, memoized menu card, dan initial balance render instan dari cache profil lokal.
+            - **Penyempurnaan Tampilan Showcase Profil & Afinitas**: Penyesuaian presisi posisi chibi hadiah (gift showcase) dan grafik gelombang afinitas agar menempel pas di sisi avatar utama di seluruh tipe layar ponsel tanpa terpotong.
+            - **Eliminasi Flash Data Dummy Profil**: Profil asli langsung dimuat dari cache lokal tanpa kedip atau jeda data default/dummy saat pertama kali dibuka.
+            - **Optimasi CPU & Efisiensi Memori**: Pengurangan konsumsi CPU, pencegahan double subscription channel realtime Supabase, dan perataan render flatlist.
 
             Download file APK di bawah ini dan pasang di perangkat Android Anda.
           files: ./artifacts/*.apk
