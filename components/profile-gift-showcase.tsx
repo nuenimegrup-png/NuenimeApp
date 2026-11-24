@@ -104,8 +104,8 @@ export const ProfileGiftShowcase = React.memo(function ProfileGiftShowcase({
 
 const styles = StyleSheet.create({
   container: {
-    width: 56,
-    height: 56,
+    width: 48,
+    height: 48,
     alignItems: "center",
     justifyContent: "center",
   },
