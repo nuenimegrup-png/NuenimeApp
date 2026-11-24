@@ -19,6 +19,7 @@ import { hapticLight, hapticSuccess, hapticWarning } from "@/lib/haptics";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { showToast } from "@/lib/toast";
 import { getCrystalBalance } from "@/lib/topup-service";
+import { isSpecialRole } from "@/lib/admin-service";
 import {
   PROFILE_GIFTS_CATALOG,
   ProfileGiftItem,
@@ -58,6 +59,7 @@ export function ProfileGiftModal({
   const auth = useAnirakuAuth();
   const currentUserId = auth.user?.id;
   const isOwnProfile = Boolean(currentUserId && currentUserId === targetUserId);
+  const isSpecialUser = Boolean(auth.user?.role && isSpecialRole(auth.user.role));
 
   const [activeTab, setActiveTab] = useState<ModalTab>("send");
   const [selectedGift, setSelectedGift] = useState<ProfileGiftItem | null>(null);
@@ -165,9 +167,12 @@ export function ProfileGiftModal({
       return;
     }
 
-    if (isOwnProfile) {
+    if (isOwnProfile && !isSpecialUser) {
       hapticWarning();
-      Alert.alert("Perhatian", "Kamu tidak dapat mengirim gift ke profil sendiri.");
+      Alert.alert(
+        "Profil Sendiri",
+        "Kamu tidak dapat mengirim gift ke profil sendiri. Kunjungi profil pengguna lain untuk mengirimkan gift."
+      );
       return;
     }
 
@@ -212,13 +217,12 @@ export function ProfileGiftModal({
   if (!visible) return null;
 
   return (
-    <>
-      <Modal
-        visible={visible}
-        transparent
-        animationType="fade"
-        onRequestClose={onClose}
-      >
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
       <View style={styles.modalOverlay}>
         <View
           style={[
@@ -431,11 +435,11 @@ export function ProfileGiftModal({
                       </Pressable>
 
                       <Pressable
-                        disabled={isSending || isOwnProfile}
+                        disabled={isSending || (isOwnProfile && !isSpecialUser)}
                         onPress={handleSendGift}
                         style={({ pressed }) => [
                           styles.sendBtn,
-                          (isSending || isOwnProfile) && { opacity: 0.5 },
+                          (isSending || (isOwnProfile && !isSpecialUser)) && { opacity: 0.5 },
                           pressed && styles.btnPressed,
                         ]}
                       >
@@ -443,7 +447,11 @@ export function ProfileGiftModal({
                           <ActivityIndicator size="small" color="#0B0E14" />
                         ) : (
                           <Text style={styles.sendBtnText}>
-                            {isOwnProfile ? "Profil Sendiri" : "Send"}
+                            {isOwnProfile
+                              ? isSpecialUser
+                                ? "Kirim (Test Admin)"
+                                : "Profil Sendiri"
+                              : "Send"}
                           </Text>
                         )}
                       </Pressable>
@@ -464,13 +472,8 @@ export function ProfileGiftModal({
 
                       const handleCardPress = () => {
                         if (isOwnProfile) {
-                          if (!isOwned) {
-                            hapticWarning();
-                            showToast(`Kamu belum pernah menerima gift ${gift.name}.`);
-                          } else {
-                            hapticLight();
-                            setEquipModalGift(gift);
-                          }
+                          hapticLight();
+                          setEquipModalGift(gift);
                         } else {
                           handleSelectGift(gift);
                         }
@@ -699,97 +702,106 @@ export function ProfileGiftModal({
             </View>
           )}
         </View>
-      </View>
-    </Modal>
 
-    {/* ─── POPUP TAMPILKAN DI PROFIL (Game Style Dialog) ─── */}
-    <Modal
-      visible={Boolean(equipModalGift)}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setEquipModalGift(null)}
-    >
-      <View style={styles.subModalOverlay}>
-        <View style={styles.equipDialogContainer}>
-          <View style={styles.equipDialogHeader}>
-            <Text style={styles.equipDialogTitle}>Tampilkan di Profil</Text>
-            <Pressable
-              onPress={() => setEquipModalGift(null)}
-              style={styles.closeBtn}
-              hitSlop={8}
-            >
-              <AppIcon name="close" size={16} color="#94A3B8" />
-            </Pressable>
-          </View>
-
-          {equipModalGift && (
-            <View style={styles.equipDialogBody}>
-              <View style={styles.equipGiftImgBox}>
-                <Image
-                  source={{ uri: equipModalGift.imageUrl }}
-                  style={styles.equipGiftImg}
-                  contentFit="contain"
-                />
-              </View>
-
-              <Text style={styles.equipGiftName}>{equipModalGift.name}</Text>
-              <Text style={styles.equipGiftDesc}>{equipModalGift.description}</Text>
-
-              <View style={styles.equipStatsRow}>
-                <View style={styles.equipStatPill}>
-                  <Text style={styles.equipStatLabel}>Dimiliki:</Text>
-                  <Text style={styles.equipStatVal}>
-                    x{giftCounts[equipModalGift.id] || 0}
-                  </Text>
-                </View>
-                <View style={styles.equipStatPill}>
-                  <Text style={styles.equipStatLabel}>Charisma:</Text>
-                  <Text style={styles.equipStatValCharisma}>
-                    +{equipModalGift.charisma.toLocaleString("id-ID")}
-                  </Text>
-                </View>
-              </View>
-
-              <Text style={styles.equipNoticeText}>
-                {equippedGiftId === equipModalGift.id
-                  ? "Gift ini sedang aktif ditampilkan di samping foto profil kamu."
-                  : "Pasang gift ini sebagai ikon yang tampil di samping foto profil kamu."}
-              </Text>
-
-              <View style={styles.equipActionsRow}>
+        {/* ─── POPUP TAMPILKAN DI PROFIL (In-Modal Sub-Overlay, bebas bug native Dialog Android) ─── */}
+        {equipModalGift && (
+          <View style={[StyleSheet.absoluteFillObject, styles.subModalOverlay]}>
+            <View style={styles.equipDialogContainer}>
+              <View style={styles.equipDialogHeader}>
+                <Text style={styles.equipDialogTitle}>
+                  {giftCounts[equipModalGift.id] ? "Tampilkan di Profil" : "Detail Koleksi Gift"}
+                </Text>
                 <Pressable
                   onPress={() => setEquipModalGift(null)}
-                  style={styles.equipCancelBtn}
+                  style={styles.closeBtn}
+                  hitSlop={8}
                 >
-                  <Text style={styles.equipCancelBtnText}>Batal</Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => handleEquipGift(equipModalGift)}
-                  style={[
-                    styles.equipConfirmBtn,
-                    equippedGiftId === equipModalGift.id && styles.equipRemoveBtn,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.equipConfirmBtnText,
-                      equippedGiftId === equipModalGift.id && { color: "#FFFFFF" },
-                    ]}
-                  >
-                    {equippedGiftId === equipModalGift.id
-                      ? "Lepas dari Profil"
-                      : "Tampilkan di Profil"}
-                  </Text>
+                  <AppIcon name="close" size={16} color="#94A3B8" />
                 </Pressable>
               </View>
+
+              <View style={styles.equipDialogBody}>
+                <View style={styles.equipGiftImgBox}>
+                  <Image
+                    source={{ uri: equipModalGift.imageUrl }}
+                    style={styles.equipGiftImg}
+                    contentFit="contain"
+                  />
+                </View>
+
+                <Text style={styles.equipGiftName}>{equipModalGift.name}</Text>
+                <Text style={styles.equipGiftDesc}>{equipModalGift.description}</Text>
+
+                <View style={styles.equipStatsRow}>
+                  <View style={styles.equipStatPill}>
+                    <Text style={styles.equipStatLabel}>Dimiliki:</Text>
+                    <Text style={styles.equipStatVal}>
+                      x{giftCounts[equipModalGift.id] || 0}
+                    </Text>
+                  </View>
+                  <View style={styles.equipStatPill}>
+                    <Text style={styles.equipStatLabel}>Charisma:</Text>
+                    <Text style={styles.equipStatValCharisma}>
+                      +{equipModalGift.charisma.toLocaleString("id-ID")}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.equipNoticeText}>
+                  {giftCounts[equipModalGift.id]
+                    ? equippedGiftId === equipModalGift.id
+                      ? "Gift ini sedang aktif ditampilkan di samping foto profil kamu."
+                      : "Pasang gift ini sebagai ikon yang tampil di samping foto profil kamu."
+                    : "Kamu belum pernah menerima gift ini. Dapatkan gift ini dari teman atau penggemar untuk memasangnya di profil kamu!"}
+                </Text>
+
+                <View style={styles.equipActionsRow}>
+                  <Pressable
+                    onPress={() => setEquipModalGift(null)}
+                    style={styles.equipCancelBtn}
+                  >
+                    <Text style={styles.equipCancelBtnText}>Tutup</Text>
+                  </Pressable>
+
+                  {Boolean(giftCounts[equipModalGift.id]) ? (
+                    <Pressable
+                      onPress={() => handleEquipGift(equipModalGift)}
+                      style={[
+                        styles.equipConfirmBtn,
+                        equippedGiftId === equipModalGift.id && styles.equipRemoveBtn,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.equipConfirmBtnText,
+                          equippedGiftId === equipModalGift.id && { color: "#FFFFFF" },
+                        ]}
+                      >
+                        {equippedGiftId === equipModalGift.id
+                          ? "Lepas dari Profil"
+                          : "Tampilkan di Profil"}
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <View
+                      style={[
+                        styles.equipConfirmBtn,
+                        { opacity: 0.5, backgroundColor: "#1E293B" },
+                      ]}
+                    >
+                      <Text style={[styles.equipConfirmBtnText, { color: "#94A3B8" }]}>
+                        Belum Dimiliki
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
             </View>
-          )}
-        </View>
+          </View>
+        )}
       </View>
     </Modal>
-  </>
-);
+  );
 }
 
 const styles = StyleSheet.create({

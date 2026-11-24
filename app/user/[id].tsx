@@ -882,6 +882,20 @@ export default function PublicUserProfileScreen() {
                 </Pressable>
               )}
 
+              {/* Tombol Beri Gift Profil */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Kirim Gift Profil"
+                onPress={() => {
+                  hapticLight();
+                  setShowGiftModal(true);
+                }}
+                style={({ pressed }) => [styles.giftCircleBtn, pressed && styles.btnPressed]}
+              >
+                <AppIcon name="gift-outline" size={18} color="#FBBF24" />
+                <Text style={styles.giftCircleBtnText}>Beri Gift</Text>
+              </Pressable>
+
               {/* Tombol Bulat Chat Private (Hanya muncul jika sudah berteman) */}
               {friendStatus === "accepted" && (
                 <Pressable
@@ -1542,10 +1556,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: "50%",
     marginRight: 48,
-    width: 60,
-    top: 24,
-    zIndex: 2,
-    elevation: 2,
+    width: 56,
+    height: 56,
+    top: 20,
+    zIndex: 25,
+    elevation: 25,
   },
   profileAffinityShowcase: {
     position: "absolute",
@@ -1803,6 +1818,32 @@ const styles = StyleSheet.create({
         cursor: "pointer",
       } as any)
       : {}),
+  },
+  giftCircleBtn: {
+    height: 46,
+    paddingHorizontal: 14,
+    borderRadius: 23,
+    backgroundColor: "rgba(245, 158, 11, 0.16)",
+    borderWidth: 1.2,
+    borderColor: "rgba(245, 158, 11, 0.45)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    ...(Platform.OS === "web"
+      ? ({
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        cursor: "pointer",
+      } as any)
+      : {}),
+  },
+  giftCircleBtnText: {
+    fontFamily: "Nunito-Bold",
+    fontSize: 13.5,
+    color: "#FBBF24",
+    letterSpacing: 0.2,
+    includeFontPadding: false,
   },
   rejectBtnSmall: {
     height: 46,

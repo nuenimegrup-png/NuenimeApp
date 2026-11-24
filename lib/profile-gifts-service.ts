@@ -466,7 +466,15 @@ export async function sendProfileGift(params: {
     throw new Error("Profil penerima tidak valid.");
   }
   if (senderId === recipientId) {
-    throw new Error("Tidak dapat mengirim gift ke profil sendiri.");
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", senderId)
+      .maybeSingle();
+    const canSelfTest = prof?.role ? isSpecialRole(prof.role) : false;
+    if (!canSelfTest) {
+      throw new Error("Tidak dapat mengirim gift ke profil sendiri. Kunjungi profil teman untuk mengirimkan gift.");
+    }
   }
 
   const gift = PROFILE_GIFTS_CATALOG.find((g) => g.id === giftId);

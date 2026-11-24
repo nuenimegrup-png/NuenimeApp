@@ -1,9 +1,9 @@
 import React from "react";
 import {
+  Platform,
   Pressable,
   StyleProp,
   StyleSheet,
-  View,
   ViewStyle,
 } from "react-native";
 import { Image } from "expo-image";
@@ -29,7 +29,7 @@ export interface ProfileGiftShowcaseProps {
  * - Jika sudah memiliki/menerima gift: Menampilkan gift yang dipasang (equipped) atau top gift
  * - Tanpa background / lingkaran belakang
  * - Tanpa animasi ngambang-ngambang (posisi diam dan stabil)
- * - Tanpa badge diamond / angka jumlah di bawahnya
+ * - Sentuhan responsif 100% di Android & iOS tanpa nesting View bermasalah
  */
 export const ProfileGiftShowcase = React.memo(function ProfileGiftShowcase({
   userId,
@@ -68,40 +68,41 @@ export const ProfileGiftShowcase = React.memo(function ProfileGiftShowcase({
   }
 
   return (
-    <View style={[styles.rootWrapper, style]} pointerEvents="box-none">
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Kirim atau Lihat Gift Profil untuk ${userName || "Pengguna"}`}
-        onPress={() => {
-          hapticLight();
-          onPress();
-        }}
-        style={({ pressed }) => [styles.container, pressed && styles.containerPressed]}
-        hitSlop={8}
-      >
-        <Image
-          source={{ uri: displayImage }}
-          style={styles.giftImg}
-          contentFit="contain"
-          transition={150}
-        />
-      </Pressable>
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Kirim atau Lihat Gift Profil untuk ${userName || "Pengguna"}`}
+      onPress={() => {
+        hapticLight();
+        onPress();
+      }}
+      style={({ pressed }) => [
+        styles.container,
+        style,
+        pressed && styles.containerPressed,
+        Platform.OS === "web" && ({ cursor: "pointer" } as any),
+      ]}
+      hitSlop={16}
+    >
+      <Image
+        source={{ uri: displayImage }}
+        style={styles.giftImg}
+        contentFit="contain"
+        transition={150}
+      />
+    </Pressable>
   );
 });
 
 const styles = StyleSheet.create({
-  rootWrapper: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
   container: {
+    width: 56,
+    height: 56,
     alignItems: "center",
     justifyContent: "center",
   },
   containerPressed: {
-    opacity: 0.75,
-    transform: [{ scale: 0.94 }],
+    opacity: 0.72,
+    transform: [{ scale: 0.92 }],
   },
   giftImg: {
     width: 48,
