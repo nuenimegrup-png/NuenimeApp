@@ -1,9 +1,11 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
+  ActivityIndicator,
   Platform,
   Pressable,
   StyleProp,
   StyleSheet,
+  View,
   ViewStyle,
 } from "react-native";
 import { Image } from "expo-image";
@@ -41,7 +43,8 @@ export const ProfileGiftShowcase = React.memo(function ProfileGiftShowcase({
   const { data: giftSummary, isLoading } = useQuery({
     queryKey: ["profile-gift-summary", userId],
     queryFn: () => (userId ? getUserGiftSummary(userId) : null),
-    staleTime: 30_000,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
     enabled: Boolean(userId),
   });
 
@@ -49,9 +52,10 @@ export const ProfileGiftShowcase = React.memo(function ProfileGiftShowcase({
   // 1. Gift yang dipilih/dipasang sendiri (equipped) jika pengguna memilikinya
   // 2. Atau gift dengan perolehan terbanyak (top gift) jika ada
   // 3. Jika belum pernah menerima gift sama sekali: tampilkan UNIVERSAL_DEFAULT_GIFT_ICON
-  let displayImage = UNIVERSAL_DEFAULT_GIFT_ICON;
-
-  if (giftSummary && giftSummary.totalGiftsCount > 0) {
+  const displayImage = useMemo(() => {
+    if (!giftSummary || giftSummary.totalGiftsCount === 0) {
+      return UNIVERSAL_DEFAULT_GIFT_ICON;
+    }
     const equippedId = giftSummary.equippedGiftId;
     const equippedCount = equippedId ? (giftSummary.giftCounts?.[equippedId] || 0) : 0;
 
@@ -62,10 +66,8 @@ export const ProfileGiftShowcase = React.memo(function ProfileGiftShowcase({
       targetGift = PROFILE_GIFTS_CATALOG.find((g) => g.id === giftSummary.topGifts[0].giftId);
     }
 
-    if (targetGift?.imageUrl) {
-      displayImage = targetGift.imageUrl;
-    }
-  }
+    return targetGift?.imageUrl || UNIVERSAL_DEFAULT_GIFT_ICON;
+  }, [giftSummary]);
 
   return (
     <Pressable
@@ -83,13 +85,19 @@ export const ProfileGiftShowcase = React.memo(function ProfileGiftShowcase({
       ]}
       hitSlop={16}
     >
-      <Image
-        source={{ uri: displayImage }}
-        style={[styles.giftImg, isLoading && styles.giftImgLoading]}
-        contentFit="contain"
-        cachePolicy="memory-disk"
-        transition={150}
-      />
+      {isLoading && !giftSummary ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="small" color="#38BDF8" />
+        </View>
+      ) : (
+        <Image
+          source={{ uri: displayImage }}
+          style={styles.giftImg}
+          contentFit="contain"
+          cachePolicy="memory-disk"
+          transition={150}
+        />
+      )}
     </Pressable>
   );
 });
@@ -105,11 +113,14 @@ const styles = StyleSheet.create({
     opacity: 0.72,
     transform: [{ scale: 0.92 }],
   },
+  loadingWrap: {
+    width: 48,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   giftImg: {
     width: 48,
     height: 48,
-  },
-  giftImgLoading: {
-    opacity: 0.6,
   },
 });

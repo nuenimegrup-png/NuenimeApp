@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     paddingHorizontal: 0,
     width: "100%",
-    maxWidth: 130,
+    maxWidth: 140,
   },
   containerEmpty: {
     gap: 4,
@@ -278,14 +278,14 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.96 }],
   },
   waveSvgLeft: {
-    flex: 1.35,
+    flex: 1.25,
     height: 22,
-    minWidth: 32,
+    minWidth: 34,
   },
   waveSvgRight: {
     flex: 1,
     height: 22,
-    minWidth: 24,
+    minWidth: 26,
   },
   iconWrapper: {
     width: 24,

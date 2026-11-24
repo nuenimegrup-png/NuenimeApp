@@ -2753,7 +2753,7 @@ const styles = StyleSheet.create({
   profileGiftShowcase: {
     position: "absolute",
     right: "50%",
-    marginRight: 108,
+    marginRight: 124,
     width: 56,
     height: 56,
     top: 15,
@@ -2763,8 +2763,8 @@ const styles = StyleSheet.create({
   profileAffinityShowcase: {
     position: "absolute",
     left: "50%",
-    marginLeft: 66,
-    width: 130,
+    marginLeft: 78,
+    width: 140,
     top: 22,
     zIndex: 12,
     elevation: 12,
