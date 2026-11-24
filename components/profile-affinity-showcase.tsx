@@ -281,7 +281,8 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     paddingVertical: 0,
     paddingHorizontal: 0,
-    maxWidth: 126,
+    width: "100%",
+    maxWidth: 136,
   },
   containerEmpty: {
     gap: 4,
@@ -293,12 +294,14 @@ const styles = StyleSheet.create({
   waveSvg: {
     flex: 1,
     height: 24,
+    minWidth: 18,
   },
   iconWrapper: {
     width: 28,
     height: 28,
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 5,
   },
   tierIconImg: {
     width: 26,

@@ -2760,11 +2760,11 @@ const styles = StyleSheet.create({
   profileAffinityShowcase: {
     position: "absolute",
     left: "50%",
-    marginLeft: 22,
-    width: 122,
-    top: 24,
-    zIndex: 1,
-    elevation: 1,
+    marginLeft: 48,
+    width: 130,
+    top: 22,
+    zIndex: 12,
+    elevation: 12,
   },
   bannerImage: {
     width: "100%",
