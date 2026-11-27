@@ -4,7 +4,6 @@
 
 import { supabase } from "@/lib/supabase";
 import { isSpecialRole } from "@/lib/admin-service";
-import { batchPreloadClanProfiles } from "@/lib/global-chat-service";
 
 export type LeaderboardPeriod = "daily" | "weekly" | "monthly" | "alltime";
 
@@ -83,9 +82,6 @@ export async function getLeaderboard(
       .filter((p: any) => !isSpecialRole(p?.role))
       .slice(0, limit);
 
-    // Preload profil klan secara asynchronous agar instan saat ditampilkan di plakat
-    batchPreloadClanProfiles(eligibleMembers.map((p: any) => p.id)).catch(() => {});
-
     return eligibleMembers.map((p: any, i) => ({
       rank: i + 1,
       userId: p.id,
@@ -154,9 +150,6 @@ export async function getLeaderboard(
       return !isSpecialRole(p?.role);
     })
     .slice(0, limit);
-
-  // Preload profil klan secara asynchronous
-  batchPreloadClanProfiles(eligibleUserIds).catch(() => {});
 
   return eligibleUserIds.map((uid, i) => {
     const p: any = profileMap.get(uid);

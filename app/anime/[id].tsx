@@ -614,6 +614,55 @@ export default function AnimeDetailScreen() {
     [auth.user, ratings.setRating]
   );
 
+  const openEpisode = useCallback(
+    (episodeNumber: number) => {
+      const currentAnime = anime.data;
+      if (!currentAnime) return;
+      const currentTitle = animeTitle(currentAnime);
+      const isFuture = isConfirmedFutureRelease({
+        episodeNumber,
+        episodes: canonicalEpisodeRows,
+        status: currentAnime.status,
+        nextAiringEpisode: currentAnime.nextAiringEpisode,
+        hasConfirmedEpisodeList: episodes.isSuccess && canonicalEpisodeRows.length > 0,
+      });
+
+      if (isFuture) {
+        hapticLight();
+        let msg = `Episode ${episodeNumber} belum resmi ditayangkan.`;
+        if (
+          currentAnime.nextAiringEpisode?.episode === episodeNumber &&
+          currentAnime.nextAiringEpisode?.airingAt
+        ) {
+          const dateStr = new Date(currentAnime.nextAiringEpisode.airingAt * 1000).toLocaleDateString("id-ID", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          msg = `Episode ${episodeNumber} dijadwalkan tayang pada ${dateStr} WIB. Silakan nantikan penayangannya ya!`;
+        } else {
+          msg = `Episode ${episodeNumber} belum resmi ditayangkan. Nantikan tanggal rilis resminya ya!`;
+        }
+        Alert.alert("Episode Belum Tayang", msg, [{ text: "Mengerti" }]);
+        return;
+      }
+
+      hapticLight();
+      router.push({
+        pathname: "/watch/[id]",
+        params: {
+          id: String(id),
+          episode: String(episodeNumber),
+          title: currentTitle,
+          image: currentAnime.coverImage?.extraLarge || currentAnime.coverImage?.large || "",
+        },
+      } as never);
+    },
+    [anime.data, canonicalEpisodeRows, episodes.isSuccess, id]
+  );
+
   if (invalidId) {
     return (
       <SafeAreaView style={styles.container}>
@@ -674,50 +723,6 @@ export default function AnimeDetailScreen() {
   const studioDisplay = getStudioDisplay(data?.studios);
   const producersDisplay = getProducersDisplay(data?.studios, studioDisplay);
   const releasedDisplay = getReleasedDisplay(data?.startDate, data?.endDate);
-
-  const openEpisode = useCallback(
-    (episodeNumber: number) => {
-      if (!data) return;
-      const isFuture = isConfirmedFutureRelease({
-        episodeNumber,
-        episodes: canonicalEpisodeRows,
-        status: data.status,
-        nextAiringEpisode: data.nextAiringEpisode,
-        hasConfirmedEpisodeList: episodes.isSuccess && canonicalEpisodeRows.length > 0,
-      });
-
-      if (isFuture) {
-        hapticLight();
-        let msg = `Episode ${episodeNumber} belum resmi ditayangkan.`;
-        if (data.nextAiringEpisode?.episode === episodeNumber && data.nextAiringEpisode?.airingAt) {
-          const dateStr = new Date(data.nextAiringEpisode.airingAt * 1000).toLocaleDateString("id-ID", {
-            day: "numeric",
-            month: "long",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          });
-          msg = `Episode ${episodeNumber} dijadwalkan tayang pada ${dateStr} WIB. Silakan nantikan penayangannya ya!`;
-        } else {
-          msg = `Episode ${episodeNumber} belum resmi ditayangkan. Nantikan tanggal rilis resminya ya!`;
-        }
-        Alert.alert("Episode Belum Tayang", msg, [{ text: "Mengerti" }]);
-        return;
-      }
-
-      hapticLight();
-      router.push({
-        pathname: "/watch/[id]",
-        params: {
-          id: String(id),
-          episode: String(episodeNumber),
-          title,
-          image: data.coverImage?.extraLarge || data.coverImage?.large || "",
-        },
-      } as never);
-    },
-    [canonicalEpisodeRows, data, episodes.isSuccess, id, title]
-  );
 
   const lastAvailableEpisode =
     episodeRows.at(-1)?.number ?? Math.max(data.episodes ?? 1, 1);

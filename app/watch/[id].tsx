@@ -1,9 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import { useLocalSearchParams, router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery } from "@tanstack/react-query";
 import { parseRouteEpisode, parseRouteId } from "@/lib/route-params";
-import { ActivityIndicator, Alert, Animated, BackHandler, Dimensions, FlatList, LayoutChangeEvent, Linking, Modal, PanResponder, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, BackHandler, Dimensions, FlatList, LayoutChangeEvent, Linking, PanResponder, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { Image } from "expo-image";
 import { UniversalVideo as Video } from "@/components/universal-video";
 import type { OnProgressData, OnLoadData, OnBufferData, VideoRef } from "react-native-video";
@@ -110,7 +112,7 @@ const TAP_ACTION_COOLDOWN_MS = 150; // min gap between any action (seek/toggle) 
 const EDGE_ZONE = 0.35; // x < 35% = brightness · x > 65% = volume · middle = 2x zone
 const SEEK_ZONE = 0.4; // x < 40% = rewind · x > 60% = forward · middle = play/pause
 const STREAM_CACHE_TTL_MS = 30_000;
-const STARTUP_WATCHDOG_MS = 3_000;
+const STARTUP_WATCHDOG_MS = 8_000;
 const SKIP_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const ANISKIP_TIMEOUT_MS = 8_000;
 const UP_NEXT_AUTOPLAY_SECONDS = 5;
@@ -269,8 +271,8 @@ export default function WatchScreen() {
             void requestWakeLock();
           } else {
             try {
-              sentinel?.release?.().catch?.(() => {});
-            } catch {}
+              sentinel?.release?.().catch?.(() => { });
+            } catch { }
           }
         };
 
@@ -281,22 +283,23 @@ export default function WatchScreen() {
           active = false;
           document.removeEventListener("visibilitychange", handleVisibilityChange);
           try {
-            sentinel?.release?.().catch?.(() => {});
-          } catch {}
+            sentinel?.release?.().catch?.(() => { });
+          } catch { }
         };
       }
     } else {
-      activateKeepAwakeAsync("aniraku-watch").catch(() => {});
+      activateKeepAwakeAsync("aniraku-watch").catch(() => { });
       return () => {
         try {
-          void deactivateKeepAwake("aniraku-watch").catch(() => {});
-        } catch {}
+          void deactivateKeepAwake("aniraku-watch").catch(() => { });
+        } catch { }
       };
     }
   }, []);
 
   // ── Player state (react-native-video) ──
   const videoRef = useRef<VideoRef>(null);
+  const lastUiProgressAtRef = useRef(0);
   const [playerStatus, setPlayerStatus] = useState<"idle" | "loading" | "playing" | "paused" | "error">(() => (isReturningFromMini ? "playing" : "idle"));
   const [currentTime, setCurrentTime] = useState(() => (isReturningFromMini ? playerData!.currentTime : 0));
   const [duration, setDuration] = useState(() => (isReturningFromMini ? playerData!.duration : 0));
@@ -353,6 +356,19 @@ export default function WatchScreen() {
   const [adaptiveBitrateCap, setAdaptiveBitrateCap] = useState<number | null>(null);
   const [subtitlePrefs, setSubtitlePrefs] = useState<SubtitlePreferences | null>(null);
   const [activeSubtitles, setActiveSubtitles] = useState<SubtitleCue[]>([]);
+  const [renderComments, setRenderComments] = useState(false);
+
+  // Defer mounting comments slightly so initial video manifest & buffering take priority
+  useEffect(() => {
+    setRenderComments(false);
+    const t = setTimeout(() => setRenderComments(true), 450);
+    return () => clearTimeout(t);
+  }, [animeId, episode]);
+
+  const showControlsRef = useRef(showControls);
+  showControlsRef.current = showControls;
+  const subtitleEnabledRef = useRef(Boolean(subtitlePrefs?.enabled));
+  subtitleEnabledRef.current = Boolean(subtitlePrefs?.enabled);
   const [playerLocked, setPlayerLocked] = useState(false);
   const [lastPlayerError, setLastPlayerError] = useState<string | null>(null);
   const [userLiked, setUserLiked] = useState<boolean | null>(null);
@@ -367,7 +383,7 @@ export default function WatchScreen() {
     void Share.share({
       title: title,
       message: `Nonton ${title} Episode ${episode} di Nuenime!`,
-    }).catch(() => {});
+    }).catch(() => { });
   }, [title, episode]);
 
   const toggleLike = useCallback(() => {
@@ -431,7 +447,7 @@ export default function WatchScreen() {
   // activity on first frame, which looked like "tap opens fullscreen with no UI"
   // (controls start hidden, so the rotated video showed nothing).
   // Fullscreen is entered explicitly via enterFullscreen() only.
-  useEffect(() => () => { if (Platform.OS !== "web") void ScreenOrientation.unlockAsync().catch(() => {}); }, []);
+  useEffect(() => () => { if (Platform.OS !== "web") void ScreenOrientation.unlockAsync().catch(() => { }); }, []);
 
   // Fullscreen entry forces landscape even with system auto-rotate OFF (a
   // sensor lock alone keeps portrait when the user holds the phone upright,
@@ -441,20 +457,23 @@ export default function WatchScreen() {
     if (Platform.OS === "web") return;
     if (Platform.OS === "android") {
       void ScreenOrientation.lockPlatformAsync({ screenOrientationConstantAndroid: 0 }).catch(() => {
-        void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+        void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => { });
       });
       return;
     }
-    void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+    void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => { });
   }, []);
 
   const streamCache = useRef(new Map<string, CachedStream>());
+  const inFlightStreamKeyRef = useRef<string | null>(null);
+  const completedStreamKeyRef = useRef<string | null>(null);
   const blockedProviders = useRef(new Set<string>());
   const refreshAttempted = useRef(new Set<string>());
   const forceRefresh = useRef(false);
   const sourceStarted = useRef(false);
   const sourceFirstFrame = useRef(false);
   const sourceMounted = useRef(false);
+  const watchdogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sourceAttempt = useRef(0);
   const sourceFailureHandled = useRef<string | null>(null);
   const lastHistorySync = useRef(0);
@@ -523,7 +542,7 @@ export default function WatchScreen() {
         }
       }
       setLocalHistoryMap(map);
-    }).catch(() => {});
+    }).catch(() => { });
     return () => { active = false; };
   }, [animeId, episode]);
 
@@ -585,12 +604,12 @@ export default function WatchScreen() {
   const selectableProviders = useMemo(() => activeProviders
     .map((provider, index) => ({ provider, index }))
     .filter(({ provider }) => (provider.sources?.length ?? 0) > 0 || (provider.downloads?.length ?? 0) > 0),
-  [activeProviders]);
+    [activeProviders]);
   const currentRating = ratings.scoreFor(episode) ?? 0;
   const skipKind = activeSkipKind(skipSegments, currentTime);
 
   // ── Subtitle loading ──
-  useEffect(() => { loadSubtitlePreferences().then(setSubtitlePrefs).catch(() => {}); }, []);
+  useEffect(() => { loadSubtitlePreferences().then(setSubtitlePrefs).catch(() => { }); }, []);
 
   const parsedCuesRef = useRef<SubtitleCue[]>([]);
   const currentTimeRef = useRef(0);
@@ -623,7 +642,7 @@ export default function WatchScreen() {
         ...patch,
       };
       const next: SubtitlePreferences = { ...merged, timeOffset: clampSubtitleOffset(merged.timeOffset) };
-      void saveSubtitlePreferences(next).catch(() => {});
+      void saveSubtitlePreferences(next).catch(() => { });
       return next;
     });
   }, []);
@@ -728,6 +747,8 @@ export default function WatchScreen() {
     sourceFirstFrame.current = false;
     sourceMounted.current = false;
     sourceFailureHandled.current = null;
+    inFlightStreamKeyRef.current = null;
+    completedStreamKeyRef.current = null;
     lastStablePlaybackTime.current = 0;
     rebufferSeen.current = false;
     intentionalSeekUntil.current = 0;
@@ -735,9 +756,24 @@ export default function WatchScreen() {
     setResumePosition(null);
   }, []);
 
-  const handleProviderBlocked = useCallback((reason: RetryReason = "player") => {
+  const handleProviderBlocked = useCallback((
+    reason: RetryReason = "player",
+    diagnostics?: { attempt?: number; errorCode?: string; errorMessage?: string; httpStatus?: number; hlsDetails?: string },
+  ) => {
     const current = activeProviders[serverIndex];
     if (!current) return;
+    if (diagnostics?.attempt !== undefined && diagnostics.attempt !== sourceAttempt.current) {
+      return;
+    }
+    if ((reason === "player" || reason === "startup") && sourceFailureHandled.current === String(sourceAttempt.current)) {
+      return;
+    }
+    sourceFailureHandled.current = String(sourceAttempt.current);
+    if (__DEV__) {
+      console.log(
+        `[PlaybackFallback] attempt=${sourceAttempt.current} reason=${reason} animeId=${animeId} ep=${episode} provider=${current.provider} id=${current.id} serverIndex=${serverIndex} code=${diagnostics?.errorCode ?? "-"} http=${diagnostics?.httpStatus ?? "-"} hls=${diagnostics?.hlsDetails ?? "-"} msg="${diagnostics?.errorMessage ?? "-"}" started=${sourceStarted.current} firstFrame=${sourceFirstFrame.current} elapsed=${Date.now() - screenMountTime}ms`,
+      );
+    }
     // Retry honesty: the same provider is re-fetched ONCE with refresh:true;
     // afterwards we move to the next unblocked provider. The same dead URL
     // is never looped without the refresh flag (see shouldRefreshSameProvider).
@@ -748,6 +784,7 @@ export default function WatchScreen() {
       sourceFirstFrame.current = false;
       sourceMounted.current = false;
       sourceFailureHandled.current = null;
+      completedStreamKeyRef.current = null;
       setLoadingStream(true);
       setRefreshNonce((value) => value + 1);
       return;
@@ -760,6 +797,7 @@ export default function WatchScreen() {
       sourceFirstFrame.current = false;
       sourceMounted.current = false;
       sourceFailureHandled.current = null;
+      completedStreamKeyRef.current = null;
       setLoadingStream(true);
       setServerIndex(next);
       return;
@@ -789,7 +827,7 @@ export default function WatchScreen() {
         ? "This title plays via embedded player only. No embed source responded — try again shortly."
         : "We don't have a working stream for this episode right now.",
     );
-  }, [activeProviders, serverIndex, embedSource, stream, isHentai]);
+  }, [activeProviders, animeId, embedSource, episode, isHentai, screenMountTime, serverIndex, stream]);
 
   const handleProviderBlockedRef = useRef(handleProviderBlocked);
   useEffect(() => { handleProviderBlockedRef.current = handleProviderBlocked; }, [handleProviderBlocked]);
@@ -818,23 +856,39 @@ export default function WatchScreen() {
           setRequestedQuality(pb.quality.toLowerCase());
         }
       }
-    }).catch(() => {}).finally(() => { if (active) setPreferencesReady(true); });
+    }).catch(() => { }).finally(() => { if (active) setPreferencesReady(true); });
     return () => { active = false; };
   }, []);
 
   useEffect(() => {
     if (!preferencesReady) return;
-    void AsyncStorage.setItem("aniraku.watch.preferences", JSON.stringify({ speed, autoPlayNext })).catch(() => {});
+    void AsyncStorage.setItem("aniraku.watch.preferences", JSON.stringify({ speed, autoPlayNext })).catch(() => { });
     void savePlaybackSetting("autoPlay", autoPlayNext);
   }, [preferencesReady, speed, autoPlayNext]);
 
-  // ── Server discovery ──
+  // Guard future/invalid episode asynchronously once metadata & episode list settle
+  useEffect(() => {
+    if (futureRelease) {
+      clearEpisodePlayback();
+      setLoadingServers(false);
+      setError(FUTURE_RELEASE_MESSAGE);
+      return;
+    }
+    if (invalidEpisode) {
+      clearEpisodePlayback();
+      setLoadingServers(false);
+      setError(`Episode ${episode} is not available.`);
+    }
+  }, [clearEpisodePlayback, episode, futureRelease, invalidEpisode]);
+
+  // ── Server discovery (starts immediately in parallel with anime/episode metadata) ──
   const isReturningFromMiniRef = useRef(isReturningFromMini);
   useEffect(() => {
     if (isReturningFromMiniRef.current && source) {
       isReturningFromMiniRef.current = false;
       return;
     }
+    if (!Number.isFinite(animeId) || animeId <= 0) return;
     let cancelled = false;
     clearEpisodePlayback();
     setProviders({ sub: [], dub: [] });
@@ -844,38 +898,36 @@ export default function WatchScreen() {
     setServerAttempt(0);
     setLoadingStream(false);
     setError(null);
-    if (episodeQuery.isPending || animeQuery.isPending) return;
-    if (futureRelease) { setLoadingServers(false); setError(FUTURE_RELEASE_MESSAGE); return; }
-    if (invalidEpisode) { setLoadingServers(false); setError(`Episode ${episode} is not available.`); return; }
 
-    // Cold backend scrapes (hentai / heavy titles) often return empty on the
-    // first hits while providers spin up — poll with backoff the way the
-    // website does instead of erroring after one quick retry.
-    // Cold backend scrapes often take time. Optimize initial load by querying
-    // preferred language first and mounting immediately without waiting for secondary lang.
+    const hasNativeInitial = (list: Server[]) => list.some((item) => {
+      const initial = { sources: item.sources ?? [] };
+      return directSources(initial).length > 0 || proxySources(initial).length > 0;
+    });
+    const hasEmbedInitial = (item: Server) => embedSources({ sources: item.sources ?? [] }).length > 0;
+
+    // Cold backend scrapes often take time. Start both sub & dub requests immediately
+    // at 0ms in parallel with reading the user's preferred language from AsyncStorage.
     const SERVER_RETRY_DELAYS_MS = [2000, 5000, 10000];
     const fetchServers = async (attempt: number) => {
       setServerAttempt(attempt + 1);
       const langKey = `aniraku.lang.${animeId}`;
-      const preferred = await AsyncStorage.getItem(langKey).catch(() => null) as Language | null;
+
+      // Fire sub, dub, and language preference concurrently at t=0ms
+      const langPromise = AsyncStorage.getItem(langKey).catch(() => null) as Promise<Language | null>;
+      const subPromise = getServers(animeId, episode, "sub").catch(() => [] as Server[]);
+      const dubPromise = getServers(animeId, episode, "dub").catch(() => [] as Server[]);
+
+      const preferred = await langPromise;
       if (cancelled) return;
 
       const primaryLang: Language = preferred === "dub" ? "dub" : "sub";
       const secondaryLang: Language = primaryLang === "dub" ? "sub" : "dub";
-
-      // Fire both requests concurrently so backend starts scraping immediately
-      const primaryPromise = getServers(animeId, episode, primaryLang).catch(() => [] as Server[]);
-      const secondaryPromise = getServers(animeId, episode, secondaryLang).catch(() => [] as Server[]);
+      const primaryPromise = primaryLang === "dub" ? dubPromise : subPromise;
+      const secondaryPromise = primaryLang === "dub" ? subPromise : dubPromise;
 
       // Await primary language first for instant playback mount
       const primaryServers = await primaryPromise;
       if (cancelled) return;
-
-      const hasNativeInitial = (list: Server[]) => list.some((item) => {
-        const initial = { sources: item.sources ?? [] };
-        return directSources(initial).length > 0 || proxySources(initial).length > 0;
-      });
-      const hasEmbedInitial = (item: Server) => embedSources({ sources: item.sources ?? [] }).length > 0;
 
       if (primaryServers.length > 0) {
         setProviders((prev) => ({ ...prev, [primaryLang]: primaryServers }));
@@ -900,7 +952,9 @@ export default function WatchScreen() {
       if (cancelled) return;
 
       if (secondaryServers.length > 0) {
-        setProviders({ [primaryLang]: [], [secondaryLang]: secondaryServers } as { sub: Server[]; dub: Server[] });
+        const subList = primaryLang === "sub" ? primaryServers : secondaryServers;
+        const dubList = primaryLang === "dub" ? primaryServers : secondaryServers;
+        setProviders({ sub: subList, dub: dubList });
         setLanguage(secondaryLang);
         setLoadingServers(false);
         if (!hasNativeInitial(secondaryServers)) {
@@ -922,25 +976,41 @@ export default function WatchScreen() {
     };
     void fetchServers(0);
     return () => { cancelled = true; };
-  }, [animeId, animeQuery.isPending, canonicalEpisodes.length, clearEpisodePlayback, episode, episodeQuery.isPending, futureRelease, invalidEpisode]);
+  }, [animeId, clearEpisodePlayback, episode]);
+
+  const activeProviderKey = activeProvider?.id ?? null;
+  const activeProviderRef = useRef(activeProvider);
+  activeProviderRef.current = activeProvider;
+  const isHentaiRef = useRef(isHentai);
+  isHentaiRef.current = isHentai;
+  const embedOnlyCatalogRef = useRef(embedOnlyCatalog);
+  embedOnlyCatalogRef.current = embedOnlyCatalog;
 
   // ── Stream loading ──
   useEffect(() => {
-    if (futureRelease || !activeProvider) return;
+    const currentProvider = activeProviderRef.current;
+    if (futureRelease || !currentProvider || !activeProviderKey) return;
     let cancelled = false;
-    const providerId = activeProvider.id;
+    const providerId = currentProvider.id;
     activeProviderId.current = providerId;
-    const initial: StreamResponse = { sources: activeProvider.sources ?? [], headers: activeProvider.headers };
+    const initial: StreamResponse = { sources: currentProvider.sources ?? [], headers: currentProvider.headers };
     const initialDirect = directSources(initial);
     const initialProxies = proxySources(initial);
     const initialEmbeds = embedSources(initial);
     // Capture mount state at effect start to avoid stale reads across async boundary
     const alreadyMounted = sourceMounted.current;
     const forceThisRequest = forceRefresh.current;
+    const reqKey = `${animeId}:${episode}:${providerId}:${language}:${forceThisRequest ? refreshNonce : 0}`;
+    if (
+      inFlightStreamKeyRef.current === reqKey ||
+      (!forceThisRequest && completedStreamKeyRef.current === reqKey && alreadyMounted)
+    ) {
+      return;
+    }
     forceRefresh.current = false;
     const hasInitial = initialDirect.length > 0 || initialProxies.length > 0;
     const preferEmbed = shouldPreferEmbed({
-      isHentai,
+      isHentai: isHentaiRef.current,
       directCount: initialDirect.length,
       proxyCount: initialProxies.length,
       embedCount: initialEmbeds.length,
@@ -948,11 +1018,12 @@ export default function WatchScreen() {
 
     // Embed-only catalog (hentai): mount the first embed and skip the native
     // network round trip entirely — the website plays these the same way.
-    if (embedOnlyCatalog && !forceThisRequest && initialEmbeds.length > 0 && !alreadyMounted) {
+    if (embedOnlyCatalogRef.current && !forceThisRequest && initialEmbeds.length > 0 && !alreadyMounted) {
       setError(null);
       setStream(initial);
-      setPlaybackHeaders(activeProvider.headers);
+      setPlaybackHeaders(currentProvider.headers);
       sourceMounted.current = true;
+      completedStreamKeyRef.current = reqKey;
       setSource(null);
       setEmbedSource(initialEmbeds[0]);
       setSourceRevision((v) => v + 1);
@@ -966,10 +1037,10 @@ export default function WatchScreen() {
     // player is the last resort after ALL servers return null, so a
     // native-less first provider must not stick an embed before other
     // servers are even tried.
-    const mountEmbedImmediately = preferEmbed && initialEmbeds.length > 0 && isHentai;
+    const mountEmbedImmediately = preferEmbed && initialEmbeds.length > 0 && isHentaiRef.current;
     if ((hasInitial || mountEmbedImmediately) && !alreadyMounted && !forceThisRequest) {
       setStream(initial);
-      setPlaybackHeaders(activeProvider.headers);
+      setPlaybackHeaders(currentProvider.headers);
       // Direct → proxy → embed fallback (embed immediately for Hentai only)
       if (mountEmbedImmediately) {
         sourceMounted.current = true;
@@ -996,22 +1067,22 @@ export default function WatchScreen() {
     // Cache is keyed by provider identity + language + episode (see
     // streamCacheKey in lib/watch-engine): a sub stream must never be
     // reused for a dub request, nor Momo's for Niko's.
-    const cacheKey = streamCacheKey(activeProvider, episode, language);
+    const cacheKey = streamCacheKey(currentProvider, episode, language);
     const cached = streamCache.current.get(cacheKey);
     if (!forceThisRequest && cached && Date.now() - cached.savedAt < STREAM_CACHE_TTL_MS) {
       const cachedDirect = directSources(cached.data);
       const cachedProxies = proxySources(cached.data);
       const cachedEmbeds = embedSources(cached.data);
       const preferCachedEmbed = shouldPreferEmbed({
-        isHentai,
+        isHentai: isHentaiRef.current,
         directCount: cachedDirect.length,
         proxyCount: cachedProxies.length,
         embedCount: cachedEmbeds.length,
       });
-      const mountCachedEmbed = preferCachedEmbed && cachedEmbeds.length > 0 && isHentai;
+      const mountCachedEmbed = preferCachedEmbed && cachedEmbeds.length > 0 && isHentaiRef.current;
       if (!alreadyMounted && (cachedDirect.length || cachedProxies.length || mountCachedEmbed)) {
         setStream(cached.data);
-        setPlaybackHeaders(cached.data.headers ?? activeProvider.headers);
+        setPlaybackHeaders(cached.data.headers ?? currentProvider.headers);
         // Embed from cache mounts only for Hentai. For normal titles the next
         // server is tried first via handleProviderBlocked.
         if (mountCachedEmbed) {
@@ -1030,21 +1101,25 @@ export default function WatchScreen() {
           setUseSourceProxy(true);
           setSourceRevision((v) => v + 1);
         }
+        completedStreamKeyRef.current = reqKey;
         applySkipSegments(providerSkipSegments(cached.data));
         setLoadingStream(false);
+        return () => { cancelled = true; };
       }
     }
 
     const urlFetchStart = Date.now();
+    inFlightStreamKeyRef.current = reqKey;
     if (__DEV__) {
-      console.log(`[PlaybackMetrics] Requesting Stream URL: animeId=${animeId} ep=${episode} provider=${activeProvider.provider} lang=${language} t=${Date.now() - screenMountTime}ms`);
+      console.log(`[PlaybackMetrics] Requesting Stream URL: animeId=${animeId} ep=${episode} provider=${currentProvider.provider} lang=${language} t=${Date.now() - screenMountTime}ms`);
     }
 
-    void getStream({ animeId, episode, provider: activeProvider.provider, lang: language, refresh: forceThisRequest })
+    void getStream({ animeId, episode, provider: currentProvider.provider, lang: language, refresh: forceThisRequest })
       .then((response) => {
+        if (inFlightStreamKeyRef.current === reqKey) inFlightStreamKeyRef.current = null;
         if (cancelled || activeProviderId.current !== providerId) return;
         if (__DEV__) {
-          console.log(`[PlaybackMetrics] Stream URL Acquired: provider=${activeProvider.provider} fetchDuration=${Date.now() - urlFetchStart}ms t=${Date.now() - screenMountTime}ms`);
+          console.log(`[PlaybackMetrics] Stream URL Acquired: provider=${currentProvider.provider} fetchDuration=${Date.now() - urlFetchStart}ms t=${Date.now() - screenMountTime}ms`);
         }
         const refreshedDirect = directSources(response);
         const refreshedProxies = proxySources(response);
@@ -1055,12 +1130,13 @@ export default function WatchScreen() {
           // handleProviderBlocked can read embed sources from `stream`.
           streamCache.current.set(cacheKey, { savedAt: Date.now(), data: response });
           setStream(response);
-          setPlaybackHeaders(response.headers ?? activeProvider.headers);
+          setPlaybackHeaders(response.headers ?? currentProvider.headers);
           applySkipSegments(providerSkipSegments(response));
           // Hentai / embed-only catalogs mount the embed straight away instead
           // of burning refresh + rotation rounds on a heavy backend.
-          if ((isHentai || embedOnlyCatalog) && refreshedEmbeds.length > 0 && shouldMountReplacementSource(sourceMounted.current, forceThisRequest)) {
+          if ((isHentaiRef.current || embedOnlyCatalogRef.current) && refreshedEmbeds.length > 0 && shouldMountReplacementSource(sourceMounted.current, forceThisRequest)) {
             sourceMounted.current = true;
+            completedStreamKeyRef.current = reqKey;
             setSource(null);
             setEmbedSource(refreshedEmbeds[0]);
             setSourceRevision((v) => v + 1);
@@ -1071,11 +1147,12 @@ export default function WatchScreen() {
           return;
         }
         streamCache.current.set(cacheKey, { savedAt: Date.now(), data: response });
+        completedStreamKeyRef.current = reqKey;
         setStream(response);
         applySkipSegments(providerSkipSegments(response));
         if (shouldMountReplacementSource(sourceMounted.current, forceThisRequest)) {
           sourceMounted.current = true;
-          setPlaybackHeaders(response.headers ?? activeProvider.headers);
+          setPlaybackHeaders(response.headers ?? currentProvider.headers);
           if (refreshedDirect.length) {
             setSource(refreshedDirect[0]);
             setUseSourceProxy(false);
@@ -1088,11 +1165,15 @@ export default function WatchScreen() {
         setLoadingStream(false);
       })
       .catch(() => {
+        if (inFlightStreamKeyRef.current === reqKey) inFlightStreamKeyRef.current = null;
         if (cancelled || activeProviderId.current !== providerId) return;
         if (!hasInitial || forceThisRequest) handleProviderBlockedRef.current("stream");
       });
-    return () => { cancelled = true; };
-  }, [activeProvider, animeId, applySkipSegments, embedOnlyCatalog, episode, futureRelease, isHentai, language, refreshNonce]);
+    return () => {
+      cancelled = true;
+      if (inFlightStreamKeyRef.current === reqKey) inFlightStreamKeyRef.current = null;
+    };
+  }, [activeProviderKey, animeId, applySkipSegments, episode, futureRelease, language, refreshNonce]);
 
   // ── Source loading with direct → proxy fallback ──
   // Offline saved copies never touch the stream path: no watchdog, no
@@ -1104,17 +1185,29 @@ export default function WatchScreen() {
     sourceStarted.current = false;
     sourceFirstFrame.current = false;
     const attempt = ++sourceAttempt.current;
+    if (watchdogTimerRef.current) {
+      clearTimeout(watchdogTimerRef.current);
+      watchdogTimerRef.current = null;
+    }
     // Video source: try direct, proxy already handled by useSourceProxy state
     const watchdog = setTimeout(() => {
       if (sourceAttempt.current !== attempt || sourceStarted.current) return;
-      if (shouldRetryProxiedSourceAfterDirect(useSourceProxy, sourceStarted.current)) {
+      if (shouldRetryProxiedSourceAfterDirect(useSourceProxy, sourceStarted.current) && Platform.OS !== "web") {
         setUseSourceProxy(true);
         setSourceRevision((v) => v + 1);
         return;
       }
-      handleProviderBlockedRef.current("startup");
+      handleProviderBlockedRef.current("startup", {
+        attempt,
+        errorCode: "STARTUP_TIMEOUT",
+        errorMessage: `No metadata within ${STARTUP_WATCHDOG_MS}ms`,
+      });
     }, STARTUP_WATCHDOG_MS);
-    return () => clearTimeout(watchdog);
+    watchdogTimerRef.current = watchdog;
+    return () => {
+      clearTimeout(watchdog);
+      if (watchdogTimerRef.current === watchdog) watchdogTimerRef.current = null;
+    };
   }, [source?.url, sourceRevision, useSourceProxy]);
 
   useEffect(() => {
@@ -1184,8 +1277,8 @@ export default function WatchScreen() {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
           const resolved = await getMalIdByAnimeId(animeId);
-          if (resolved) { void AsyncStorage.setItem(cacheKey, String(resolved)).catch(() => {}); return resolved; }
-        } catch {}
+          if (resolved) { void AsyncStorage.setItem(cacheKey, String(resolved)).catch(() => { }); return resolved; }
+        } catch { }
         await new Promise((resolve) => setTimeout(resolve, 1_500 * (attempt + 1)));
       }
       return null;
@@ -1211,7 +1304,7 @@ export default function WatchScreen() {
         const response = await fetch(`https://api.aniskip.com/v2/skip-times/${malId}/${episode}?types%5B%5D=op&types%5B%5D=ed&episodeLength=${runtime}`, { headers: { Accept: "application/json" }, signal: controller.signal, cache: "no-store" });
         clearTimeout(timeout);
         if (!response.ok) {
-          void AsyncStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), segments: null })).catch(() => {});
+          void AsyncStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), segments: null })).catch(() => { });
           if (!cancelled) setSkipFetchStatus(resolveSkipFetchStatus({ ok: true, hasSegments: false }));
           return;
         }
@@ -1219,11 +1312,11 @@ export default function WatchScreen() {
         if (cancelled) return;
         applySkipSegments(segments);
         if (!cancelled) setSkipFetchStatus(resolveSkipFetchStatus({ ok: true, hasSegments: Boolean(segments.intro || segments.outro) }));
-        void AsyncStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), segments: segments.intro || segments.outro ? segments : null })).catch(() => {});
+        void AsyncStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), segments: segments.intro || segments.outro ? segments : null })).catch(() => { });
       } catch (cause) {
         clearTimeout(timeout);
         timedOut = cause instanceof Error && cause.name === "AbortError";
-        void AsyncStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), segments: null })).catch(() => {});
+        void AsyncStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), segments: null })).catch(() => { });
         if (!cancelled) setSkipFetchStatus(resolveSkipFetchStatus({ timedOut, ok: false }));
       }
     }).catch(() => { if (!cancelled) setSkipFetchStatus(resolveSkipFetchStatus({ ok: false })); });
@@ -1283,15 +1376,15 @@ export default function WatchScreen() {
           pendingResume.current = progress;
           setResumePosition(progress);
         }
-      } catch {}
-    }).catch(() => {});
+      } catch { }
+    }).catch(() => { });
   }, [animeId, auth.user, episode]);
 
   // Anonymous progress is also remembered locally while watching.
   useEffect(() => {
     if (auth.user || !source || currentTime < 1 || duration <= 0 || currentTime - lastHistorySync.current < 10) return;
     lastHistorySync.current = currentTime;
-    void AsyncStorage.setItem(`aniraku-watch-local:${animeId}:${episode}`, JSON.stringify({ progress: currentTime, duration, savedAt: Date.now() })).catch(() => {});
+    void AsyncStorage.setItem(`aniraku-watch-local:${animeId}:${episode}`, JSON.stringify({ progress: currentTime, duration, savedAt: Date.now() })).catch(() => { });
   }, [animeId, auth.user, currentTime, duration, episode, source]);
 
   // ── History sync ──
@@ -1369,7 +1462,7 @@ export default function WatchScreen() {
         });
       }
     } else {
-      void AsyncStorage.setItem(`aniraku-watch-local:${animeId}:${episode}`, JSON.stringify({ progress: currentTime, duration, completed: true, savedAt: Date.now() })).catch(() => {});
+      void AsyncStorage.setItem(`aniraku-watch-local:${animeId}:${episode}`, JSON.stringify({ progress: currentTime, duration, completed: true, savedAt: Date.now() })).catch(() => { });
     }
   }, [animeId, animeQuery.data?.format, auth.user, currentTime, duration, episode, grantXp, history.save, image, providerSync.connected.length, providerSync.pushProgress, source, title]);
 
@@ -1560,9 +1653,9 @@ export default function WatchScreen() {
   // ── Actions ──
   const selectLanguage = (next: Language) => {
     if (!providers[next].length || next === language) return;
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
     // Save per-anime language preference
-    void AsyncStorage.setItem(`aniraku.lang.${animeId}`, next).catch(() => {});
+    void AsyncStorage.setItem(`aniraku.lang.${animeId}`, next).catch(() => { });
     // Server-switch preserves position (Track 4): stash via the tested
     // resolveResumeOnSwitch helper so sub↔dub keeps the seek target.
     const stashed = resolveResumeOnSwitch(currentTime, duration);
@@ -1590,7 +1683,7 @@ export default function WatchScreen() {
   };
 
   const selectServer = (index: number) => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
     // Server-switch preserves position (Track 4): stash via the tested
     // resolveResumeOnSwitch helper so the new source re-seeks here.
     const stashed = resolveResumeOnSwitch(currentTime, duration);
@@ -1746,6 +1839,14 @@ export default function WatchScreen() {
     // While PiP is active the system owns the frame — refs keep tracking and
     // state flushes once, on exit, instead of re-rendering per tick.
     if (pipActiveRef.current) return;
+    const now = Date.now();
+    const minIntervalMs = subtitleEnabledRef.current
+      ? 250
+      : showControlsRef.current
+      ? 450
+      : 950;
+    if (now - lastUiProgressAtRef.current < minIntervalMs) return;
+    lastUiProgressAtRef.current = now;
     setCurrentTime(data.currentTime);
     setPlayableDuration(data.playableDuration);
   }, []);
@@ -1914,7 +2015,7 @@ export default function WatchScreen() {
               const delta = side === "left" ? -pending.seconds : pending.seconds;
               seekRelativeRef.current(delta);
               flashRef.current(side, pending.seconds);
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
               const already = chainSeekAppliedRef.current?.side === side ? chainSeekAppliedRef.current.seconds : 0;
               chainSeekAppliedRef.current = { side, seconds: already + pending.seconds };
             }
@@ -1946,7 +2047,7 @@ export default function WatchScreen() {
               gestureModeRef.current = "pending";
               if (!isTriple) {
                 setIsPlaying((p) => !p);
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
               }
               return;
             }
@@ -1993,7 +2094,7 @@ export default function WatchScreen() {
               gestureModeRef.current = "holding";
               setIs2xSeeking(true);
               beginHoldSpeed();
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
             }, LONG_PRESS_MS);
           }
         },
@@ -2064,7 +2165,7 @@ export default function WatchScreen() {
               const now = Date.now();
               if (now - lastBrightnessSysCallTime.current > 80) {
                 lastBrightnessSysCallTime.current = now;
-                if (Platform.OS !== "web") Brightness.setBrightnessAsync(clamped).catch(() => {});
+                if (Platform.OS !== "web") Brightness.setBrightnessAsync(clamped).catch(() => { });
               }
             } else {
               setVolumeHud(Math.round(clamped * 100));
@@ -2090,7 +2191,7 @@ export default function WatchScreen() {
             clearSkipHold();
             if (gestureZoneRef.current === "left") {
               setBrightness(brightnessRef.current);
-              if (Platform.OS !== "web") Brightness.setBrightnessAsync(brightnessRef.current).catch(() => {});
+              if (Platform.OS !== "web") Brightness.setBrightnessAsync(brightnessRef.current).catch(() => { });
             }
             setTimeout(() => { setVolumeHud(null); setBrightnessHud(null); }, 800);
             return;
@@ -2117,7 +2218,7 @@ export default function WatchScreen() {
               const delta = pending.side === "left" ? -pending.seconds : pending.seconds;
               seekRelativeRef.current(delta);
               flashRef.current(pending.side, pending.seconds);
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
               const already = chainSeekAppliedRef.current?.side === pending.side ? chainSeekAppliedRef.current.seconds : 0;
               chainSeekAppliedRef.current = { side: pending.side, seconds: already + pending.seconds };
               // Window the 3rd tap from THIS release, not the first one.
@@ -2306,7 +2407,7 @@ export default function WatchScreen() {
     });
 
     if (isFuture) {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => { });
       let msg = `Episode ${targetEpisode} belum resmi ditayangkan.`;
       if (animeQuery.data?.nextAiringEpisode?.episode === targetEpisode && animeQuery.data?.nextAiringEpisode?.airingAt) {
         const dateStr = new Date(animeQuery.data.nextAiringEpisode.airingAt * 1000).toLocaleDateString("id-ID", {
@@ -2328,7 +2429,7 @@ export default function WatchScreen() {
       return;
     }
 
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
     router.replace({ pathname: "/watch/[id]", params: { id: String(animeId), episode: String(targetEpisode), title, image } } as never);
   }, [animeId, canonicalEpisodes, image, title, animeQuery.data?.status, animeQuery.data?.nextAiringEpisode, episodeQuery.isSuccess]);
 
@@ -2363,7 +2464,7 @@ export default function WatchScreen() {
 
   // Fire action lives in a ref so the countdown effect never restarts just
   // because goToEpisode's identity churned (episode list/title updates).
-  const upNextFireRef = useRef<() => void>(() => {});
+  const upNextFireRef = useRef<() => void>(() => { });
   upNextFireRef.current = () => {
     setUpNextVisible(false);
     if (nextKnownEpisode) goToEpisode(nextKnownEpisode);
@@ -2541,8 +2642,8 @@ export default function WatchScreen() {
     if (Platform.OS !== "web") {
       // Lock portrait briefly before unlocking so Android doesn't stay stuck
       // in the last forced landscape when auto-rotate is OFF.
-      void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {}).finally(() => {
-        void ScreenOrientation.unlockAsync().catch(() => {});
+      void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => { }).finally(() => {
+        void ScreenOrientation.unlockAsync().catch(() => { });
       });
     }
   }, []);
@@ -2573,7 +2674,7 @@ export default function WatchScreen() {
   // Rail lock button: freezing chrome AND hiding it is what makes the lock
   // real — previously playerLocked could never be set to true at all.
   const engagePlayerLock = useCallback(() => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
     setPlayerLocked(true);
     setShowControls(false);
   }, []);
@@ -2585,13 +2686,13 @@ export default function WatchScreen() {
   const requestUnlock = useCallback(() => {
     if (unlockArmTimer.current) { clearTimeout(unlockArmTimer.current); unlockArmTimer.current = null; }
     if (unlockArmed) {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
       setPlayerLocked(false);
       setShowControls(true);
       setUnlockArmed(false);
       return;
     }
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
     setUnlockArmed(true);
     unlockArmTimer.current = setTimeout(() => setUnlockArmed(false), 1_600);
   }, [unlockArmed]);
@@ -2760,6 +2861,10 @@ export default function WatchScreen() {
         paused={!isPlaying} rate={is2xSeeking ? 2.0 : speed} resizeMode={fillMode} muted={muted} volume={volume}
         maxBitRate={adaptiveBitrateCap ?? undefined}
         onLoad={(data: OnLoadData) => {
+          if (watchdogTimerRef.current) {
+            clearTimeout(watchdogTimerRef.current);
+            watchdogTimerRef.current = null;
+          }
           if (__DEV__) {
             console.log(`[PlaybackMetrics] Metadata Loaded (onLoad): duration=${data.duration}s t=${Date.now() - screenMountTime}ms provider=${activeProvider?.provider ?? activeProvider?.id ?? "?"}`);
           }
@@ -2769,6 +2874,10 @@ export default function WatchScreen() {
           setShowControls(true);
         }}
         onReadyForDisplay={() => {
+          if (watchdogTimerRef.current) {
+            clearTimeout(watchdogTimerRef.current);
+            watchdogTimerRef.current = null;
+          }
           if (!sourceFirstFrame.current) {
             sourceFirstFrame.current = true;
             if (__DEV__) {
@@ -2783,7 +2892,30 @@ export default function WatchScreen() {
         onVideoTracks={handleVideoTracks}
         onBandwidthUpdate={handleBandwidthUpdate}
         onPictureInPictureStatusChanged={onPipStatusChanged}
-        onError={(event: any) => { const detail = event?.error?.errorString || event?.error?.errorCode || "Unknown player error"; const mountedUrl = source?.url ?? null; if (shouldRefreshMasterOnVariantError({ errorDetail: String(detail), variantUrl: mountedUrl, refreshedAlready: variantTokenRefreshAttempted.current === mountedUrl })) { variantTokenRefreshAttempted.current = mountedUrl; void refreshVariantFromMaster(); return; } setLastPlayerError(String(detail)); setPlayerStatus("error"); if (!useSourceProxy) { setUseSourceProxy(true); setSourceRevision((v) => v + 1); return; } handleProviderBlockedRef.current("player"); }}
+        onError={(event: any) => {
+          const detail = event?.error?.errorString || event?.error?.errorCode || "Unknown player error";
+          const mountedUrl = source?.url ?? null;
+          if (shouldRefreshMasterOnVariantError({ errorDetail: String(detail), variantUrl: mountedUrl, refreshedAlready: variantTokenRefreshAttempted.current === mountedUrl })) {
+            variantTokenRefreshAttempted.current = mountedUrl;
+            void refreshVariantFromMaster();
+            return;
+          }
+          if (sourceFailureHandled.current === String(sourceAttempt.current)) return;
+          setLastPlayerError(String(detail));
+          setPlayerStatus("error");
+          if (!useSourceProxy && Platform.OS !== "web") {
+            setUseSourceProxy(true);
+            setSourceRevision((v) => v + 1);
+            return;
+          }
+          handleProviderBlockedRef.current("player", {
+            attempt: sourceAttempt.current,
+            errorCode: event?.error?.errorCode ? String(event.error.errorCode) : undefined,
+            httpStatus: typeof event?.error?.httpStatus === "number" ? event.error.httpStatus : undefined,
+            hlsDetails: event?.error?.hlsDetails ? String(event.error.hlsDetails) : undefined,
+            errorMessage: String(detail),
+          });
+        }}
         onEnd={() => { const reachedEnd = duration > 30 && currentTime >= Math.max(1, duration - 2); if (!sourceStarted.current || !reachedEnd) return; if (auth.user) { history.save.mutate({ animeId, animeTitle: title, animeImage: image || null, episode, episodeTitle: selectedEpisode?.title || null, episodeThumbnail: selectedEpisode?.thumbnail || null, progress: duration || currentTime, duration: duration || currentTime }); if (providerSync.connected.length) providerSync.pushProgress.mutate({ animeId, episode, progress: Math.floor(duration || currentTime), status: "completed" }); } showUpNext(); }}
       /> : (embedSource && !error) ? null : <View style={styles.videoPlaceholder}>
         {loadingServers ? <ProviderDiscoveryLoader attempt={serverAttempt} /> : loadingStream ? <View style={styles.thumbnailLoading}>
@@ -2795,7 +2927,7 @@ export default function WatchScreen() {
 
       {/* ── Subtitle Layer (lifts above the bottom deck while chrome is
           visible so cues are never hidden behind the timeline). ── */}
-      {subtitlePrefs ? <View style={[styles.subtitleWrapper, showControls && !playerLocked ? styles.subtitleWrapperWithControls : manualFullscreen ? styles.subtitleWrapperFullscreen : null]} pointerEvents="none"><SubtitleRenderer cues={activeSubtitles} preferences={subtitlePrefs} /></View> : null}
+      {subtitlePrefs ? <View style={[styles.subtitleWrapper, showControls && !playerLocked ? styles.subtitleWrapperWithControls : manualFullscreen ? styles.subtitleWrapperFullscreen : null, { pointerEvents: "none" }]}><SubtitleRenderer cues={activeSubtitles} preferences={subtitlePrefs} /></View> : null}
 
       {/* ── Gesture overlay: sits ABOVE native Video, BELOW chrome.
           This is what makes tap-to-toggle reliable — touches no longer have to
@@ -2806,7 +2938,7 @@ export default function WatchScreen() {
       {/* Center buffering veil — visible with chrome hidden too, so buffering
           never reads as "frozen". */}
       {source && buffering && !embedSource ? (
-        <View pointerEvents="none" style={styles.bufferingVeil}>
+        <View style={[styles.bufferingVeil, { pointerEvents: "none" }]}>
           <ActivityIndicator size="large" color="#FFF" />
         </View>
       ) : null}
@@ -2817,28 +2949,28 @@ export default function WatchScreen() {
           controls; this frame only makes it read as the same player. Taps
           pass through to the WebView (box-none), buttons stay hittable. */}
       {embedSource && !source ? (
-        <View style={styles.embedFrame} pointerEvents="box-none">
+        <View style={[styles.embedFrame, { pointerEvents: "box-none" }]}>
           {showControls && !playerLocked ? (
-            <View style={styles.embedChromeGroup} pointerEvents="box-none">
-              <View pointerEvents="none" style={styles.scrimTopSoft} />
-              <View pointerEvents="none" style={styles.scrimTopMain} />
-              <View pointerEvents="none" style={styles.scrimBottomSoft} />
-              <View pointerEvents="none" style={styles.scrimBottomMain} />
-              <View style={styles.embedTopBar} pointerEvents="box-none">
+            <View style={[styles.embedChromeGroup, { pointerEvents: "box-none" }]}>
+              <View style={[styles.scrimTopSoft, { pointerEvents: "none" }]} />
+              <View style={[styles.scrimTopMain, { pointerEvents: "none" }]} />
+              <View style={[styles.scrimBottomSoft, { pointerEvents: "none" }]} />
+              <View style={[styles.scrimBottomMain, { pointerEvents: "none" }]} />
+              <View style={[styles.embedTopBar, { pointerEvents: "box-none" }]}>
                 <Pressable onPress={handleBackPress} accessibilityRole="button" accessibilityLabel="Go back" style={styles.iconButton} hitSlop={10}>
                   <ArrowLeft size={22} color="#FFF" weight="bold" />
                 </Pressable>
-                <View pointerEvents="none" style={styles.playerTitleWrap}>
+                <View style={[styles.playerTitleWrap, { pointerEvents: "none" }]}>
                   <Text style={styles.playerTitle} numberOfLines={1} ellipsizeMode="tail">{`${title} - Episode ${episode}`}</Text>
                 </View>
-                <View pointerEvents="box-none" style={styles.topRightRow}>
+                <View style={[styles.topRightRow, { pointerEvents: "box-none" }]}>
                   <Pressable onPress={() => setShowControls(false)} accessibilityRole="button" accessibilityLabel="Hide overlay" style={styles.subPillBadge} hitSlop={8}>
                     <Text style={styles.subPillBadgeText}>EMBED</Text>
                   </Pressable>
                 </View>
               </View>
-              <View style={styles.embedBottomDeck} pointerEvents="box-none">
-                <View pointerEvents="none" style={styles.embedBottomInfo}>
+              <View style={[styles.embedBottomDeck, { pointerEvents: "box-none" }]}>
+                <View style={[styles.embedBottomInfo, { pointerEvents: "none" }]}>
                   <Text style={styles.embedBottomLabel} numberOfLines={1}>{activeProvider ? `${activeProvider.label} · EMBEDDED STREAM` : "EMBEDDED STREAM"}</Text>
                 </View>
                 <Pressable onPress={manualFullscreen ? exitFullscreen : enterFullscreen} accessibilityRole="button" accessibilityLabel={manualFullscreen ? "Exit fullscreen" : "Enter fullscreen"} style={styles.iconButton} hitSlop={8}>
@@ -2848,7 +2980,7 @@ export default function WatchScreen() {
             </View>
           ) : null}
           {!showControls && !playerLocked ? (
-            <View style={styles.embedHiddenToggle} pointerEvents="box-none">
+            <View style={[styles.embedHiddenToggle, { pointerEvents: "box-none" }]}>
               <Pressable onPress={() => setShowControls(true)} accessibilityRole="button" accessibilityLabel="Show player overlay" style={styles.embedShowButton} hitSlop={10}>
                 <ArrowsOut size={16} color="#FFF" weight="bold" />
               </Pressable>
@@ -2860,7 +2992,7 @@ export default function WatchScreen() {
       {/* ── Mini progress: always visible when chrome is hidden, so inline
           never looks dead and matches the reference layout's timeline. ── */}
       {source && !showControls && !playerLocked && duration > 0 ? (
-        <View style={styles.miniProgress} pointerEvents="none">
+        <View style={[styles.miniProgress, { pointerEvents: "none" }]}>
           <View style={[styles.miniProgressBuffered, { width: `${bufferPct}%` }]} />
           <View style={[styles.miniProgressPlayed, { width: `${progressPct}%` }]} />
         </View>
@@ -2868,7 +3000,7 @@ export default function WatchScreen() {
 
       {/* ── Download / status toast (auto-dismisses) ── */}
       {downloadMessage ? (
-        <View style={styles.statusToast} pointerEvents="none">
+        <View style={[styles.statusToast, { pointerEvents: "none" }]}>
           <Download size={13} color={nothing.white} weight="bold" />
           <Text style={styles.statusToastText}>{downloadMessage}</Text>
         </View>
@@ -2878,7 +3010,7 @@ export default function WatchScreen() {
 
       {/* Double-tap feedback */}
       {doubleTapSide ? (
-        <Animated.View style={[styles.doubleTapOverlay, { left: doubleTapSide === "left" ? "12%" : undefined, right: doubleTapSide === "right" ? "12%" : undefined, opacity: doubleTapAnim }]} pointerEvents="none">
+        <Animated.View style={[styles.doubleTapOverlay, { left: doubleTapSide === "left" ? "12%" : undefined, right: doubleTapSide === "right" ? "12%" : undefined, opacity: doubleTapAnim, pointerEvents: "none" }]}>
           {doubleTapSide === "left" ? <Rewind size={36} color="#FFF" weight="bold" /> : <FastForward size={36} color="#FFF" weight="bold" />}
           <Text style={styles.doubleTapText}>{doubleTapSide === "left" ? `-${doubleTapSeconds}s` : `+${doubleTapSeconds}s`}</Text>
         </Animated.View>
@@ -2889,14 +3021,14 @@ export default function WatchScreen() {
           on the gesture layer. pointerEvents switches with visibility, so
           buttons still win hit-test when chrome is up. */}
       {source && controlsRendered ? (
-        <Animated.View style={[styles.controlsBackdrop, manualFullscreen && styles.controlsBackdropFullscreen, { opacity: controlsOpacity }]} pointerEvents={showControls && !playerLocked ? "box-none" : "none"}>
+        <Animated.View style={[styles.controlsBackdrop, manualFullscreen && styles.controlsBackdropFullscreen, { opacity: controlsOpacity, pointerEvents: showControls && !playerLocked ? "box-none" : "none" }]}>
           {/* Edge scrims — layered bands fake a gradient without adding a
               native dependency; keeps top/bottom rows readable like the
               reference player. */}
-          <View pointerEvents="none" style={styles.scrimTopSoft} />
-          <View pointerEvents="none" style={styles.scrimTopMain} />
-          <View pointerEvents="none" style={styles.scrimBottomSoft} />
-          <View pointerEvents="none" style={styles.scrimBottomMain} />
+          <View style={[styles.scrimTopSoft, { pointerEvents: "none" }]} />
+          <View style={[styles.scrimTopMain, { pointerEvents: "none" }]} />
+          <View style={[styles.scrimBottomSoft, { pointerEvents: "none" }]} />
+          <View style={[styles.scrimBottomMain, { pointerEvents: "none" }]} />
           {/* TOP BAR */}
           <View style={styles.topBar}>
             <Pressable onPress={handleBackPress} accessibilityRole="button" accessibilityLabel="Go back" style={styles.iconButton} hitSlop={10}>
@@ -2945,11 +3077,11 @@ export default function WatchScreen() {
                 accessibilityRole="adjustable"
                 accessibilityLabel="Seek bar"
               >
-                <View pointerEvents="none" style={[styles.progressBuffered, dragPct !== null && styles.progressTrackThick, { width: `${bufferPct}%` }]} />
-                <View pointerEvents="none" style={[styles.progressPlayed, dragPct !== null && styles.progressTrackThick, { width: `${dragPct !== null ? dragPct : progressPct}%` }]} />
-                {chapterTrack.map((segment) => <View key={segment.kind} pointerEvents="none" style={[styles.chapterMarker, { left: `${segment.leftPct}%`, width: `${segment.widthPct}%` }]} />)}
-                <View pointerEvents="none" style={[styles.scrubberKnob, dragPct !== null && styles.scrubberKnobActive, { left: `${dragPct !== null ? dragPct : progressPct}%` }]} />
-                {dragPct !== null ? <View pointerEvents="none" style={[styles.dragPreview, { left: `${Math.max(0, Math.min(dragPct, 100))}%` }]}><Text style={styles.dragPreviewText}>{formatTime((dragPct / 100) * duration)}</Text></View> : null}
+                <View style={[styles.progressBuffered, dragPct !== null && styles.progressTrackThick, { width: `${bufferPct}%`, pointerEvents: "none" }]} />
+                <View style={[styles.progressPlayed, dragPct !== null && styles.progressTrackThick, { width: `${dragPct !== null ? dragPct : progressPct}%`, pointerEvents: "none" }]} />
+                {chapterTrack.map((segment) => <View key={segment.kind} style={[styles.chapterMarker, { left: `${segment.leftPct}%`, width: `${segment.widthPct}%`, pointerEvents: "none" }]} />)}
+                <View style={[styles.scrubberKnob, dragPct !== null && styles.scrubberKnobActive, { left: `${dragPct !== null ? dragPct : progressPct}%`, pointerEvents: "none" }]} />
+                {dragPct !== null ? <View style={[styles.dragPreview, { left: `${Math.max(0, Math.min(dragPct, 100))}%`, pointerEvents: "none" }]}><Text style={styles.dragPreviewText}>{formatTime((dragPct / 100) * duration)}</Text></View> : null}
               </View>
               <Text style={styles.timeLabel}>{formatTime(duration)}</Text>
             </View>
@@ -2962,24 +3094,24 @@ export default function WatchScreen() {
                 <Pressable onPress={engagePlayerLock} accessibilityRole="button" accessibilityLabel="Lock player controls" style={styles.railBtn} hitSlop={8}>
                   <Lock size={18} color="#FFF" weight="bold" />
                 </Pressable>
-                <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); setMuted((m) => !m); }} accessibilityRole="button" accessibilityLabel={muted ? "Unmute" : "Mute"} style={styles.railBtn} hitSlop={8}>
+                <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { }); setMuted((m) => !m); }} accessibilityRole="button" accessibilityLabel={muted ? "Unmute" : "Mute"} style={styles.railBtn} hitSlop={8}>
                   {muted ? <SpeakerNone size={18} color="#FFF" weight="bold" /> : <SpeakerHigh size={18} color="#FFF" weight="bold" />}
                 </Pressable>
               </View>
               <View style={styles.railCenter}>
-                <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); seekBy(-10); }} accessibilityRole="button" accessibilityLabel="Back 10 seconds" style={styles.railBtn} hitSlop={8}>
+                <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { }); seekBy(-10); }} accessibilityRole="button" accessibilityLabel="Back 10 seconds" style={styles.railBtn} hitSlop={8}>
                   <AppIcon name="rewind-10" size={23} color="#FFF" />
                 </Pressable>
                 <Pressable disabled={!previousKnownEpisode} onPress={() => previousKnownEpisode && goToEpisode(previousKnownEpisode)} accessibilityRole="button" accessibilityLabel="Previous episode" style={[styles.railBtn, !previousKnownEpisode && styles.railBtnDisabled]} hitSlop={8}>
                   <SkipBack size={20} color="#FFF" weight="fill" />
                 </Pressable>
-                <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); setIsPlaying((p) => !p); }} onLongPress={beginHoldSpeed} onPressOut={endHoldSpeed} delayLongPress={400} accessibilityRole="button" accessibilityLabel={isPlaying ? "Pause" : "Play"} accessibilityHint="Hold for 2x speed" style={[styles.bigPlayButton, manualFullscreen && styles.bigPlayButtonFullscreen]}>
+                <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { }); setIsPlaying((p) => !p); }} onLongPress={beginHoldSpeed} onPressOut={endHoldSpeed} delayLongPress={400} accessibilityRole="button" accessibilityLabel={isPlaying ? "Pause" : "Play"} accessibilityHint="Hold for 2x speed" style={[styles.bigPlayButton, manualFullscreen && styles.bigPlayButtonFullscreen]}>
                   {isPlaying ? <Pause size={26} color="#000" weight="fill" /> : <Play size={26} color="#000" weight="fill" style={{ marginLeft: 2 }} />}
                 </Pressable>
                 <Pressable disabled={!nextKnownEpisode} onPress={nextEpisode} accessibilityRole="button" accessibilityLabel="Next episode" style={[styles.railBtn, !nextKnownEpisode && styles.railBtnDisabled]} hitSlop={8}>
                   <SkipForward size={20} color="#FFF" weight="fill" />
                 </Pressable>
-                <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); seekBy(10); }} accessibilityRole="button" accessibilityLabel="Forward 10 seconds" style={styles.railBtn} hitSlop={8}>
+                <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { }); seekBy(10); }} accessibilityRole="button" accessibilityLabel="Forward 10 seconds" style={styles.railBtn} hitSlop={8}>
                   <AppIcon name="fast-forward-10" size={23} color="#FFF" />
                 </Pressable>
               </View>
@@ -2991,11 +3123,11 @@ export default function WatchScreen() {
                     <ActivityIndicator size="small" color="#FFF" />
                   </View>
                 ) : offlineDownload ? (
-                  <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); playOffline(); }} onLongPress={() => { void removeDownload(); }} accessibilityRole="button" accessibilityLabel="Play saved download" accessibilityHint="Long press to remove the saved copy" style={styles.railBtn} hitSlop={8}>
+                  <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { }); playOffline(); }} onLongPress={() => { void removeDownload(); }} accessibilityRole="button" accessibilityLabel="Play saved download" accessibilityHint="Long press to remove the saved copy" style={styles.railBtn} hitSlop={8}>
                     <DownloadSimple size={19} color={nothing.green} weight="bold" />
                   </Pressable>
                 ) : (
-                  <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); onDownloadPress(); }} accessibilityRole="button" accessibilityLabel="Download episode" accessibilityHint="Opens quality options when the provider offers them" style={styles.railBtn} hitSlop={8}>
+                  <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { }); onDownloadPress(); }} accessibilityRole="button" accessibilityLabel="Download episode" accessibilityHint="Opens quality options when the provider offers them" style={styles.railBtn} hitSlop={8}>
                     <Download size={19} color="#FFF" weight="bold" />
                   </Pressable>
                 )}
@@ -3075,13 +3207,13 @@ export default function WatchScreen() {
 
       {/* Gesture HUD overlays */}
       {is2xSeeking ? (
-        <View style={chrome.badge2x} pointerEvents="none">
+        <View style={[chrome.badge2x, { pointerEvents: "none" }]}>
           <FastForward size={16} color="#FFF" weight="bold" />
           <Text style={chrome.badge2xText}>2X SPEED</Text>
         </View>
       ) : null}
       {volumeHud !== null ? (
-        <View style={chrome.verticalBarWrap} pointerEvents="none">
+        <View style={[chrome.verticalBarWrap, { pointerEvents: "none" }]}>
           <View style={chrome.verticalBarBg}><View style={[chrome.verticalBarFill, { height: `${volumeHud}%` }]} /></View>
           <View style={chrome.verticalBarLabel}>
             {volumeHud === 0 ? <SpeakerNone size={14} color="#FFF" weight="bold" /> : <SpeakerHigh size={14} color="#FFF" weight="bold" />}
@@ -3090,7 +3222,7 @@ export default function WatchScreen() {
         </View>
       ) : null}
       {brightnessHud !== null ? (
-        <View style={chrome.verticalBarWrapLeft} pointerEvents="none">
+        <View style={[chrome.verticalBarWrapLeft, { pointerEvents: "none" }]}>
           <View style={chrome.verticalBarBg}><View style={[chrome.verticalBarFillBright, { height: `${brightnessHud}%` }]} /></View>
           <View style={chrome.verticalBarLabel}>
             <Sun size={14} color="#FFF" weight="bold" />
@@ -3249,11 +3381,11 @@ export default function WatchScreen() {
     </View>
 
     {/* ── Error ── */}
-    {error ? <View style={styles.errorAction}><NothingCard style={styles.errorCard}><DotLabel tone="muted">{futureRelease ? "FUTURE EPISODE" : "VIDEO UNAVAILABLE"}</DotLabel><Text style={styles.errorCopy}>{error}</Text>{lastPlayerError ? <Text style={styles.errorCopy}>{humanPlayerError(lastPlayerError) ?? "Playback failed on this server."}</Text> : null}{lastPlayerError ? <Text style={ps.diagnosticLine}>{`PLAYER · ${lastPlayerError}`}</Text> : null}{skipFetchStatus !== "idle" && skipFetchStatus !== "ok" ? <Text style={ps.diagnosticLine}>{`SKIP DATA · ${skipFetchStatus.toUpperCase()}`}</Text> : null}{futureRelease ? null : <View style={styles.errorBtnRow}><NothingButton label={t("player.retry")} onPress={retry} variant="outline" /><NothingButton label={t("player.switchServer")} onPress={() => handleProviderBlocked("permanent")} variant="outline" /><NothingButton label={t("player.copyError")} onPress={() => { void Clipboard.setStringAsync(`${error}${lastPlayerError ? `\nPLAYER · ${lastPlayerError}` : ""}${skipFetchStatus !== "idle" && skipFetchStatus !== "ok" ? `\nSKIP DATA · ${skipFetchStatus.toUpperCase()}` : ""}\nSERVER · ${activeProvider?.label || "UNKNOWN"} · ${embedSource ? "EMBED" : useSourceProxy ? "PROXY" : "DIRECT"}`).catch(() => {}); }} variant="outline" /><NothingButton label="Report source" onPress={reportBrokenSource} variant="outline" /></View>}</NothingCard></View> : null}
+    {error ? <View style={styles.errorAction}><NothingCard style={styles.errorCard}><DotLabel tone="muted">{futureRelease ? "FUTURE EPISODE" : "VIDEO UNAVAILABLE"}</DotLabel><Text style={styles.errorCopy}>{error}</Text>{lastPlayerError ? <Text style={styles.errorCopy}>{humanPlayerError(lastPlayerError) ?? "Playback failed on this server."}</Text> : null}{lastPlayerError ? <Text style={ps.diagnosticLine}>{`PLAYER · ${lastPlayerError}`}</Text> : null}{skipFetchStatus !== "idle" && skipFetchStatus !== "ok" ? <Text style={ps.diagnosticLine}>{`SKIP DATA · ${skipFetchStatus.toUpperCase()}`}</Text> : null}{futureRelease ? null : <View style={styles.errorBtnRow}><NothingButton label={t("player.retry")} onPress={retry} variant="outline" /><NothingButton label={t("player.switchServer")} onPress={() => handleProviderBlocked("permanent")} variant="outline" /><NothingButton label={t("player.copyError")} onPress={() => { void Clipboard.setStringAsync(`${error}${lastPlayerError ? `\nPLAYER · ${lastPlayerError}` : ""}${skipFetchStatus !== "idle" && skipFetchStatus !== "ok" ? `\nSKIP DATA · ${skipFetchStatus.toUpperCase()}` : ""}\nSERVER · ${activeProvider?.label || "UNKNOWN"} · ${embedSource ? "EMBED" : useSourceProxy ? "PROXY" : "DIRECT"}`).catch(() => { }); }} variant="outline" /><NothingButton label="Report source" onPress={reportBrokenSource} variant="outline" /></View>}</NothingCard></View> : null}
 
     {/* ── Below player ── */}
     {!manualFullscreen ? <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} removeClippedSubviews={Platform.OS === "android"}>
-      
+
       {/* ── 1. Action Buttons Rail (Quality, Server, Sub/Dub, Like, Dislike, Download, Share) ── */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionPillsRail}>
         {/* Quality Dropdown Button */}
@@ -3543,7 +3675,7 @@ export default function WatchScreen() {
           </View>
         </View>
 
-        <AnimeComments animeId={animeId} episodeNumber={episode} />
+        {renderComments ? <AnimeComments animeId={animeId} episodeNumber={episode} /> : null}
       </View>
     </ScrollView> : null}
 
@@ -3896,14 +4028,14 @@ export default function WatchScreen() {
       )}
     </View></Pressable></Modal>
 
-      <ReportStreamModal
-        visible={reportModalVisible}
-        onClose={() => setReportModalVisible(false)}
-        animeId={animeId || 0}
-        animeTitle={title}
-        episodeNumber={episode}
-        serverName={`${activeProvider?.label || "Server 1"} (${requestedQuality || "Auto"})`}
-      />
+    <ReportStreamModal
+      visible={reportModalVisible}
+      onClose={() => setReportModalVisible(false)}
+      animeId={animeId || 0}
+      animeTitle={title}
+      episodeNumber={episode}
+      serverName={`${activeProvider?.label || "Server 1"} (${requestedQuality || "Auto"})`}
+    />
   </NativeScreen>;
 }
 
@@ -4004,7 +4136,7 @@ const styles = StyleSheet.create({
   doubleTapOverlay: { position: "absolute", top: "32%", alignItems: "center", justifyContent: "center", zIndex: 12 },
   doubleTapText: { color: "#FFF", fontSize: 12, fontWeight: "800", marginTop: 3 },
   chapterMarker: { position: "absolute", height: 2, backgroundColor: "#FFD600", borderRadius: 1, top: 7 },
-  skipButtonOverlay: { position: "absolute", bottom: 120, right: 12, backgroundColor: "rgba(255,255,255,0.92)", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, flexDirection: "row", alignItems: "center", gap: 4, zIndex: 15, elevation: 6, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 8 },
+  skipButtonOverlay: { position: "absolute", bottom: 120, right: 12, backgroundColor: "rgba(255,255,255,0.92)", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, flexDirection: "row", alignItems: "center", gap: 4, zIndex: 15, ...createShadow({ color: "#000", offset: { width: 0, height: 2 }, opacity: 0.25, radius: 8, elevation: 6 }) },
   upNextCard: { position: "absolute", bottom: 120, right: 12, zIndex: 15, elevation: 6, flexDirection: "row", gap: 8, alignItems: "center", maxWidth: 260, backgroundColor: "rgba(9,9,9,0.88)", borderRadius: 8, padding: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" },
   upNextPoster: { width: 44, height: 62, borderRadius: 4, backgroundColor: nothing.raised },
   upNextCopy: { flex: 1, gap: 3 },
@@ -4035,16 +4167,12 @@ const styles = StyleSheet.create({
     maxHeight: "52%",
     paddingTop: 10,
     paddingBottom: Platform.OS === "ios" ? 28 : 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.45,
-    shadowRadius: 14,
-    elevation: 20,
+    ...createShadow({ color: "#000", offset: { width: 0, height: -6 }, opacity: 0.45, radius: 14, elevation: 20 }),
     ...(Platform.OS === "web"
       ? ({
-          backdropFilter: "blur(24px) saturate(180%)",
-          WebkitBackdropFilter: "blur(24px) saturate(180%)",
-        } as any)
+        backdropFilter: "blur(24px) saturate(180%)",
+        WebkitBackdropFilter: "blur(24px) saturate(180%)",
+      } as any)
       : {}),
   },
   serverSheetHandle: {
@@ -4321,9 +4449,9 @@ const styles = StyleSheet.create({
     gap: 12,
     ...(Platform.OS === "web"
       ? ({
-          backdropFilter: "blur(14px)",
-          WebkitBackdropFilter: "blur(14px)",
-        } as any)
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+      } as any)
       : {}),
   },
   ratingCardHeader: {
@@ -4366,9 +4494,9 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     ...(Platform.OS === "web"
       ? ({
-          cursor: "pointer",
-          transition: "all 0.15s ease",
-        } as any)
+        cursor: "pointer",
+        transition: "all 0.15s ease",
+      } as any)
       : {}),
   },
   ratingRectBoxActive: {
@@ -4406,6 +4534,70 @@ const styles = StyleSheet.create({
 
 // Memoized: the watch screen re-renders every second (progress clock), and
 // re-diffing 50+ episode buttons per tick was the largest avoidable cost.
+const EpisodeGridCard = memo(function EpisodeGridCard({
+  item,
+  active,
+  progress,
+  onSelect,
+  onInfo,
+}: {
+  item: Episode;
+  active: boolean;
+  progress: number;
+  onSelect: (n: number) => void;
+  onInfo: (n: number) => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Episode ${item.number}`}
+      onPress={() => onSelect(item.number)}
+      onLongPress={() => onInfo(item.number)}
+      style={[
+        styles.modernEpCard,
+        active && styles.modernEpCardActive,
+      ]}
+    >
+      {/* Perimeter border track and history progress line circling around the box */}
+      <View style={[StyleSheet.absoluteFillObject, { pointerEvents: "none" }]}>
+        <Svg width={54} height={54} viewBox="0 0 54 54">
+          <Rect
+            x={1.5}
+            y={1.5}
+            width={51}
+            height={51}
+            rx={11}
+            ry={11}
+            fill="none"
+            stroke={active ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)"}
+            strokeWidth={2}
+          />
+          {progress > 0 ? (
+            <Rect
+              x={1.5}
+              y={1.5}
+              width={51}
+              height={51}
+              rx={11}
+              ry={11}
+              fill="none"
+              stroke="#EF4444"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeDasharray={185.12}
+              strokeDashoffset={185.12 * (1 - Math.min(100, Math.max(0, progress)) / 100)}
+            />
+          ) : null}
+        </Svg>
+      </View>
+
+      <Text style={[styles.modernEpNum, active && styles.modernEpNumActive]}>
+        {item.number}
+      </Text>
+    </Pressable>
+  );
+});
+
 // Track 5.2: FlatList virtualization when total episodes > 100 (e.g. One Piece).
 const EpisodeGrid = memo(function EpisodeGrid({
   episodes,
@@ -4456,63 +4648,27 @@ const EpisodeGrid = memo(function EpisodeGrid({
         </ScrollView>
       ) : null}
 
-      {/* Episode Cards Horizontal Scroll */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.episodeCardsScroll}>
-        {episodes.map((item) => {
-          const active = item.number === activeEpisode;
-          const progress = progressMap[item.number] ?? 0;
-          return (
-            <Pressable
-              key={item.number}
-              accessibilityRole="button"
-              accessibilityLabel={`Episode ${item.number}`}
-              onPress={() => onSelect(item.number)}
-              onLongPress={() => onInfo(item.number)}
-              style={[
-                styles.modernEpCard,
-                active && styles.modernEpCardActive,
-              ]}
-            >
-              {/* Perimeter border track and history progress line circling around the box */}
-              <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-                <Svg width={54} height={54} viewBox="0 0 54 54">
-                  <Rect
-                    x={1.5}
-                    y={1.5}
-                    width={51}
-                    height={51}
-                    rx={11}
-                    ry={11}
-                    fill="none"
-                    stroke={active ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)"}
-                    strokeWidth={2}
-                  />
-                  {progress > 0 ? (
-                    <Rect
-                      x={1.5}
-                      y={1.5}
-                      width={51}
-                      height={51}
-                      rx={11}
-                      ry={11}
-                      fill="none"
-                      stroke="#EF4444"
-                      strokeWidth={2.5}
-                      strokeLinecap="round"
-                      strokeDasharray={185.12}
-                      strokeDashoffset={185.12 * (1 - Math.min(100, Math.max(0, progress)) / 100)}
-                    />
-                  ) : null}
-                </Svg>
-              </View>
-
-              <Text style={[styles.modernEpNum, active && styles.modernEpNumActive]}>
-                {item.number}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      {/* Episode Cards Horizontal Virtualized List */}
+      <FlatList
+        horizontal
+        data={episodes}
+        keyExtractor={(item) => String(item.number)}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.episodeCardsScroll}
+        initialNumToRender={10}
+        maxToRenderPerBatch={8}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === "android"}
+        renderItem={({ item }) => (
+          <EpisodeGridCard
+            item={item}
+            active={item.number === activeEpisode}
+            progress={progressMap[item.number] ?? 0}
+            onSelect={onSelect}
+            onInfo={onInfo}
+          />
+        )}
+      />
     </View>
   );
 });

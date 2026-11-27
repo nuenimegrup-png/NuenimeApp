@@ -35,7 +35,12 @@ export type UniversalVideoProps = {
 export const UniversalVideo = forwardRef<VideoRef, UniversalVideoProps>((props, ref) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const activeUriRef = useRef<string | undefined>(undefined);
+  const lastProgressEmitRef = useRef(0);
   const uri = props.source?.uri;
+
+  const callbacksRef = useRef(props);
+  callbacksRef.current = props;
 
   useImperativeHandle(ref, () => ({
     seek: (time: number) => {
@@ -68,32 +73,47 @@ export const UniversalVideo = forwardRef<VideoRef, UniversalVideoProps>((props, 
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !uri) return;
+    let isCleanedUp = false;
+    activeUriRef.current = uri;
 
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
 
+    let decodedTargetUrl = "";
+    try {
+      const parsed = new URL(uri, typeof window !== "undefined" ? window.location.origin : "http://localhost");
+      decodedTargetUrl = parsed.searchParams.get("url") || "";
+    } catch {}
+
+    const isMp4Target = /\.mp4(?:$|[?#])/i.test(decodedTargetUrl || uri);
     const isHls =
-      uri.includes(".m3u8") ||
-      props.source?.type === "hls" ||
-      uri.includes("proxy?url=") ||
-      uri.includes("master");
+      !isMp4Target &&
+      (uri.includes(".m3u8") ||
+        decodedTargetUrl.includes(".m3u8") ||
+        props.source?.type === "hls" ||
+        uri.includes("master"));
 
     if (isHls && Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        backBufferLength: 90,
+        backBufferLength: 30,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
       });
       hlsRef.current = hls;
+      let networkRetries = 0;
+      let mediaRetries = 0;
 
       hls.loadSource(uri);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
-        if (props.onVideoTracks && data.levels) {
-          props.onVideoTracks({
+        if (isCleanedUp) return;
+        if (callbacksRef.current.onVideoTracks && data.levels) {
+          callbacksRef.current.onVideoTracks({
             videoTracks: data.levels.map((level, i) => ({
               trackId: i,
               width: level.width,
@@ -102,7 +122,7 @@ export const UniversalVideo = forwardRef<VideoRef, UniversalVideoProps>((props, 
             })),
           });
         }
-        if (!props.paused) {
+        if (!callbacksRef.current.paused) {
           const playPromise = video.play();
           if (playPromise !== undefined) {
             playPromise.catch(() => {
@@ -114,28 +134,32 @@ export const UniversalVideo = forwardRef<VideoRef, UniversalVideoProps>((props, 
       });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              console.warn("[Hls] Fatal network error, recovering...", data.details);
-              hls.startLoad();
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              console.warn("[Hls] Fatal media error, recovering...", data.details);
-              hls.recoverMediaError();
-              break;
-            default:
-              console.error("[Hls] Fatal unrecoverable error:", data);
-              hls.destroy();
-              props.onError?.({
-                error: {
-                  errorString: `HLS_${data.details || data.type}`,
-                  errorCode: data.type,
-                },
-              });
-              break;
-          }
+        if (isCleanedUp || !data.fatal) return;
+        const httpStatus = data.response?.code;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRetries < 2) {
+          networkRetries += 1;
+          console.warn(`[Hls] Fatal network error (retry ${networkRetries}/2):`, data.details, httpStatus ?? "");
+          hls.startLoad();
+          return;
         }
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRetries < 1) {
+          mediaRetries += 1;
+          console.warn(`[Hls] Fatal media error (retry ${mediaRetries}/1):`, data.details);
+          hls.recoverMediaError();
+          return;
+        }
+        console.error("[Hls] Fatal unrecoverable error:", data.type, data.details, httpStatus ?? "");
+        hls.destroy();
+        if (hlsRef.current === hls) hlsRef.current = null;
+        callbacksRef.current.onError?.({
+          error: {
+            errorString: `HLS_${data.details || data.type}`,
+            errorCode: String(httpStatus || data.type),
+            httpStatus,
+            hlsDetails: data.details,
+            hlsType: data.type,
+          },
+        });
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = uri;
@@ -162,9 +186,16 @@ export const UniversalVideo = forwardRef<VideoRef, UniversalVideoProps>((props, 
     }
 
     return () => {
+      isCleanedUp = true;
+      activeUriRef.current = undefined;
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
+      }
+      if (video) {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
       }
     };
   }, [uri]);
@@ -215,6 +246,9 @@ export const UniversalVideo = forwardRef<VideoRef, UniversalVideoProps>((props, 
   const handleTimeUpdate = () => {
     const video = videoRef.current;
     if (!video) return;
+    const now = performance.now();
+    if (now - lastProgressEmitRef.current < 250) return;
+    lastProgressEmitRef.current = now;
     let playableDuration = 0;
     if (video.buffered.length > 0) {
       try {
@@ -239,9 +273,11 @@ export const UniversalVideo = forwardRef<VideoRef, UniversalVideoProps>((props, 
   };
   const handleEnded = () => props.onEnd?.();
   const handleError = () => {
+    if (!activeUriRef.current) return;
     if (!hlsRef.current) {
+      if (!videoRef.current?.getAttribute("src")) return;
       const err = videoRef.current?.error;
-      props.onError?.({
+      callbacksRef.current.onError?.({
         error: {
           errorString: err?.message || "DEMUXER_ERROR_COULD_NOT_PARSE",
           errorCode: String(err?.code || 4),
@@ -274,6 +310,7 @@ export const UniversalVideo = forwardRef<VideoRef, UniversalVideoProps>((props, 
       <video
         ref={videoRef}
         playsInline
+        preload="auto"
         webkit-playsinline="true"
         style={{
           width: "100%",
@@ -293,5 +330,7 @@ export const UniversalVideo = forwardRef<VideoRef, UniversalVideoProps>((props, 
     </div>
   );
 });
+
+UniversalVideo.displayName = "UniversalVideo";
 
 export default UniversalVideo;

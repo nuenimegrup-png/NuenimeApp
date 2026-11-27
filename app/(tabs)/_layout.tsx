@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Tabs } from "expo-router";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { createShadow } from "@/lib/shadow-style";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { type BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { Image } from "expo-image";
@@ -16,6 +17,14 @@ const TAB_CONFIG: Record<string, { label: string; icon: string }> = {
   history: { label: "Riwayat", icon: "history" },
   profile: { label: "Profil", icon: "account" },
 };
+
+function blurWebActiveElement() {
+  if (Platform.OS !== "web" || typeof document === "undefined") return;
+  const active = document.activeElement;
+  if (active && typeof (active as HTMLElement).blur === "function" && active !== document.body) {
+    (active as HTMLElement).blur();
+  }
+}
 
 function CustomLiquidGlassTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -101,6 +110,7 @@ function CustomLiquidGlassTabBar({ state, descriptors, navigation }: BottomTabBa
           const isFocused = !isProfileActive && activeVisibleIndex === index;
 
           const onPress = () => {
+            blurWebActiveElement();
             hapticLight();
             const event = navigation.emit({
               type: "tabPress",
@@ -150,6 +160,7 @@ function CustomLiquidGlassTabBar({ state, descriptors, navigation }: BottomTabBa
           ══════════════════════════════════════════════════════════════ */}
       <Pressable
         onPress={() => {
+          blurWebActiveElement();
           hapticLight();
           if (profileRoute) {
             const event = navigation.emit({
@@ -242,11 +253,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 20,
-    elevation: 12,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 8 }, opacity: 0.45, radius: 20, elevation: 12 }),
     ...(Platform.OS === "web"
       ? ({
           backdropFilter: "blur(24px) saturate(180%)",
@@ -300,11 +307,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.16)",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 20,
-    elevation: 12,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 8 }, opacity: 0.45, radius: 20, elevation: 12 }),
     ...(Platform.OS === "web"
       ? ({
           backdropFilter: "blur(24px) saturate(180%)",

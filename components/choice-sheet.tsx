@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import * as Haptics from "expo-haptics";
 import { AppIcon } from "@/components/app-icon";
 import { nothing } from "@/components/nothing-ui";

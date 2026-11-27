@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   ActivityIndicator,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -136,21 +136,25 @@ export const HomeTopAffinityCard = React.memo(function HomeTopAffinityCard({
       queryClient.invalidateQueries({ queryKey: ["home-top-affinity-duos"] });
     };
 
-    try {
-      channel = supabase
-        .channel(channelName)
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "user_affinity_bonds" },
-          throttledInvalidate
-        )
-        .subscribe();
-    } catch (err) {
-      console.warn("[home-affinity] Supabase realtime subscription warning:", err);
-    }
+    const timer = setTimeout(() => {
+      if (!isMounted) return;
+      try {
+        channel = supabase
+          .channel(channelName)
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "user_affinity_bonds" },
+            throttledInvalidate
+          )
+          .subscribe();
+      } catch (err) {
+        console.warn("[home-affinity] Supabase realtime subscription warning:", err);
+      }
+    }, 150);
 
     return () => {
       isMounted = false;
+      clearTimeout(timer);
       if (channel) {
         try {
           void channel.unsubscribe();

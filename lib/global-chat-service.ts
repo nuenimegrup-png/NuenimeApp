@@ -8,7 +8,7 @@ import {
   checkDuplicateSpamAndAutoBan,
 } from "./security-defense";
 
-export type GlobalRoom = "ngobrol_1" | "ngobrol_2" | "rekrut_clan";
+export type GlobalRoom = "ngobrol_1" | "ngobrol_2";
 
 export interface GlobalChatReplyInfo {
   id: string;
@@ -45,7 +45,6 @@ const LAST_SENT_TIMESTAMP_KEY = "@nuenime_global_last_sent";
 export const GLOBAL_ROOMS: { id: GlobalRoom; label: string; icon: string; comingSoon?: boolean }[] = [
   { id: "ngobrol_1", label: "Ngobrol 1", icon: "pound" },
   { id: "ngobrol_2", label: "Ngobrol 2", icon: "pound" },
-  { id: "rekrut_clan", label: "Rekrut Clan", icon: "pound", comingSoon: true },
 ];
 
 function formatMemberNumber(num: any): string {
@@ -56,7 +55,6 @@ function formatMemberNumber(num: any): string {
 
 // In-memory cache profile untuk mengurangi network overhead
 export const profileCache = new Map<string, any>();
-export const clanProfileCache = new Map<string, any>();
 const memGlobalChatCache = new Map<GlobalRoom, GlobalChatMessage[]>();
 
 export function getCachedGlobalMessagesSync(room: GlobalRoom): GlobalChatMessage[] {
@@ -88,77 +86,6 @@ async function fetchSenderProfile(userId: string) {
   return null;
 }
 
-/**
- * Batch preload data klan ke in-memory cache clanProfileCache
- * Dapat digunakan oleh Chat Global, Leaderboard, dsb. agar plakat klan langsung muncul tanpa delay
- */
-export async function batchPreloadClanProfiles(userIds: string[]): Promise<void> {
-  const missingClanIds = userIds.filter((id) => Boolean(id) && !clanProfileCache.has(id));
-  if (missingClanIds.length === 0) return;
-
-  try {
-    const { data: clanMembers } = await supabase
-      .from("rpg_clan_members")
-      .select(`
-        user_id,
-        role,
-        status,
-        rpg_clans (
-          id,
-          name,
-          tag,
-          city_id,
-          logo_url,
-          level,
-          total_exp,
-          status
-        )
-      `)
-      .in("user_id", missingClanIds)
-      .eq("status", "active");
-
-    if (clanMembers) {
-      clanMembers.forEach((m: any) => {
-        const rawClan = m.rpg_clans;
-        const joinedClan = Array.isArray(rawClan) ? rawClan[0] : rawClan;
-        if (joinedClan && joinedClan.status !== "disbanded") {
-          clanProfileCache.set(m.user_id, {
-            clan: joinedClan,
-            role: m.role,
-          });
-        }
-      });
-    }
-
-    // Cek juga jika ada user yang merupakan leader_id di rpg_clans
-    const stillMissing = missingClanIds.filter((id) => !clanProfileCache.has(id));
-    if (stillMissing.length > 0) {
-      const { data: leaderClans } = await supabase
-        .from("rpg_clans")
-        .select("id, name, tag, city_id, logo_url, level, total_exp, status, leader_id")
-        .in("leader_id", stillMissing)
-        .neq("status", "disbanded");
-
-      if (leaderClans) {
-        leaderClans.forEach((c: any) => {
-          clanProfileCache.set(c.leader_id, {
-            clan: c,
-            role: "Pemimpin Klan",
-          });
-        });
-      }
-    }
-
-    missingClanIds.forEach((id) => {
-      if (!clanProfileCache.has(id)) {
-        clanProfileCache.set(id, null);
-      }
-    });
-  } catch (err) {
-    console.warn("[clan-service] batch clan fetch error:", err);
-  }
-}
-
 let hasPurgedMockCache = false;
 
 /**
@@ -168,7 +95,7 @@ export async function purgeGlobalChatMockCache(): Promise<void> {
   if (hasPurgedMockCache) return;
   hasPurgedMockCache = true;
   try {
-    const rooms: GlobalRoom[] = ["ngobrol_1", "ngobrol_2", "rekrut_clan"];
+    const rooms: GlobalRoom[] = ["ngobrol_1", "ngobrol_2"];
     for (const r of rooms) {
       const key = `${GLOBAL_CHAT_CACHE_PREFIX}${r}`;
       const raw = await AsyncStorage.getItem(key);
@@ -232,9 +159,6 @@ export async function getGlobalMessages(
         profiles.forEach((p) => profileCache.set(p.id, p));
       }
     }
-
-    // ── BATCH FETCH DATA KLAN UNTUK SELURUH SENDER DALAM 1 QUERY SAJA ──
-    await batchPreloadClanProfiles(uniqueSenderIds);
 
     const messages: GlobalChatMessage[] = rows.map((r) => {
       const p = profileCache.get(r.sender_id) || {};
@@ -477,12 +401,9 @@ export function subscribeGlobalMessages(
           const currentMem = memGlobalChatCache.get(row.room as GlobalRoom) || [];
           if (currentMem.some((m) => m.id === row.id)) return;
 
-          // Preload profile & klan secara background jika belum ada di memori cache
+          // Preload profile secara background jika belum ada di memori cache
           if (!profileCache.has(row.sender_id)) {
             void fetchSenderProfile(row.sender_id);
-          }
-          if (!clanProfileCache.has(row.sender_id)) {
-            void batchPreloadClanProfiles([row.sender_id]);
           }
 
           const p = (await fetchSenderProfile(row.sender_id)) || {};

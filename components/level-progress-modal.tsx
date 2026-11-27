@@ -1,7 +1,7 @@
 import { memo, useState } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   ActivityIndicator,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { Image } from "expo-image";
 import { useQuery } from "@tanstack/react-query";
 import { AppIcon } from "@/components/app-icon";
@@ -125,7 +126,7 @@ export const LEVEL_TIERS: readonly LevelTier[] = [
     maxLevel: Infinity,
     rangeLabel: "Level ∞",
     color: "#EF4444",
-    imageUrl: "https://imagepaste.org/i/j4wuxvxq.png",
+    imageUrl: "https://i.ibb.co.com/sdyN9q4j/10.png",
   },
 ];
 
@@ -543,11 +544,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 12,
     paddingHorizontal: 16,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 20,
+    ...createShadow({ color: "#000000", offset: { width: 0, height: 10 }, opacity: 0.5, radius: 20, elevation: 20 }),
   },
   closeBtn: {
     position: "absolute",

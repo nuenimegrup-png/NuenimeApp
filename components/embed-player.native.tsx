@@ -48,7 +48,7 @@ export function EmbedPlayer({ uri, headers, onError, onLoaded }: { uri: string; 
       onRenderProcessGone={handleError}
       onHttpError={() => setLoading(false)}
     />
-    {loading ? <View style={[styles.loading, styles.pointerNone]} pointerEvents="none"><ActivityIndicator color="#F6F6F2" /><Text style={styles.loadingText}>OPENING EMBED PLAYER</Text></View> : null}
+    {loading ? <View style={[styles.loading, styles.pointerNone]}><ActivityIndicator color="#F6F6F2" /><Text style={styles.loadingText}>OPENING EMBED PLAYER</Text></View> : null}
   </View>;
 }
 

@@ -1,8 +1,8 @@
 import React, { useState } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import {
   WarningCircle,
   Lightning,
@@ -299,11 +300,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.12)",
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 20,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 10 }, opacity: 0.5, radius: 20, elevation: 20 }),
     ...(Platform.OS === "web"
       ? ({
           backdropFilter: "blur(20px)",

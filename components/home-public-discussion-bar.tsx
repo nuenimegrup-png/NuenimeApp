@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -129,11 +130,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 2,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 2 }, opacity: 0.15, radius: 4, elevation: 2 }),
   },
   pressed: {
     opacity: 0.82,

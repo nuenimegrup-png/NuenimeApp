@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createShadow, createTextShadow } from "@/lib/shadow-style";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -12,6 +12,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
@@ -930,7 +931,7 @@ export default function GachaScreen() {
         </ScrollView>
 
         {/* ─── 9. FLOATING BOTTOM CONTROLS (SESUAI SCREENSHOT) ─── */}
-        <View style={styles.floatingControlsContainer} pointerEvents="box-none">
+        <View style={[styles.floatingControlsContainer, { pointerEvents: "box-none" }]}>
           {/* Scroll to Top */}
           <Pressable
             accessibilityRole="button"
@@ -1693,9 +1694,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     color: "#FFFFFF",
-    textShadowColor: "rgba(0, 0, 0, 0.8)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    ...createTextShadow({ color: "rgba(0, 0, 0, 0.8)", offset: { width: 0, height: 1 }, radius: 3 }),
   },
   wallpaperCardBottom: {
     position: "absolute",
@@ -1762,11 +1761,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#0284C7",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 5,
-    elevation: 6,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 4 }, opacity: 0.35, radius: 5, elevation: 6 }),
   },
   floatingCrystalPill: {
     flexDirection: "row",
@@ -1778,11 +1773,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 6,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 4 }, opacity: 0.4, radius: 6, elevation: 6 }),
   },
   floatingCrystalIcon: {
     width: 18,
@@ -2216,11 +2207,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 8,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 4 }, opacity: 0.3, radius: 5, elevation: 8 }),
   },
   toastSuccess: {
     backgroundColor: "#065F46",
@@ -2269,11 +2256,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#0284C7",
     flex: 1.25,
     paddingHorizontal: 12,
-    shadowColor: "#0284C7",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
+    ...createShadow({ color: "#0284C7", offset: { width: 0, height: 4 }, opacity: 0.35, radius: 8, elevation: 4 }),
   },
   insufficientTopupText: {
     fontSize: 13,

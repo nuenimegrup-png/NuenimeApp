@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   ActivityIndicator,
   Alert,
@@ -363,7 +364,8 @@ export default function PrivateChatRoomScreen() {
               <BorderAvatar
                 size={38}
                 borderId={friend.equippedBorder}
-                avatarUrl={friend.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
+                avatarUrl={friend.avatarUrl}
+                fallbackText={friend.displayName}
               />
             </View>
             <View style={styles.headerTextCol}>
@@ -681,10 +683,7 @@ const styles = StyleSheet.create({
   },
   sendBtnActive: {
     backgroundColor: "#38BDF8",
-    shadowColor: "#38BDF8",
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
+    ...createShadow({ color: "#38BDF8", opacity: 0.35, radius: 8, elevation: 4 }),
   },
   sendBtnInactive: {
     backgroundColor: "#161B26",

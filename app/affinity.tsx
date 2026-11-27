@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Image } from "expo-image";
@@ -1883,11 +1884,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     transform: [{ translateX: -TIER_CREST_RADIUS }, { translateY: -TIER_CREST_RADIUS }],
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    elevation: 3,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 2 }, opacity: 0.35, radius: 4, elevation: 3 }),
   },
   tierCrestImg: {
     width: TIER_ICON_SIZE,

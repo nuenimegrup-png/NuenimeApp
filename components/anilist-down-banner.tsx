@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Animated, Dimensions, Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { createShadow } from "@/lib/shadow-style";
+import { Animated, Dimensions, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { AppIcon } from "@/components/app-icon";
 import { nothing } from "@/components/nothing-ui";
 import { APP_CONFIG } from "@/lib/app-config";
@@ -115,10 +117,7 @@ const styles = StyleSheet.create({
     padding: 28,
     gap: 14,
     elevation: 16,
-    shadowColor: "#FF4D4D",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
+    ...createShadow({ color: "#FF4D4D", offset: { width: 0, height: 8 }, opacity: 0.15, radius: 24 }),
   },
   iconWrap: {
     width: 52,

@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useState } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   ActivityIndicator,
   Animated,
@@ -6,7 +7,6 @@ import {
   Dimensions,
   Linking,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,6 +15,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
@@ -49,14 +50,12 @@ import { getFriends } from "@/lib/friends-service";
 import { getAnimeByIds } from "@/lib/anilist";
 import { animeTitle } from "@/lib/types";
 import { loadAccountSettings } from "@/lib/user-settings";
-import { ProfileCityPlaque } from "@/components/profile-city-plaque";
 import { ProfileAffinityShowcase } from "@/components/profile-affinity-showcase";
 import { ProfileLikeButton } from "@/components/profile-like-button";
 import { ProfileGiftShowcase } from "@/components/profile-gift-showcase";
 import { ProfileGiftModal } from "@/components/profile-gift-modal";
 
-const DEFAULT_BANNER =
-  "https://imagepaste.org/i/jqbvxwm5.png";
+const DEFAULT_BANNER = require("@/assets/images/inventory/inventory-bg.jpg");
 
 const BORDER_IMAGES: Record<string, any> = {
   white_mage: require("@/assets/images/inventory/border-white-mage.png"),
@@ -66,7 +65,6 @@ const BORDER_IMAGES: Record<string, any> = {
 const INVENTORY_STAR_IMG = require("@/assets/images/inventory/crystal-star.png");
 const BORDER_WHITE_MAGE_IMG = require("@/assets/images/inventory/border-white-mage.png");
 const GACHA_BOOK_IMG = require("@/assets/images/inventory/border-magic-book.png");
-const DUNIA_EMBLEM_IMG = require("@/assets/images/dunia-nuenime-emblem.png");
 
 function formatJoinDuration(createdAt?: string | null): string {
   if (!createdAt) return "1 bulan";
@@ -286,22 +284,6 @@ const ProfileGuestView = memo(function ProfileGuestView() {
             </View>
             <Text style={styles.profileQuickTitle} numberOfLines={1}>
               LELANG ANIME
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              hapticLight();
-              router.push("/dunia" as never);
-            }}
-            style={({ pressed }) => [styles.profileQuickCard, pressed && styles.btnPressed]}
-          >
-            <View style={styles.profileQuickIconCircle}>
-              <Image source={DUNIA_EMBLEM_IMG} style={{ width: 22, height: 22 }} contentFit="contain" />
-            </View>
-            <Text style={styles.profileQuickTitle} numberOfLines={1}>
-              PENJELAJAH
             </Text>
           </Pressable>
         </View>
@@ -822,7 +804,7 @@ export default function ProfileScreen() {
       <SafeAreaView edges={["top", "left", "right"]} style={styles.socialContainer}>
         {/* Floating Toast Notification */}
         {toastMessage ? (
-          <View style={styles.toastContainer} pointerEvents="none">
+          <View style={[styles.toastContainer, { pointerEvents: "none" }]}>
             <View style={styles.toastBox}>
               <AppIcon name="information-outline" size={17} color="#38BDF8" />
               <Text style={styles.toastText}>{toastMessage}</Text>
@@ -884,14 +866,12 @@ export default function ProfileScreen() {
                 <Text
                   style={[styles.socialDisplayName, { pointerEvents: "none" } as any]}
                   numberOfLines={1}
-                  pointerEvents="none"
                 >
                   {displayName}
                 </Text>
                 {userTag ? (
                   <Text
                     style={[styles.socialUserTag, { pointerEvents: "none" } as any]}
-                    pointerEvents="none"
                   >
                     {userTag}
                   </Text>
@@ -929,10 +909,9 @@ export default function ProfileScreen() {
                       contentFit="contain"
                       transition={150}
                       cachePolicy="memory-disk"
-                      pointerEvents="none"
                     />
                   ) : (
-                    <Text style={[styles.socialStoneIcon, { pointerEvents: "none" } as any]} pointerEvents="none">
+                    <Text style={[styles.socialStoneIcon, { pointerEvents: "none" } as any]}>
                       🪨
                     </Text>
                   )}
@@ -946,7 +925,6 @@ export default function ProfileScreen() {
                       },
                       { pointerEvents: "none" } as any,
                     ]}
-                    pointerEvents="none"
                   >
                     {isSpecial ? "Admin ∞" : tierInfo.isInfinity ? "∞" : `Lvl. ${userLevel}`}
                   </Text>
@@ -999,7 +977,7 @@ export default function ProfileScreen() {
             ]}
             hitSlop={12}
           >
-            <View pointerEvents="none" style={{ pointerEvents: "none" } as any}>
+            <View style={{ pointerEvents: "none" } as any}>
               <AppIcon name="chat" size={22} color="#FFFFFF" />
             </View>
           </Pressable>
@@ -1024,7 +1002,7 @@ export default function ProfileScreen() {
             ]}
             hitSlop={12}
           >
-            <View pointerEvents="none" style={{ pointerEvents: "none" } as any}>
+            <View style={{ pointerEvents: "none" } as any}>
               <AppIcon name="cog-outline" size={24} color="#FFFFFF" />
             </View>
           </Pressable>
@@ -1123,37 +1101,6 @@ export default function ProfileScreen() {
                 LELANG ANIME
               </Text>
             </Pressable>
-
-            {/* Box 4: Fitur Penjelajah */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Buka Fitur Penjelajah Dunia Nuenime"
-              onPress={() => {
-                hapticLight();
-                router.push("/dunia" as never);
-              }}
-              // @ts-ignore
-              onClick={() => {
-                hapticLight();
-                router.push("/dunia" as never);
-              }}
-              style={({ pressed }) => [
-                styles.profileQuickCard,
-                pressed && styles.btnPressed,
-                Platform.OS === "web" && ({ cursor: "pointer" } as any),
-              ]}
-            >
-              <View style={styles.profileQuickIconCircle}>
-                <Image
-                  source={DUNIA_EMBLEM_IMG}
-                  style={{ width: 22, height: 22 }}
-                  contentFit="contain"
-                />
-              </View>
-              <Text style={styles.profileQuickTitle} numberOfLines={1}>
-                PENJELAJAH
-              </Text>
-            </Pressable>
           </View>
 
           {/* B. SECTION: PAPAN INFORMASI DARI ADMIN */}
@@ -1175,34 +1122,6 @@ export default function ProfileScreen() {
           </View>
         </ScrollView>
 
-        {/* 2. FLOATING ACTION BUTTON (DUNIA NUENIME) - DI ATAS ICON PERTEMANAN */}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Masuk Dunia Nuenime"
-          onPress={() => {
-            hapticLight();
-            router.push("/dunia" as never);
-          }}
-          // @ts-ignore
-          onClick={() => {
-            hapticLight();
-            router.push("/dunia" as never);
-          }}
-          style={({ pressed }) => [styles.duniaFab, pressed && styles.btnPressed]}
-          hitSlop={8}
-        >
-          <View pointerEvents="none" style={{ pointerEvents: "none", alignItems: "center", justifyContent: "center" } as any}>
-            <Image
-              source={DUNIA_EMBLEM_IMG}
-              style={{ width: 54, height: 54 }}
-              contentFit="contain"
-            />
-          </View>
-          <View style={styles.duniaFabBadge}>
-            <Text style={styles.duniaFabBadgeText}>RPG</Text>
-          </View>
-        </Pressable>
-
         {/* 3. FLOATING ACTION BUTTON (ADD FRIENDS) - SILVER & RAISED */}
         <Pressable
           accessibilityRole="button"
@@ -1214,7 +1133,7 @@ export default function ProfileScreen() {
           style={({ pressed }) => [styles.socialFab, pressed && styles.btnPressed]}
           hitSlop={8}
         >
-          <View pointerEvents="none" style={{ pointerEvents: "none" } as any}>
+          <View style={{ pointerEvents: "none" } as any}>
             <AppIcon name="account-multiple-plus" size={26} color="#0B0E14" />
           </View>
         </Pressable>
@@ -1236,7 +1155,7 @@ export default function ProfileScreen() {
     <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
       {/* ─── TOAST NOTIFICATION ─── */}
       {toastMessage ? (
-        <View style={styles.toastContainer} pointerEvents="none">
+        <View style={[styles.toastContainer, { pointerEvents: "none" }]}>
           <View style={styles.toastBox}>
             <AppIcon name="information-outline" size={17} color="#38BDF8" />
             <Text style={styles.toastText}>{toastMessage}</Text>
@@ -1252,7 +1171,11 @@ export default function ProfileScreen() {
         {/* ─── 1. BANNER & TOP NAV BAR ─── */}
         <View style={styles.bannerWrapper}>
           <Image
-            source={{ uri: !bannerLoadError && auth.profile?.banner_url ? auth.profile.banner_url : DEFAULT_BANNER }}
+            source={
+              !bannerLoadError && typeof auth.profile?.banner_url === "string" && auth.profile.banner_url.trim().length > 0
+                ? { uri: auth.profile.banner_url }
+                : DEFAULT_BANNER
+            }
             style={styles.bannerImage}
             contentFit="cover"
             transition={200}
@@ -1337,12 +1260,6 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
           </View>
-
-          {/* Plakat Kota & Klan di Banner Kiri-Tengah */}
-          <ProfileCityPlaque
-            userId={auth.user?.id}
-            style={styles.bannerCityPlaque}
-          />
         </View>
 
         {/* ─── 2. USER IDENTITY SECTION ─── */}
@@ -1383,10 +1300,10 @@ export default function ProfileScreen() {
             >
               {/* Camera / Edit Badge Visual */}
               <View
-                pointerEvents="none"
                 style={[
                   styles.avatarEditBadge,
                   !avatarCooldown.canChange && { backgroundColor: "rgba(245, 158, 11, 0.9)" },
+                  { pointerEvents: "none" },
                 ]}
               >
                 <AppIcon
@@ -2052,7 +1969,7 @@ export default function ProfileScreen() {
                   {/* Step Guides */}
                   <View style={styles.googleStepBox}>
                     <Text style={styles.googleStepItem}>1. Tekan Cari ↗ untuk membuka Google Images</Text>
-                    <Text style={styles.googleStepItem}>2. Klik tahan gambar hasil & pilih 'Salin tautan gambar'</Text>
+                    <Text style={styles.googleStepItem}>2. Klik tahan gambar hasil & pilih {"\"Salin tautan gambar\""}</Text>
                     <Text style={styles.googleStepItem}>3. Tempel tautan di bawah ini untuk melihat pratinjau</Text>
                   </View>
 
@@ -2596,11 +2513,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 12,
     gap: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 2 }, opacity: 0.2, radius: 6, elevation: 3 }),
     ...(Platform.OS === "web"
       ? ({
         backdropFilter: "blur(16px)",
@@ -2724,11 +2637,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.11)",
     padding: 16,
     marginBottom: 18,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 3,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 3 }, opacity: 0.25, radius: 8, elevation: 3 }),
     ...(Platform.OS === "web"
       ? ({
         backdropFilter: "blur(16px)",
@@ -2949,11 +2858,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(56, 189, 248, 0.3)",
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 8,
+    ...createShadow({ color: "#000000", offset: { width: 0, height: 4 }, opacity: 0.4, radius: 10, elevation: 8 }),
   },
   toastText: {
     fontFamily: "Nunito-Bold",
@@ -3269,11 +3174,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    shadowColor: "transparent",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
+    ...createShadow({ color: "transparent", offset: { width: 0, height: 0 }, opacity: 0, radius: 0, elevation: 0 }),
     ...(Platform.OS === "web"
       ? ({
         boxShadow: "none",
@@ -3303,11 +3204,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 3,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 4 }, opacity: 0.25, radius: 10, elevation: 3 }),
     ...(Platform.OS === "web"
       ? ({
         backdropFilter: "blur(18px) saturate(180%)",
@@ -3509,11 +3406,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.035)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.07)",
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
+    ...createShadow({ color: "#000000", offset: { width: 0, height: 4 }, opacity: 0.35, radius: 8, elevation: 4 }),
   },
   bookmarkImageWrap: {
     width: "100%",

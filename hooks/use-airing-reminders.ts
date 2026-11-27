@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { AppState, DeviceEventEmitter, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Notifications from "expo-notifications";
+import * as Notifications from "@/lib/notifications-compat";
 import {
   AIRING_REMINDER_MANAGED_KEY,
   NOTIFY_ME_CHANGED_EVENT,

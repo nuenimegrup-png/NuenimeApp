@@ -29,6 +29,7 @@ import { AppIcon } from "@/components/app-icon";
 import { InAppEpisodeAlertMonitor } from "@/hooks/use-in-app-episode-alerts";
 import { useNotifications } from "@/hooks/use-notifications";
 import { useAnirakuAuth } from "@/providers/auth-provider";
+import { createTextShadow, createShadow } from "@/lib/shadow-style";
 import { useExp } from "@/providers/exp-toast-provider";
 import { EXP_RULES } from "@/lib/user-level";
 import { HomeLeaderboardSlider } from "@/components/home-leaderboard-slider";
@@ -848,11 +849,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.12)",
     ...(Platform.OS !== "web"
       ? {
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.45,
-          shadowRadius: 20,
-          elevation: 8,
+          ...createShadow({ color: "#000", offset: { width: 0, height: 10 }, opacity: 0.45, radius: 20, elevation: 8 }),
         }
       : ({
           boxShadow: "0 10px 20px rgba(0, 0, 0, 0.45)",
@@ -921,9 +918,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 19,
     letterSpacing: -0.3,
-    textShadowColor: "rgba(0, 0, 0, 0.9)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
+    ...createTextShadow({ color: "rgba(0, 0, 0, 0.9)", offset: { width: 0, height: 2 }, radius: 8 }),
   },
   heroMetaRow: {
     flexDirection: "row",

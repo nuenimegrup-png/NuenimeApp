@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { Alert, Modal, Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { Alert, Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";

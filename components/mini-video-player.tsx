@@ -1,4 +1,5 @@
 import React, { useRef } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   Platform,
   Pressable,
@@ -52,7 +53,7 @@ export function MiniVideoPlayer() {
     : (Platform.OS === "web" ? 16 : Math.max(insets.bottom, 16));
 
   return (
-    <View style={[styles.floatingWrapper, { bottom: bottomOffset }]} pointerEvents="box-none">
+    <View style={[styles.floatingWrapper, { bottom: bottomOffset, pointerEvents: "box-none" }]}>
       <View style={styles.container}>
         {/* AREA KLIK UNTUK KEMBALI KE LAYAR PENUH (KIRI & TENGAH) */}
         <Pressable
@@ -122,7 +123,7 @@ export function MiniVideoPlayer() {
         </Pressable>
 
         {/* 3. KANAN: KONTROL PLAY/PAUSE & TOMBOL TUTUP (X) - TERPISAH MANDIRI, BUKAN DESCENDANT BUTTON */}
-        <View style={styles.actionsRow} pointerEvents="box-none">
+        <View style={[styles.actionsRow, { pointerEvents: "box-none" }]}>
           {/* Tombol Play / Pause */}
           <Pressable
             accessibilityRole="button"
@@ -192,11 +193,7 @@ const styles = StyleSheet.create({
     gap: 8,
     ...(Platform.OS !== "web"
       ? {
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.45,
-          shadowRadius: 16,
-          elevation: 12,
+          ...createShadow({ color: "#000", offset: { width: 0, height: 6 }, opacity: 0.45, radius: 16, elevation: 12 }),
         }
       : ({
           backdropFilter: "blur(20px)",

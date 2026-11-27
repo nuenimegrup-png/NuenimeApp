@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Image } from "expo-image";
@@ -33,8 +34,6 @@ import {
 } from "@/lib/friends-service";
 import { getTierForLevel } from "@/components/level-progress-modal";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
-import { ProfileCityPlaque } from "@/components/profile-city-plaque";
-import { batchPreloadClanProfiles } from "@/lib/global-chat-service";
 
 const NAME_COLORS = [
   "#38BDF8", // Cyan Sky
@@ -174,11 +173,6 @@ const UserIdentityBlock = React.memo(function UserIdentityBlock({
         <Text style={styles.memberTagText}>{cleanMemberNum}</Text>
       </View>
 
-      {/* 2. Plakat Kota & Klan (DRAKONIA / GELANDANGAN / [CLAN] NamaClan, compact & inline) */}
-      <View style={styles.cityClanRow}>
-        <ProfileCityPlaque userId={userId} compact inlineClan />
-      </View>
-
       {/* 3. Badges Row: Rank Tier Pill + Level Pill */}
       <View style={styles.badgesRow}>
         {activeTier ? (
@@ -276,12 +270,6 @@ export default function ConnectionsScreen() {
       ]);
       setFriends(friendList);
       setRequests(requestList);
-      const allIds = Array.from(
-        new Set([...friendList.map((f) => f.id), ...requestList.map((r) => r.id)])
-      );
-      if (allIds.length > 0) {
-        batchPreloadClanProfiles(allIds).catch(() => {});
-      }
     } catch (err) {
       console.warn("[connections] Error loading data:", err);
     } finally {
@@ -351,9 +339,6 @@ export default function ConnectionsScreen() {
           const res = await searchUsers(searchQuery, currentUserId);
           setSearchResults(res);
           setHasSearched(true);
-          if (res.length > 0) {
-            batchPreloadClanProfiles(res.map((r) => r.id)).catch(() => {});
-          }
         } catch (err) {
           console.warn("[connections] search error:", err);
         } finally {
@@ -374,9 +359,6 @@ export default function ConnectionsScreen() {
       const res = await searchUsers(searchQuery, currentUserId);
       setSearchResults(res);
       setHasSearched(true);
-      if (res.length > 0) {
-        batchPreloadClanProfiles(res.map((r) => r.id)).catch(() => {});
-      }
     } catch (err) {
       console.warn("[connections] search error:", err);
     } finally {
@@ -555,7 +537,8 @@ export default function ConnectionsScreen() {
                   <BorderAvatar
                     size={46}
                     borderId={item.equippedBorder}
-                    avatarUrl={item.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
+                    avatarUrl={item.avatarUrl}
+                    fallbackText={item.displayName}
                   />
                 </View>
 
@@ -612,7 +595,8 @@ export default function ConnectionsScreen() {
                     <BorderAvatar
                       size={46}
                       borderId={item.equippedBorder}
-                      avatarUrl={item.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
+                      avatarUrl={item.avatarUrl}
+                      fallbackText={item.displayName}
                     />
                   </View>
 
@@ -752,7 +736,8 @@ export default function ConnectionsScreen() {
                       <BorderAvatar
                         size={44}
                         borderId={item.equippedBorder}
-                        avatarUrl={item.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
+                        avatarUrl={item.avatarUrl}
+                        fallbackText={item.displayName}
                       />
                     </View>
 
@@ -840,7 +825,8 @@ export default function ConnectionsScreen() {
                   <BorderAvatar
                     size={46}
                     borderId={selectedFriend.equippedBorder}
-                    avatarUrl={selectedFriend.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
+                    avatarUrl={selectedFriend.avatarUrl}
+                    fallbackText={selectedFriend.displayName}
                   />
                 </View>
                 <UserIdentityBlock
@@ -1136,10 +1122,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.09)",
     gap: 10,
-    shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 3,
+    ...createShadow({ color: "#000", opacity: 0.18, radius: 10, elevation: 3 }),
   },
   requestLeft: {
     flex: 1,
@@ -1162,10 +1145,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 10,
-    shadowColor: "#10B981",
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 2,
+    ...createShadow({ color: "#10B981", opacity: 0.35, radius: 6, elevation: 2 }),
   },
   acceptBtnText: {
     fontFamily: "Nunito-Black",
@@ -1237,10 +1217,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(56, 189, 248, 0.4)",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
+    ...createShadow({ color: "#000", opacity: 0.35, radius: 8, elevation: 6 }),
     ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
   },
 

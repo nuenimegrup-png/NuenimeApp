@@ -45,8 +45,7 @@ export const ChatStickerPicker = React.memo(function ChatStickerPicker({
 
   return (
     <View
-      style={[styles.container, !visible && styles.hiddenContainer]}
-      pointerEvents={visible ? "auto" : "none"}
+      style={[styles.container, !visible && styles.hiddenContainer, { pointerEvents: visible ? "auto" : "none" }]}
     >
       {/* ─── Header: Kategori Tabs & Close Button ─── */}
       <View style={styles.headerRow}>

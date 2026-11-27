@@ -1,4 +1,5 @@
 import React from "react";
+import { createShadow } from "@/lib/shadow-style";
 import { View, StyleSheet, StyleProp, ViewStyle } from "react-native";
 import { Image } from "expo-image";
 import Svg, {
@@ -227,7 +228,7 @@ export function LelangItemArt({
             width: size,
             height: size,
             borderColor: item.accentColor,
-            shadowColor: item.accentColor,
+            ...createShadow({ color: item.accentColor }),
           },
           style,
         ]}
@@ -251,7 +252,7 @@ export function LelangItemArt({
           width: size,
           height: size,
           borderColor: item.accentColor,
-          shadowColor: item.accentColor,
+          ...createShadow({ color: item.accentColor }),
         },
         style,
       ]}
@@ -339,10 +340,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 4,
+    ...createShadow({ offset: { width: 0, height: 2 }, opacity: 0.35, radius: 6, elevation: 4 }),
     position: "relative",
   },
   showcaseBannerContainer: {

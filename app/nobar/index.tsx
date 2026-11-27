@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -13,6 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Image } from "expo-image";
@@ -835,7 +835,7 @@ export default function NobarLobbyScreen() {
 
             <Text style={styles.passwordModalTitle}>Room Terkunci</Text>
             <Text style={styles.passwordModalSubtitle}>
-              Room "{targetRoom?.title}" membutuhkan password untuk bergabung.
+              Room &quot;{targetRoom?.title}&quot; membutuhkan password untuk bergabung.
             </Text>
 
             <TextInput

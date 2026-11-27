@@ -1,9 +1,9 @@
 import { memo, useCallback, useEffect, useState } from "react";
+import { createShadow, createTextShadow } from "@/lib/shadow-style";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Alert,
   DimensionValue,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -12,6 +12,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { router, useNavigation } from "expo-router";
@@ -37,14 +38,13 @@ import {
 
 // ─── 5 ASET GAMBAR RESMI DARI USER ───
 const INVENTORY_BG = require("@/assets/images/inventory/inventory-bg.jpg");
-const CLAN_CREST = require("@/assets/images/inventory/clan-crest.png");
 const GACHA_BOOK = require("@/assets/images/inventory/border-magic-book.png");
 const BORDER_WHITE_MAGE = require("@/assets/images/inventory/border-white-mage.png");
 const EFFECT_CRYSTAL_STAR = require("@/assets/images/inventory/crystal-star.png");
 const TUTORIAL_BADGE = require("@/assets/images/inventory/tutorial-badge.png");
 const GACHA_BANNER_BG = INVENTORY_BG;
 
-type MenuKey = "clans" | "gacha" | "avatar_border" | "profile_effects" | "tutorial";
+type MenuKey = "gacha" | "avatar_border" | "profile_effects" | "tutorial";
 
 interface MenuItem {
   id: MenuKey;
@@ -54,14 +54,7 @@ interface MenuItem {
   isComingSoon?: boolean;
 }
 
-// 5 Menu tanpa AniPet, hanya menampilkan aset gambar transparan tanpa background kotak
 const MENU_ITEMS: MenuItem[] = [
-  {
-    id: "clans",
-    title: "Clans",
-    subtitle: "Komunitas & Wilayah",
-    image: CLAN_CREST,
-  },
   {
     id: "gacha",
     title: "Gacha Wallpaper",
@@ -363,13 +356,6 @@ export default function InventoryScreen() {
     }
     if (id === "gacha") {
       router.push("/gacha" as never);
-      return;
-    }
-    if (id === "clans") {
-      router.push({
-        pathname: "/dunia",
-        params: { tab: "klan" },
-      } as never);
       return;
     }
     if (id === "profile_effects") {
@@ -823,18 +809,14 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     textAlign: "center",
     letterSpacing: -0.2,
-    textShadowColor: "rgba(0, 0, 0, 0.85)",
-    textShadowOffset: { width: 0, height: 1.5 },
-    textShadowRadius: 4,
+    ...createTextShadow({ color: "rgba(0, 0, 0, 0.85)", offset: { width: 0, height: 1.5 }, radius: 4 }),
   },
   menuSubtitle: {
     fontFamily: "Nunito-Bold",
     fontSize: 12,
     color: "#CBD5E1",
     textAlign: "center",
-    textShadowColor: "rgba(0, 0, 0, 0.85)",
-    textShadowOffset: { width: 0, height: 1.5 },
-    textShadowRadius: 4,
+    ...createTextShadow({ color: "rgba(0, 0, 0, 0.85)", offset: { width: 0, height: 1.5 }, radius: 4 }),
   },
 
   // ─── CLAN HERO IN MODAL ───
@@ -1214,11 +1196,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 8,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 4 }, opacity: 0.35, radius: 6, elevation: 8 }),
   },
   toastNoticeText: {
     fontFamily: "Nunito-Bold",

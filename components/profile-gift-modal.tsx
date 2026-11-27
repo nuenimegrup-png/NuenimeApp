@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -11,6 +11,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { Image } from "expo-image";
 import { useQueryClient } from "@tanstack/react-query";
 import { AppIcon } from "@/components/app-icon";
@@ -841,11 +842,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "rgba(56, 189, 248, 0.45)",
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.6,
-    shadowRadius: 16,
-    elevation: 10,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 8 }, opacity: 0.6, radius: 16, elevation: 10 }),
   },
 
   // Header

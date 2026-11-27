@@ -43,46 +43,52 @@ export function BroadcastNotificationListener() {
 
   useEffect(() => {
     // Listen real-time broadcast dari Supabase
+    let isMounted = true;
     let channel: ReturnType<typeof supabase.channel> | null = null;
     const channelName = `realtime-broadcast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-    try {
-      channel = supabase
-        .channel(channelName)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "system_configs",
-            filter: "key=eq.broadcast_latest",
-          },
-          async (payload: any) => {
-            if (payload.new && payload.new.value) {
-              try {
-                const val =
-                  typeof payload.new.value === "string"
-                    ? JSON.parse(payload.new.value)
-                    : payload.new.value;
-                if (val && val.id && val.title) {
-                  // Munculkan notifikasi murni di Status Bar HP (di luar aplikasi)
-                  await AsyncStorage.setItem(`nuenime.system_notified.${val.id}`, "1");
-                  void showSystemBarNotification({
-                    title: val.title,
-                    body: val.message || "",
-                    data: { actionUrl: val.actionUrl, type: val.type },
-                  });
-                }
-              } catch {}
+    const timer = setTimeout(() => {
+      if (!isMounted) return;
+      try {
+        channel = supabase
+          .channel(channelName)
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "system_configs",
+              filter: "key=eq.broadcast_latest",
+            },
+            async (payload: any) => {
+              if (payload.new && payload.new.value) {
+                try {
+                  const val =
+                    typeof payload.new.value === "string"
+                      ? JSON.parse(payload.new.value)
+                      : payload.new.value;
+                  if (val && val.id && val.title) {
+                    // Munculkan notifikasi murni di Status Bar HP (di luar aplikasi)
+                    await AsyncStorage.setItem(`nuenime.system_notified.${val.id}`, "1");
+                    void showSystemBarNotification({
+                      title: val.title,
+                      body: val.message || "",
+                      data: { actionUrl: val.actionUrl, type: val.type },
+                    });
+                  }
+                } catch {}
+              }
             }
-          }
-        )
-        .subscribe();
-    } catch (err) {
-      console.warn("[broadcast-listener] Supabase realtime subscription warning:", err);
-    }
+          )
+          .subscribe();
+      } catch (err) {
+        console.warn("[broadcast-listener] Supabase realtime subscription warning:", err);
+      }
+    }, 150);
 
     return () => {
+      isMounted = false;
+      clearTimeout(timer);
       if (channel) {
         try {
           supabase.removeChannel(channel).catch(() => {});

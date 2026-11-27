@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   ActivityIndicator,
   Alert,
@@ -1834,11 +1835,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#10B981",
     paddingVertical: 14,
     borderRadius: 16,
-    shadowColor: "#10B981",
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    ...createShadow({ color: "#10B981", offset: { width: 0, height: 4 }, opacity: 0.3, radius: 10, elevation: 4 }),
     marginTop: 6,
   },
   coPayBtnText: {
@@ -1855,11 +1852,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#8C57FF",
     paddingVertical: 14,
     borderRadius: 16,
-    shadowColor: "#8C57FF",
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    ...createShadow({ color: "#8C57FF", offset: { width: 0, height: 4 }, opacity: 0.3, radius: 10, elevation: 4 }),
     marginTop: 6,
   },
   coTopUpBtnText: {

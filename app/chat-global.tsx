@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, useImperativeHandle } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +23,6 @@ import { ChibiLoading } from "@/components/chibi-loading";
 import { BorderAvatar } from "@/components/border-avatar";
 import { UserVerificationBadge } from "@/components/user-verification-badge";
 import { getTierForLevel } from "@/components/level-progress-modal";
-import { ProfileCityPlaque } from "@/components/profile-city-plaque";
 import { ChatStickerPicker } from "@/components/chat-sticker-picker";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import { getEquippedBorderId } from "@/lib/avatar-borders";
@@ -207,7 +207,8 @@ const ChatMessageItem = React.memo(
           <BorderAvatar
             size={32}
             borderId={item.senderBorder}
-            avatarUrl={item.senderAvatar || "https://images.alphacoders.com/132/1328004.png"}
+            avatarUrl={item.senderAvatar}
+            fallbackText={item.senderName}
           />
         </Pressable>
 
@@ -238,15 +239,6 @@ const ChatMessageItem = React.memo(
               />
 
               <Text style={styles.memberTagText}>{item.senderMemberNumber}</Text>
-            </View>
-
-            {/* 2. Plakat Kota & Klan (DRAKONIA / GELANDANGAN, tanpa banner) */}
-            <View style={styles.cityClanRow}>
-              <ProfileCityPlaque
-                userId={item.senderId}
-                compact
-                inlineClan
-              />
             </View>
 
             {/* 3. Badges Row: Rank Tier Pill + Level Pill */}
@@ -527,7 +519,7 @@ export default function ChatGlobalScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<GlobalChatMessage | null>(null);
-  const [bottomNavTab, setBottomNavTab] = useState<"global" | "clan" | "teman">("global");
+  const [bottomNavTab, setBottomNavTab] = useState<"global" | "teman">("global");
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
   const [showNewMessageBadge, setShowNewMessageBadge] = useState(false);
@@ -1010,18 +1002,11 @@ export default function ChatGlobalScreen() {
   }, []);
 
   // ─── 5. BOTTOM NAVIGATION HANDLER ───
-  const handleBottomTabPress = (tab: "global" | "clan" | "teman") => {
+  const handleBottomTabPress = (tab: "global" | "teman") => {
     hapticLight();
     if (tab === "teman") {
       // Sesuai Aturan 6: Buka fitur Pertemanan yang sudah ada
       router.push("/connections" as never);
-      return;
-    }
-    if (tab === "clan") {
-      router.push({
-        pathname: "/dunia",
-        params: { tab: "klan" },
-      } as never);
       return;
     }
     setBottomNavTab("global");
@@ -1080,8 +1065,8 @@ export default function ChatGlobalScreen() {
                 hapticLight();
                 if (r.comingSoon) {
                   Alert.alert(
-                    "Rekrut Clan",
-                    "Fitur Rekrut Clan sedang dalam tahap pengembangan dan akan segera hadir (Coming Soon)!"
+                    r.label,
+                    "Fitur ini sedang dalam tahap pengembangan dan akan segera hadir (Coming Soon)!"
                   );
                   return;
                 }
@@ -1217,7 +1202,7 @@ export default function ChatGlobalScreen() {
 
           {/* ─── FLOATING SCROLL TO BOTTOM BUTTON DENGAN INDIKATOR PESAN BARU (SELALU DI ATAS NAVBAR KETIK) ─── */}
           {(showScrollBottomBtn || showNewMessageBadge || unreadCountWhileScrolled > 0) && (
-            <View style={styles.scrollToBottomWrap} pointerEvents="box-none">
+            <View style={[styles.scrollToBottomWrap, { pointerEvents: "box-none" }]}>
               <Pressable
                 style={({ pressed }) => [
                   styles.scrollToBottomBtn,
@@ -1319,23 +1304,6 @@ export default function ChatGlobalScreen() {
               ]}
             >
               Global
-            </Text>
-          </Pressable>
-
-          {/* Tab Clan */}
-          <Pressable
-            accessibilityRole="tab"
-            onPress={() => handleBottomTabPress("clan")}
-            style={styles.bottomNavItem}
-          >
-            {bottomNavTab === "clan" && <View style={styles.activeTabIndicatorTop} />}
-            <Text
-              style={[
-                styles.bottomNavText,
-                bottomNavTab === "clan" && styles.bottomNavTextActive,
-              ]}
-            >
-              Clan
             </Text>
           </Pressable>
 
@@ -1526,11 +1494,7 @@ const styles = StyleSheet.create({
   messageCardHighlighted: {
     borderColor: "#38BDF8",
     borderWidth: 1.5,
-    shadowColor: "#38BDF8",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 10,
-    elevation: 8,
+    ...createShadow({ color: "#38BDF8", offset: { width: 0, height: 0 }, opacity: 0.9, radius: 10, elevation: 8 }),
     ...(Platform.OS === "web"
       ? ({
         boxShadow: "0 0 10px rgba(56, 189, 248, 0.6)",
@@ -1852,11 +1816,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(56, 189, 248, 0.45)",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 8,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 4 }, opacity: 0.4, radius: 6, elevation: 8 }),
   },
   scrollToBottomBtnPressed: {
     backgroundColor: "#1F2B3E",

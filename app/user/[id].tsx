@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { Image } from "expo-image";
@@ -35,7 +36,6 @@ import { getTierForLevel } from "@/components/level-progress-modal";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
 import { isSpecialRole } from "@/lib/admin-service";
 import { UserVerificationBadge } from "@/components/user-verification-badge";
-import { ProfileCityPlaque } from "@/components/profile-city-plaque";
 import { ProfileAffinityShowcase } from "@/components/profile-affinity-showcase";
 import { ProfileLikeButton } from "@/components/profile-like-button";
 import { ProfileGiftShowcase } from "@/components/profile-gift-showcase";
@@ -46,8 +46,7 @@ import { animeTitle } from "@/lib/types";
 import { avatarUrl } from "@/lib/aniraku-avatars";
 import { getEquippedBorderId } from "@/lib/avatar-borders";
 
-const DEFAULT_BANNER =
-  "https://imagepaste.org/i/jqbvxwm5.png";
+const DEFAULT_BANNER = require("@/assets/images/inventory/inventory-bg.jpg");
 
 type UserProfileTab = "komentar" | "favorit" | "histori";
 
@@ -590,7 +589,11 @@ export default function PublicUserProfileScreen() {
         {/* ─── 1. BANNER IMMERSIVE PERSIS SCREENSHOT 2 ─── */}
         <View style={styles.bannerWrapper}>
           <Image
-            source={{ uri: targetUser.bannerUrl || DEFAULT_BANNER }}
+            source={
+              typeof targetUser.bannerUrl === "string" && targetUser.bannerUrl.trim().length > 0
+                ? { uri: targetUser.bannerUrl }
+                : DEFAULT_BANNER
+            }
             style={styles.bannerImage}
             contentFit="cover"
             transition={200}
@@ -606,12 +609,6 @@ export default function PublicUserProfileScreen() {
             ]}
             locations={[0, 0.25, 0.65, 0.88, 1]}
             style={StyleSheet.absoluteFillObject}
-          />
-
-          {/* Plakat Kota & Klan di Banner Kiri-Tengah */}
-          <ProfileCityPlaque
-            userId={id}
-            style={styles.bannerCityPlaque}
           />
         </View>
 
@@ -638,7 +635,8 @@ export default function PublicUserProfileScreen() {
             <BorderAvatar
               avatarSize={80}
               borderId={targetUser.equippedBorder}
-              avatarUrl={targetUser.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
+              avatarUrl={targetUser.avatarUrl}
+              fallbackText={targetUser.displayName}
             />
           </View>
 
@@ -647,7 +645,7 @@ export default function PublicUserProfileScreen() {
             <View style={styles.nameRow}>
               {isSpecial && (
                 <Image
-                  source={{ uri: "https://imagepaste.org/i/j4wuxvxq.png" }}
+                  source={{ uri: "https://i.ibb.co.com/sdyN9q4j/10.png" }}
                   style={styles.nameInfinityIcon}
                   contentFit="contain"
                   cachePolicy="memory-disk"
@@ -1496,11 +1494,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(56, 189, 248, 0.3)",
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 8,
+    ...createShadow({ color: "#000000", offset: { width: 0, height: 4 }, opacity: 0.4, radius: 10, elevation: 8 }),
   },
   toastText: {
     fontFamily: "Nunito-Bold",
@@ -1776,11 +1770,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.16,
-    shadowRadius: 6,
-    elevation: 2,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 2 }, opacity: 0.16, radius: 6, elevation: 2 }),
     ...(Platform.OS === "web"
       ? ({
         backdropFilter: "blur(16px)",

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { hasFailedImageUrl, markFailedImageUrl } from "@/components/safe-image";
 import {
   ImageStyle,
   Platform,
@@ -56,15 +57,23 @@ export const BorderAvatar: React.FC<BorderAvatarProps> = React.memo(({
   accessibilityLabel,
   children,
 }) => {
-  const [avatarError, setAvatarError] = useState(false);
+  const [avatarError, setAvatarError] = useState(() => hasFailedImageUrl(avatarUrl));
   const [borderError, setBorderError] = useState(false);
+
+  useEffect(() => {
+    setAvatarError(hasFailedImageUrl(avatarUrl));
+  }, [avatarUrl]);
+
+  useEffect(() => {
+    setBorderError(false);
+  }, [borderId, borderProp]);
 
   // 1. UKURAN AVATAR TETAP SESUAI KOMPONEN PEMANGGIL (TIDAK PERNAH DIUBAH OLEH BORDER)
   const avatarSize = Math.max(16, avatarSizeProp ?? sizeProp ?? 48);
 
   // Cari data border dari ID, direct URL, atau prop
   const isDirectUrl = typeof borderId === "string" && (borderId.startsWith("http://") || borderId.startsWith("https://"));
-  
+
   // State untuk border dinamis jika baru di-input admin dan belum termuat di cache in-memory
   const [asyncBorder, setAsyncBorder] = useState<AvatarBorder | null>(null);
 
@@ -72,22 +81,28 @@ export const BorderAvatar: React.FC<BorderAvatarProps> = React.memo(({
     borderProp ||
     (isDirectUrl
       ? {
-          id: "custom_url",
-          name: "Custom Border",
-          rarity: "Rare" as const,
-          assetUrl: borderId,
-          innerRatio: 0.74,
-          isReleased: true,
-        }
+        id: "custom_url",
+        name: "Custom Border",
+        rarity: "Rare" as const,
+        assetUrl: borderId,
+        innerRatio: 0.74,
+        isReleased: true,
+      }
       : borderId
-      ? getBorderById(borderId)
-      : undefined);
+        ? getBorderById(borderId)
+        : undefined);
 
   const borderData = synchronousBorder || asyncBorder;
+  const legacyAsset = borderId ? LEGACY_BORDER_ASSETS[borderId] : undefined;
+  const borderAssetUrl = borderData?.assetUrl ?? null;
+
+  useEffect(() => {
+    setBorderError(hasFailedImageUrl(borderAssetUrl));
+  }, [borderId, borderProp, borderAssetUrl]);
 
   // Fallback async fetch jika borderId adalah border baru hasil input admin
   useEffect(() => {
-    if (borderId && !synchronousBorder && !isDirectUrl) {
+    if (borderId && !synchronousBorder && !isDirectUrl && !legacyAsset) {
       let isMounted = true;
       getBorderByIdAsync(borderId).then((b) => {
         if (isMounted && b) {
@@ -98,9 +113,8 @@ export const BorderAvatar: React.FC<BorderAvatarProps> = React.memo(({
         isMounted = false;
       };
     }
-  }, [borderId, synchronousBorder, isDirectUrl]);
+  }, [borderId, synchronousBorder, isDirectUrl, legacyAsset]);
 
-  const legacyAsset = borderId ? LEGACY_BORDER_ASSETS[borderId] : undefined;
   const hasActiveBorder = Boolean((borderData && borderData.assetUrl) || legacyAsset);
 
   // 2. BORDER MENYESUAIKAN UKURAN AVATAR (BUKAN SEBALIKNYA)
@@ -135,14 +149,17 @@ export const BorderAvatar: React.FC<BorderAvatarProps> = React.memo(({
           },
         ]}
       >
-        {avatarUrl && !avatarError ? (
+        {avatarUrl && !avatarError && !hasFailedImageUrl(avatarUrl) ? (
           <Image
             source={{ uri: avatarUrl }}
             style={[styles.avatarImage, avatarStyle]}
             contentFit="cover"
             transition={150}
             cachePolicy="memory-disk"
-            onError={() => setAvatarError(true)}
+            onError={() => {
+              markFailedImageUrl(avatarUrl);
+              setAvatarError(true);
+            }}
           />
         ) : (
           <View style={styles.avatarFallback}>
@@ -155,7 +172,7 @@ export const BorderAvatar: React.FC<BorderAvatarProps> = React.memo(({
 
       {/* ─── 2. LAPISAN BORDER (ATAS) ─── */}
       {/* Border diskalakan dan diposisikan mengelilingi avatar */}
-      {hasActiveBorder && !borderError ? (
+      {hasActiveBorder && !borderError && !hasFailedImageUrl(borderAssetUrl) ? (
         <Image
           source={legacyAsset || { uri: borderData!.assetUrl! }}
           style={[
@@ -167,12 +184,15 @@ export const BorderAvatar: React.FC<BorderAvatarProps> = React.memo(({
               top: borderTop,
               transform: borderData?.scale ? [{ scale: borderData.scale }] : undefined,
             },
+            { pointerEvents: "none" } as any,
           ]}
           contentFit="contain"
-          pointerEvents="none"
           transition={150}
           cachePolicy="memory-disk"
-          onError={() => setBorderError(true)}
+          onError={() => {
+            markFailedImageUrl(borderAssetUrl);
+            setBorderError(true);
+          }}
         />
       ) : null}
 
@@ -202,6 +222,8 @@ export const BorderAvatar: React.FC<BorderAvatarProps> = React.memo(({
 
   return renderContent();
 });
+
+BorderAvatar.displayName = "BorderAvatar";
 
 const styles = StyleSheet.create({
   container: {

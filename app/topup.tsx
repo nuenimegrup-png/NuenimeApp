@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -11,6 +10,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { router } from "expo-router";
@@ -1165,7 +1165,7 @@ export default function TopUpScreen() {
                       </Text>
                       <Text style={styles.stepText}>5. Setelah membayar, kembali ke Nuenime.</Text>
                       <Text style={styles.stepText}>
-                        6. Klik tombol "Sudah Bayar, Lanjut Konfirmasi" di bawah.
+                        6. Klik tombol &quot;Sudah Bayar, Lanjut Konfirmasi&quot; di bawah.
                       </Text>
                     </View>
                   ) : (
@@ -1184,7 +1184,7 @@ export default function TopUpScreen() {
                       </Text>
                       <Text style={styles.stepText}>5. Kembali ke aplikasi Nuenime.</Text>
                       <Text style={styles.stepText}>
-                        6. Klik tombol "Sudah Bayar, Lanjut Konfirmasi" di bawah.
+                        6. Klik tombol &quot;Sudah Bayar, Lanjut Konfirmasi&quot; di bawah.
                       </Text>
                     </View>
                   )}
@@ -1372,7 +1372,7 @@ export default function TopUpScreen() {
                         </View>
                         <Text style={styles.lockedNoticeDesc}>
                           Transaksi sedang menunggu keputusan Admin Nuenime. Pilihan paket baru dikunci
-                          untuk mencegah duplikasi transaksi. Tekan "Periksa Status Pembayaran" jika
+                          untuk mencegah duplikasi transaksi. Tekan &quot;Periksa Status Pembayaran&quot; jika
                           Admin telah mengonfirmasi pembayaran Anda.
                         </Text>
                       </View>

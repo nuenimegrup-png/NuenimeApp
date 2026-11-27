@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 import { isSpecialRole } from "@/lib/admin-service";
-import { batchPreloadClanProfiles } from "@/lib/global-chat-service";
 
 export interface ProfileLikeResult {
   count: number;
@@ -188,7 +187,6 @@ export async function getTopProfileLikesLeaderboard(
       }));
 
       likesLeaderboardCache = { data: results, timestamp: Date.now() };
-      batchPreloadClanProfiles(results.map((r) => r.userId)).catch(() => {});
       return results;
     }
   } catch (err) {
@@ -254,7 +252,6 @@ export async function getTopProfileLikesLeaderboard(
     }));
 
     likesLeaderboardCache = { data: results, timestamp: Date.now() };
-    batchPreloadClanProfiles(results.map((r) => r.userId)).catch(() => {});
     return results;
   } catch (fallbackErr) {
     console.warn("[getTopProfileLikesLeaderboard] Fallback error:", fallbackErr);

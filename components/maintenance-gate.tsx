@@ -12,6 +12,7 @@ import {
 import { Image } from "expo-image";
 import { usePathname } from "expo-router";
 import { AppIcon } from "@/components/app-icon";
+import { createShadow } from "@/lib/shadow-style";
 import { useAnirakuAuth } from "@/providers/auth-provider";
 import {
   getAdminMaintenanceConfig,
@@ -26,6 +27,7 @@ export function MaintenanceGate() {
     message: "Server sedang dalam pemeliharaan berkala untuk peningkatan performa.",
   });
   const [isChecking, setIsChecking] = useState(false);
+  const [iconError, setIconError] = useState(false);
   const pathname = usePathname();
   const auth = useAnirakuAuth();
 
@@ -45,63 +47,69 @@ export function MaintenanceGate() {
     checkMaintenance();
 
     // Listen real-time dari Supabase jika admin mengaktifkan / menonaktifkan maintenance
+    let isMounted = true;
     let channel: ReturnType<typeof supabase.channel> | null = null;
     const channelName = `realtime-maintenance-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-    try {
-      channel = supabase
-        .channel(channelName)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "system_configs",
-            filter: "key=eq.maintenance_mode",
-          },
-          (payload: any) => {
-            if (payload.new && payload.new.value) {
-              const val = typeof payload.new.value === "string" ? JSON.parse(payload.new.value) : payload.new.value;
-              const isActive = Boolean(val.is_active ?? val.isActive);
-              setConfig({
-                isActive,
-                message: val.message || "Server sedang dalam pemeliharaan berkala.",
-                endsAt: val.ends_at ?? val.endsAt ?? null,
-                iconUrl: val.icon_url ?? val.iconUrl ?? undefined,
-                primaryButtonText: val.primary_button_text ?? val.primaryButtonText ?? undefined,
-                secondaryButtonText: val.secondary_button_text ?? val.secondaryButtonText ?? undefined,
-                secondaryButtonUrl: val.secondary_button_url ?? val.secondaryButtonUrl ?? undefined,
-              });
+    const timer = setTimeout(() => {
+      if (!isMounted) return;
+      try {
+        channel = supabase
+          .channel(channelName)
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "system_configs",
+              filter: "key=eq.maintenance_mode",
+            },
+            (payload: any) => {
+              if (payload.new && payload.new.value) {
+                const val = typeof payload.new.value === "string" ? JSON.parse(payload.new.value) : payload.new.value;
+                const isActive = Boolean(val.is_active ?? val.isActive);
+                setConfig({
+                  isActive,
+                  message: val.message || "Server sedang dalam pemeliharaan berkala.",
+                  endsAt: val.ends_at ?? val.endsAt ?? null,
+                  iconUrl: val.icon_url ?? val.iconUrl ?? undefined,
+                  primaryButtonText: val.primary_button_text ?? val.primaryButtonText ?? undefined,
+                  secondaryButtonText: val.secondary_button_text ?? val.secondaryButtonText ?? undefined,
+                  secondaryButtonUrl: val.secondary_button_url ?? val.secondaryButtonUrl ?? undefined,
+                });
 
-              if (isActive) {
-                void showSystemBarNotification({
-                  title: "Pemeliharaan Sistem Nuenime 🛠️",
-                  body: val.message || "Server sedang dalam pemeliharaan berkala untuk peningkatan performa.",
-                  channelId: "nuenime_maintenance",
-                  channelName: "Status Pemeliharaan Sistem",
-                });
-              } else {
-                // 🔔 Notifikasi pemeliharaan selesai!
-                void showSystemBarNotification({
-                  title: "Pemeliharaan Selesai! 🎉",
-                  body: "Server Nuenime telah kembali online dan siap digunakan. Selamat menonton kembali!",
-                  channelId: "nuenime_maintenance",
-                  channelName: "Status Pemeliharaan Sistem",
-                });
+                if (isActive) {
+                  void showSystemBarNotification({
+                    title: "Pemeliharaan Sistem Nuenime 🛠️",
+                    body: val.message || "Server sedang dalam pemeliharaan berkala untuk peningkatan performa.",
+                    channelId: "nuenime_maintenance",
+                    channelName: "Status Pemeliharaan Sistem",
+                  });
+                } else {
+                  // 🔔 Notifikasi pemeliharaan selesai!
+                  void showSystemBarNotification({
+                    title: "Pemeliharaan Selesai! 🎉",
+                    body: "Server Nuenime telah kembali online dan siap digunakan. Selamat menonton kembali!",
+                    channelId: "nuenime_maintenance",
+                    channelName: "Status Pemeliharaan Sistem",
+                  });
+                }
               }
             }
-          }
-        )
-        .subscribe();
-    } catch (err) {
-      console.warn("[maintenance-gate] Supabase realtime subscription warning:", err);
-    }
+          )
+          .subscribe();
+      } catch (err) {
+        console.warn("[maintenance-gate] Supabase realtime subscription warning:", err);
+      }
+    }, 150);
 
     return () => {
+      isMounted = false;
+      clearTimeout(timer);
       if (channel) {
         try {
-          supabase.removeChannel(channel).catch(() => {});
-        } catch {}
+          supabase.removeChannel(channel).catch(() => { });
+        } catch { }
       }
     };
   }, [checkMaintenance]);
@@ -125,12 +133,17 @@ export function MaintenanceGate() {
       <StatusBar barStyle="light-content" backgroundColor="#0B0E14" />
       <View style={styles.card}>
         <View style={styles.iconWrapper}>
-          <Image
-            source={{ uri: config.iconUrl || "https://i.ibb.co.com/rKCB8QhB/maintenance-nuenime.png" }}
-            style={styles.maintenanceIcon}
-            contentFit="contain"
-            transition={200}
-          />
+          {!iconError ? (
+            <Image
+              source={{ uri: config.iconUrl || "https://i.ibb.co.com/rKCB8QhB/maintenance-nuenime.png" }}
+              style={styles.maintenanceIcon}
+              contentFit="contain"
+              transition={200}
+              onError={() => setIconError(true)}
+            />
+          ) : (
+            <AppIcon name="construct-outline" size={44} color="#F59E0B" />
+          )}
         </View>
 
         <Text style={styles.badge}>MAINTENANCE MODE</Text>
@@ -167,7 +180,7 @@ export function MaintenanceGate() {
             style={styles.discordBtn}
             onPress={() =>
               Linking.openURL(config.secondaryButtonUrl || "https://discord.gg/nuenime").catch(
-                () => {}
+                () => { }
               )
             }
             activeOpacity={0.78}
@@ -201,11 +214,7 @@ const styles = StyleSheet.create({
     borderColor: "#1E2738",
     padding: 26,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.6,
-    shadowRadius: 24,
-    elevation: 12,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 12 }, opacity: 0.6, radius: 24, elevation: 12 }),
   },
   iconWrapper: {
     width: 88,

@@ -1,9 +1,9 @@
 import React, { useState, useCallback, useEffect, useMemo } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -13,6 +13,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -22,7 +23,6 @@ import { AppIcon } from "@/components/app-icon";
 import { ChibiLoading } from "@/components/chibi-loading";
 import { BorderAvatar } from "@/components/border-avatar";
 import { UserVerificationBadge } from "@/components/user-verification-badge";
-import { ProfileCityPlaque } from "@/components/profile-city-plaque";
 import { getTierForLevel } from "@/components/level-progress-modal";
 import { getEquippedBorderId, getEquippedBorderStorageKey } from "@/lib/avatar-borders";
 import { useAnirakuAuth } from "@/providers/auth-provider";
@@ -211,139 +211,149 @@ const PodiumCard = React.memo(function PodiumCard({
       : null;
 
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
+    <View
+      style={[
         styles.podiumCard,
         isFirst ? styles.podiumCardFirst : styles.podiumCardOther,
-        pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
       ]}
     >
-      {/* ── Avatar Wrapper with Crown & Close Rank Badge ── */}
-      <View style={styles.podiumAvatarWrapper}>
-        {/* Crown on top */}
-        <View style={styles.crownContainer}>
-          <Text style={[styles.podiumCrown, isFirst && styles.podiumCrownFirst]}>
-            {crownIcon(entry.rank)}
-          </Text>
-        </View>
-
-        {/* Sync Avatar + Equipped Border */}
-        <BorderAvatar
-          avatarUrl={entry.avatarUrl}
-          borderId={activeBorder}
-          fallbackText={entry.displayName}
-          avatarSize={avatarSize}
-        />
-
-        {/* Rank Badge (1, 2, 3) DI DEKAT AVATAR (kanan bawah avatar) */}
-        <View
-          style={[
-            styles.nearAvatarRankBadge,
-            {
-              backgroundColor: clr,
-              bottom: isFirst ? -2 : -4,
-              right: isFirst ? -2 : -4,
-            },
-          ]}
-        >
-          <Text style={styles.nearAvatarRankText}>{entry.rank}</Text>
-        </View>
-      </View>
-
-      {/* ── User Name & Verification Badge ── */}
-      <View style={styles.podiumNameRow}>
-        <Text style={[styles.podiumName, { color: nameColor }]} numberOfLines={1} ellipsizeMode="tail">
-          {entry.displayName}
-        </Text>
-        <UserVerificationBadge role={entry.role} isVip={entry.isVip} size={11} />
-      </View>
-
-      {/* Member # Tag */}
-      {cleanMemberNum != null && (
-        <Text style={styles.podiumMember}>{cleanMemberNum}</Text>
-      )}
-
-      {/* ── Plakat Kota & Klan (Podium Mode Presisi & Pas) ── */}
-      <View style={styles.podiumCityClanRow}>
-        <ProfileCityPlaque
-          userId={entry.userId}
-          podium
-        />
-      </View>
-
-      {/* ── Badges Row: Rank Tier Pill + Level Pill (Persis Chat Global & LeaderRow) ── */}
-      <View style={styles.podiumBadgesRow}>
-        {currentTier ? (
-          <View
-            style={[
-              styles.podiumRankTierPill,
-              {
-                backgroundColor: tierPillColors.bg,
-                borderColor: tierPillColors.border,
-              },
-            ]}
-          >
-            <Text style={[styles.podiumRankTierText, { color: tierPillColors.text }]}>
-              {currentTier.name.toUpperCase()}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Lihat profil ${entry.displayName}`}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.podiumTapSection,
+          pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+        ]}
+      >
+        {/* ── Avatar Wrapper with Crown & Close Rank Badge ── */}
+        <View style={styles.podiumAvatarWrapper}>
+          {/* Crown on top */}
+          <View style={styles.crownContainer}>
+            <Text style={[styles.podiumCrown, isFirst && styles.podiumCrownFirst]}>
+              {crownIcon(entry.rank)}
             </Text>
           </View>
-        ) : null}
 
-        <View
-          style={[
-            styles.podiumLevelPill,
-            isInfinity && {
-              backgroundColor: "rgba(239, 68, 68, 0.12)",
-              borderColor: "rgba(239, 68, 68, 0.35)",
-            },
-          ]}
-        >
-          {currentTier?.imageUrl && (
-            <Image
-              source={{ uri: currentTier.imageUrl }}
-              style={styles.podiumTierPillIcon}
-              contentFit="contain"
-              cachePolicy="memory-disk"
-            />
-          )}
-          <Text
+          {/* Sync Avatar + Equipped Border */}
+          <BorderAvatar
+            avatarUrl={entry.avatarUrl}
+            borderId={activeBorder}
+            fallbackText={entry.displayName}
+            avatarSize={avatarSize}
+          />
+
+          {/* Rank Badge (1, 2, 3) DI DEKAT AVATAR (kanan bawah avatar) */}
+          <View
             style={[
-              styles.podiumLevelPillText,
-              isInfinity && {
-                color: "#EF4444",
-                fontFamily: "Nunito-Black",
+              styles.nearAvatarRankBadge,
+              {
+                backgroundColor: clr,
+                bottom: isFirst ? -2 : -4,
+                right: isFirst ? -2 : -4,
               },
             ]}
-            numberOfLines={1}
           >
-            {isInfinity ? "∞" : `Lvl ${entry.level}`}
-          </Text>
+            <Text style={styles.nearAvatarRankText}>{entry.rank}</Text>
+          </View>
         </View>
-      </View>
 
-      {/* ── XP / Like / Charisma Counter ── */}
-      {isCharismaMode ? (
-        <View style={styles.podiumCharismaBadge}>
-          <Text style={styles.podiumCharismaText}>
-            {formatCharisma(entry.xpGained)} Charisma
+        {/* ── User Name & Verification Badge ── */}
+        <View style={styles.podiumNameRow}>
+          <Text style={[styles.podiumName, { color: nameColor }]} numberOfLines={1} ellipsizeMode="tail">
+            {entry.displayName}
           </Text>
+          <UserVerificationBadge role={entry.role} isVip={entry.isVip} size={11} />
         </View>
-      ) : isLikesMode ? (
-        <View style={styles.podiumLikeBadge}>
-          <AppIcon name="thumb-up" size={11} color="#EF4444" />
-          <Text style={styles.podiumLikeText}>
-            {formatLikeCount(entry.xpGained)}
-          </Text>
+
+        {/* Member # Tag */}
+        {cleanMemberNum != null && (
+          <Text style={styles.podiumMember}>{cleanMemberNum}</Text>
+        )}
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Detail peringkat ${entry.displayName}`}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.podiumTapSection,
+          pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+        ]}
+      >
+        {/* ── Badges Row: Rank Tier Pill + Level Pill (Persis Chat Global & LeaderRow) ── */}
+        <View style={styles.podiumBadgesRow}>
+          {currentTier ? (
+            <View
+              style={[
+                styles.podiumRankTierPill,
+                {
+                  backgroundColor: tierPillColors.bg,
+                  borderColor: tierPillColors.border,
+                },
+              ]}
+            >
+              <Text style={[styles.podiumRankTierText, { color: tierPillColors.text }]}>
+                {currentTier.name.toUpperCase()}
+              </Text>
+            </View>
+          ) : null}
+
+          <View
+            style={[
+              styles.podiumLevelPill,
+              isInfinity && {
+                backgroundColor: "rgba(239, 68, 68, 0.12)",
+                borderColor: "rgba(239, 68, 68, 0.35)",
+              },
+            ]}
+          >
+            {currentTier?.imageUrl && (
+              <Image
+                source={{ uri: currentTier.imageUrl }}
+                style={styles.podiumTierPillIcon}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+              />
+            )}
+            <Text
+              style={[
+                styles.podiumLevelPillText,
+                isInfinity && {
+                  color: "#EF4444",
+                  fontFamily: "Nunito-Black",
+                },
+              ]}
+              numberOfLines={1}
+            >
+              {isInfinity ? "∞" : `Lvl ${entry.level}`}
+            </Text>
+          </View>
         </View>
-      ) : (
-        <View style={styles.podiumXpPill}>
-          <Text style={[styles.podiumXp, { color: clr }]}>
-            {formatXp(entry.xpGained)}
-          </Text>
-        </View>
-      )}
-    </Pressable>
+
+        {/* ── XP / Like / Charisma Counter ── */}
+        {isCharismaMode ? (
+          <View style={styles.podiumCharismaBadge}>
+            <Text style={styles.podiumCharismaText}>
+              {formatCharisma(entry.xpGained)} Charisma
+            </Text>
+          </View>
+        ) : isLikesMode ? (
+          <View style={styles.podiumLikeBadge}>
+            <AppIcon name="thumb-up" size={11} color="#EF4444" />
+            <Text style={styles.podiumLikeText}>
+              {formatLikeCount(entry.xpGained)}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.podiumXpPill}>
+            <Text style={[styles.podiumXp, { color: clr }]}>
+              {formatXp(entry.xpGained)}
+            </Text>
+          </View>
+        )}
+      </Pressable>
+    </View>
   );
 });
 
@@ -387,32 +397,41 @@ const LeaderRow = React.memo(function LeaderRow({
       : null;
 
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.leaderRow,
-        pressed && { opacity: 0.82, transform: [{ scale: 0.985 }] },
-      ]}
-    >
-      {/* Rank Number */}
-      <View style={styles.rowRankBox}>
-        <Text style={[styles.rowRank, { color: clr }]}>#{entry.rank}</Text>
-      </View>
+    <View style={styles.leaderRow}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Lihat profil ${entry.displayName}`}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.rowLeftTap,
+          pressed && { opacity: 0.82, transform: [{ scale: 0.985 }] },
+        ]}
+      >
+        {/* Rank Number */}
+        <View style={styles.rowRankBox}>
+          <Text style={[styles.rowRank, { color: clr }]}>#{entry.rank}</Text>
+        </View>
 
-      {/* Avatar with Equipped Border */}
-      <View style={styles.rowAvatarBox}>
-        <BorderAvatar
-          avatarUrl={entry.avatarUrl}
-          borderId={activeBorder}
-          fallbackText={entry.displayName}
-          avatarSize={44}
-        />
-      </View>
+        {/* Avatar with Equipped Border */}
+        <View style={styles.rowAvatarBox}>
+          <BorderAvatar
+            avatarUrl={entry.avatarUrl}
+            borderId={activeBorder}
+            fallbackText={entry.displayName}
+            avatarSize={44}
+          />
+        </View>
+      </Pressable>
 
       {/* Info Name, Clan Plaque, Badges Row */}
       <View style={styles.rowInfo}>
         {/* 1. Header: Display Name + Verification Checkmark + Member Tag */}
-        <View style={styles.rowNameRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Lihat detail ${entry.displayName}`}
+          onPress={onPress}
+          style={({ pressed }) => [styles.rowNameRow, pressed && { opacity: 0.8 }]}
+        >
           <Text style={[styles.rowName, { color: nameColor }]} numberOfLines={1}>
             {entry.displayName}
           </Text>
@@ -424,19 +443,15 @@ const LeaderRow = React.memo(function LeaderRow({
           {cleanMemberNum != null && (
             <Text style={styles.rowMember}>{cleanMemberNum}</Text>
           )}
-        </View>
-
-        {/* 2. Plakat Kota & Klan (DRAKONIA / GELANDANGAN, persis chat global) */}
-        <View style={styles.rowCityClanRow}>
-          <ProfileCityPlaque
-            userId={entry.userId}
-            compact
-            inlineClan
-          />
-        </View>
+        </Pressable>
 
         {/* 3. Badges Row: Rank Tier Pill + Level Pill (Persis Chat Global) */}
-        <View style={styles.rowBadges}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Lihat level ${entry.displayName}`}
+          onPress={onPress}
+          style={({ pressed }) => [styles.rowBadges, pressed && { opacity: 0.8 }]}
+        >
           {currentTier ? (
             <View
               style={[
@@ -483,28 +498,35 @@ const LeaderRow = React.memo(function LeaderRow({
               {isInfinity ? "∞" : `Lvl ${entry.level.toLocaleString()}`}
             </Text>
           </View>
-        </View>
+        </Pressable>
       </View>
 
       {/* XP / Like / Charisma Counter */}
-      {isCharismaMode ? (
-        <View style={styles.rowCharismaBox}>
-          <Text style={styles.rowCharismaText}>
-            {formatCharisma(entry.xpGained)}
-          </Text>
-          <Text style={styles.rowCharismaSubText}>Charisma</Text>
-        </View>
-      ) : isLikesMode ? (
-        <View style={styles.rowLikeBox}>
-          <AppIcon name="thumb-up" size={13} color="#EF4444" />
-          <Text style={styles.rowLikeText}>{formatLikeCount(entry.xpGained)}</Text>
-        </View>
-      ) : (
-        <View style={styles.rowXpBox}>
-          <Text style={[styles.rowXpText, { color: clr }]}>{formatXp(entry.xpGained)}</Text>
-        </View>
-      )}
-    </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Skor ${entry.displayName}`}
+        onPress={onPress}
+        style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+      >
+        {isCharismaMode ? (
+          <View style={styles.rowCharismaBox}>
+            <Text style={styles.rowCharismaText}>
+              {formatCharisma(entry.xpGained)}
+            </Text>
+            <Text style={styles.rowCharismaSubText}>Charisma</Text>
+          </View>
+        ) : isLikesMode ? (
+          <View style={styles.rowLikeBox}>
+            <AppIcon name="thumb-up" size={13} color="#EF4444" />
+            <Text style={styles.rowLikeText}>{formatLikeCount(entry.xpGained)}</Text>
+          </View>
+        ) : (
+          <View style={styles.rowXpBox}>
+            <Text style={[styles.rowXpText, { color: clr }]}>{formatXp(entry.xpGained)}</Text>
+          </View>
+        )}
+      </Pressable>
+    </View>
   );
 });
 
@@ -1124,7 +1146,8 @@ export default function LeaderboardScreen() {
                   <BorderAvatar
                     size={46}
                     borderId={seBorder}
-                    avatarUrl={selectedEntry.avatarUrl || "https://images.alphacoders.com/132/1328004.png"}
+                    avatarUrl={selectedEntry.avatarUrl}
+                    fallbackText={selectedEntry.displayName}
                   />
                   <View style={styles.sheetFriendInfo}>
                     <View style={styles.sheetNameRow}>
@@ -1137,15 +1160,6 @@ export default function LeaderboardScreen() {
                         size={14}
                       />
                       <Text style={styles.sheetMemberNumberText}>{seCleanNum}</Text>
-                    </View>
-
-                    {/* Plakat Kota & Klan (DRAKONIA / GELANDANGAN) */}
-                    <View style={{ marginVertical: 3 }}>
-                      <ProfileCityPlaque
-                        userId={selectedEntry.userId}
-                        compact
-                        inlineClan
-                      />
                     </View>
 
                     <View style={styles.sheetBadgesRow}>
@@ -1434,6 +1448,10 @@ const styles = StyleSheet.create({
     maxWidth: "33.33%",
     overflow: "hidden",
   },
+  podiumTapSection: {
+    width: "100%",
+    alignItems: "center",
+  },
   podiumCardFirst: {
     paddingTop: 6,
     minHeight: 250,
@@ -1473,11 +1491,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 2,
     borderColor: "#0B0E14",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 4,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 2 }, opacity: 0.3, radius: 3, elevation: 4 }),
     zIndex: 10,
   },
   nearAvatarRankText: {
@@ -1652,6 +1666,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 10,
+    gap: 10,
+  },
+  rowLeftTap: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
   },
   rowRankBox: {

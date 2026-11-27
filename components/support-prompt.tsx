@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { AppState, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { createShadow } from "@/lib/shadow-style";
+import { AppState, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { Image } from "expo-image";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { usePathname } from "expo-router";
@@ -204,11 +206,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "rgba(56, 189, 248, 0.28)",
     padding: 22,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.6,
-    shadowRadius: 20,
-    elevation: 12,
+    ...createShadow({ color: "#000000", offset: { width: 0, height: 8 }, opacity: 0.6, radius: 20, elevation: 12 }),
   },
   topRow: {
     flexDirection: "row",
@@ -282,11 +280,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(56, 189, 248, 0.35)",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#38BDF8",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 4,
+    ...createShadow({ color: "#38BDF8", offset: { width: 0, height: 4 }, opacity: 0.25, radius: 10, elevation: 4 }),
   },
   logoImage: {
     width: 44,
@@ -323,11 +317,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 16,
-    shadowColor: "#0284C7",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
+    ...createShadow({ color: "#0284C7", offset: { width: 0, height: 4 }, opacity: 0.35, radius: 8, elevation: 4 }),
     ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
   },
   primaryBtnContent: {

@@ -6,7 +6,6 @@ import {
   Dimensions,
   FlatList,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,6 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { Image } from "expo-image";
@@ -96,16 +96,16 @@ export default function NobarWatchPartyScreen() {
           active = false;
           document.removeEventListener("visibilitychange", handleVisibilityChange);
           try {
-            sentinel?.release?.().catch(() => {});
-          } catch {}
+            sentinel?.release?.().catch(() => { });
+          } catch { }
         };
       }
     } else {
-      activateKeepAwakeAsync("nobar-watch-party").catch(() => {});
+      activateKeepAwakeAsync("nobar-watch-party").catch(() => { });
       return () => {
         try {
-          void deactivateKeepAwake("nobar-watch-party").catch(() => {});
-        } catch {}
+          void deactivateKeepAwake("nobar-watch-party").catch(() => { });
+        } catch { }
       };
     }
   }, []);
@@ -376,7 +376,7 @@ export default function NobarWatchPartyScreen() {
           event,
           payload,
         });
-      } catch {}
+      } catch { }
     }
   }, []);
 
@@ -986,8 +986,8 @@ export default function NobarWatchPartyScreen() {
                 {voice.isConnecting
                   ? "Hubung..."
                   : voice.isMicOn
-                  ? "Mic ON"
-                  : "On Mic"}
+                    ? "Mic ON"
+                    : "On Mic"}
               </Text>
             </Pressable>
 
@@ -1067,7 +1067,7 @@ export default function NobarWatchPartyScreen() {
 
             {/* Buffering Indicator */}
             {isBuffering && (
-              <View style={styles.bufferingOverlay} pointerEvents="none">
+              <View style={[styles.bufferingOverlay, { pointerEvents: "none" }]}>
                 <ActivityIndicator size="small" color="#CBD5E1" />
               </View>
             )}
@@ -1082,7 +1082,7 @@ export default function NobarWatchPartyScreen() {
 
             {/* ── PLAYER CONTROLS OVERLAY (SILVER THEME) ── */}
             {showControls && (
-              <View style={styles.controlsOverlay} pointerEvents="box-none">
+              <View style={[styles.controlsOverlay, { pointerEvents: "box-none" }]}>
                 {/* Backdrop transparan agar tap di area kosong menutup kontrol */}
                 <Pressable
                   accessibilityRole="button"
@@ -1092,7 +1092,7 @@ export default function NobarWatchPartyScreen() {
                 />
 
                 {/* Host vs Viewer Indicator Bar */}
-                <View style={styles.controlsTopRow} pointerEvents="box-none">
+                <View style={[styles.controlsTopRow, { pointerEvents: "box-none" }]}>
                   {isHost ? (
                     <View style={styles.hostControlBadge}>
                       <AppIcon name="crown" size={12} color="#E2E8F0" />
@@ -1131,7 +1131,7 @@ export default function NobarWatchPartyScreen() {
                 </View>
 
                 {/* Center Action Buttons */}
-                <View style={styles.controlsCenterRow} pointerEvents="box-none">
+                <View style={[styles.controlsCenterRow, { pointerEvents: "box-none" }]}>
                   {isHost ? (
                     <>
                       <Pressable
@@ -1179,7 +1179,7 @@ export default function NobarWatchPartyScreen() {
                 </View>
 
                 {/* Bottom Scrubber & Time Row */}
-                <View style={styles.controlsBottomRow} pointerEvents="box-none">
+                <View style={[styles.controlsBottomRow, { pointerEvents: "box-none" }]}>
                   <Text style={styles.timeLabel}>
                     {formatTime(currentTime)} / {formatTime(duration)}
                   </Text>

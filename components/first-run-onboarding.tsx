@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createShadow, createTextShadow } from "@/lib/shadow-style";
 import {
   Animated,
   Easing,
@@ -313,7 +314,7 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
   return (
     <View style={styles.overlay} {...panResponder.panHandlers}>
       {/* ─── DARK GREYISH-BLACK BACKGROUND (ABU-ABU KEHITAMAN) ─── */}
-      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      <View style={[StyleSheet.absoluteFillObject, { pointerEvents: "none" }]}>
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "#16171C" }]} />
         {/* Soft Ambient Light Halo behind center */}
         <Animated.View
@@ -328,7 +329,7 @@ export function FirstRunOnboarding({ onComplete }: { onComplete: () => void }) {
 
       {/* ─── VERTICAL FROSTED GLASS INDICATOR (RIGHT EDGE) ─── */}
       {currentPage !== 1 && (
-        <View style={styles.indicatorContainer} pointerEvents="box-none">
+        <View style={[styles.indicatorContainer, { pointerEvents: "box-none" }]}>
           <View style={styles.indicatorGlassTrack}>
             {[0, 1, 2].map((idx) => {
               const isActive = idx === currentPage;
@@ -667,11 +668,7 @@ const styles = StyleSheet.create({
           filter: "blur(60px)",
         } as any)
       : {
-          shadowColor: "#000000",
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.2,
-          shadowRadius: 60,
-          elevation: 2,
+          ...createShadow({ color: "#000000", offset: { width: 0, height: 0 }, opacity: 0.2, radius: 60, elevation: 2 }),
         }),
   },
 
@@ -699,11 +696,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: "#10B981",
     marginRight: 7,
-    shadowColor: "#10B981",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 5,
-    elevation: 2,
+    ...createShadow({ color: "#10B981", offset: { width: 0, height: 0 }, opacity: 0.9, radius: 5, elevation: 2 }),
   },
   topVersionText: {
     fontFamily: "Nunito-Bold",
@@ -773,11 +766,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 24,
     // Nol bayangan (tanpa shadow atau elevation)
-    shadowColor: "transparent",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
+    ...createShadow({ color: "transparent", offset: { width: 0, height: 0 }, opacity: 0, radius: 0, elevation: 0 }),
     ...(Platform.OS === "web" ? ({ boxShadow: "none" } as any) : {}),
   },
   cleanButtonInner: {
@@ -965,11 +954,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "transparent",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
+    ...createShadow({ color: "transparent", offset: { width: 0, height: 0 }, opacity: 0, radius: 0, elevation: 0 }),
     ...(Platform.OS === "web"
       ? ({
           boxShadow: "none",
@@ -1019,9 +1004,7 @@ const styles = StyleSheet.create({
     fontSize: 35,
     letterSpacing: 0.5,
     textAlign: "center",
-    textShadowColor: "rgba(226, 232, 240, 0.25)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+    ...createTextShadow({ color: "rgba(226, 232, 240, 0.25)", offset: { width: 0, height: 1 }, radius: 6 }),
   },
   readySubtitle: {
     fontFamily: "Nunito-SemiBold",
@@ -1114,11 +1097,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 3,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 4 }, opacity: 0.2, radius: 8, elevation: 3 }),
     ...(Platform.OS === "web"
       ? ({
           backdropFilter: "blur(18px) saturate(160%)",
@@ -1193,10 +1172,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3,
     alignItems: "center",
     gap: 7,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 4 }, opacity: 0.2, radius: 6 }),
     ...(Platform.OS === "web"
       ? ({
           backdropFilter: "blur(16px)",
@@ -1211,9 +1187,7 @@ const styles = StyleSheet.create({
   indicatorActive: {
     height: 26,
     backgroundColor: "#E2E8F0",
-    shadowColor: "#E2E8F0",
-    shadowOpacity: 0.9,
-    shadowRadius: 6,
+    ...createShadow({ color: "#E2E8F0", opacity: 0.9, radius: 6 }),
   },
   indicatorInactive: {
     height: 6,

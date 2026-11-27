@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Platform, Pressable, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
-import { Stack } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import * as SplashScreen from "expo-splash-screen";
@@ -52,6 +52,18 @@ Text.defaultProps = { ...(Text.defaultProps ?? {}), style: [{ fontFamily: "Nunit
 TextInput.defaultProps = { ...(TextInput.defaultProps ?? {}), style: [{ fontFamily: "Nunito-SemiBold" }, TextInput.defaultProps?.style].filter(Boolean) };
 
 export const unstable_settings = { anchor: "(tabs)" };
+
+function WebFocusBlurOnRouteChange() {
+  const pathname = usePathname();
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const active = document.activeElement;
+    if (active && typeof (active as HTMLElement).blur === "function" && active !== document.body) {
+      (active as HTMLElement).blur();
+    }
+  }, [pathname]);
+  return null;
+}
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -107,6 +119,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AppProviders>
           <ChoiceSheetProvider>
+            <WebFocusBlurOnRouteChange />
             <StartupPrefetcher />
             <AiringReminderScheduler />
             <StatusBar style="light" translucent backgroundColor="transparent" />
@@ -174,8 +187,8 @@ export function ErrorBoundary({ error, retry }: { error: Error; retry: () => voi
           borderRadius: 160,
           backgroundColor: "rgba(56, 189, 248, 0.04)",
           top: "28%",
+          pointerEvents: "none",
         }}
-        pointerEvents="none"
       />
 
       {/* Liquid Glass Container Card */}

@@ -2,12 +2,12 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { Image } from "expo-image";
 import { AppIcon } from "@/components/app-icon";
 import { nothing } from "@/components/nothing-ui";
@@ -34,6 +34,7 @@ export function GiftClaimModal({
 }: GiftClaimModalProps) {
   const auth = useAnirakuAuth();
   const [claiming, setClaiming] = useState(false);
+  const [giftIconError, setGiftIconError] = useState(false);
   const [borderInfo, setBorderInfo] = useState<AvatarBorder | null>(() => {
     return gift && gift.giftType === "border" ? getBorderById(gift.giftValue) || null : null;
   });
@@ -105,12 +106,17 @@ export function GiftClaimModal({
 
           {/* Gift Icon Header */}
           <View style={styles.iconCircle}>
-            <Image
-              source={{ uri: "https://i.ibb.co.com/BHDK5h9W/hadiah-icon.png" }}
-              style={{ width: 64, height: 64 }}
-              contentFit="contain"
-              transition={200}
-            />
+            {!giftIconError ? (
+              <Image
+                source={{ uri: "https://i.ibb.co.com/BHDK5h9W/hadiah-icon.png" }}
+                style={{ width: 64, height: 64 }}
+                contentFit="contain"
+                transition={200}
+                onError={() => setGiftIconError(true)}
+              />
+            ) : (
+              <AppIcon name="gift-outline" size={40} color="#F59E0B" />
+            )}
           </View>
 
           {/* Title & Date */}
@@ -146,7 +152,8 @@ export function GiftClaimModal({
                   <BorderAvatar
                     size={48}
                     borderId={gift.giftValue}
-                    avatarUrl={auth.profile?.avatar_url || "https://images.alphacoders.com/132/1328004.png"}
+                    avatarUrl={auth.profile?.avatar_url}
+                    fallbackText={auth.profile?.display_name || "N"}
                   />
                 </View>
                 <View style={{ flex: 1, gap: 2 }}>

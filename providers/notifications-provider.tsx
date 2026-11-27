@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { DeviceEventEmitter, Platform, Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Notifications from "expo-notifications";
+import * as Notifications from "@/lib/notifications-compat";
 import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {

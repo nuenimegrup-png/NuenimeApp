@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { createTextShadow } from "@/lib/shadow-style";
 import { StyleSheet, Text, View } from "react-native";
 import type { SubtitleCue } from "@/lib/subtitle-parser";
 import type { SubtitlePreferences } from "@/lib/subtitle-preferences";
@@ -25,7 +26,7 @@ export function SubtitleRenderer({ cues, preferences }: Props) {
   const outline = preferences.outlineThickness;
 
   return (
-    <View style={styles.container} pointerEvents="none">
+    <View style={[styles.container, { pointerEvents: "none" }]}>
       {activeCues.map((cue) => (
         <View
           key={cue.id}
@@ -43,7 +44,7 @@ export function SubtitleRenderer({ cues, preferences }: Props) {
               {
                 fontSize: preferences.fontSize,
                 fontFamily,
-                textShadowRadius: outline,
+                ...createTextShadow({ radius: outline }),
               },
             ]}
           >
@@ -74,7 +75,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontWeight: "700",
     lineHeight: 20,
-    textShadowColor: "rgba(0,0,0,0.9)",
-    textShadowOffset: { width: 0, height: 1 },
+    ...createTextShadow({ color: "rgba(0,0,0,0.9)", offset: { width: 0, height: 1 } }),
   },
 });

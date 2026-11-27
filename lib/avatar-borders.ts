@@ -167,50 +167,75 @@ export function getBorderById(id: string | null | undefined): AvatarBorder | und
   return _liveCatalogMap.get(id);
 }
 
+const _inFlightBorderFetches = new Map<string, Promise<AvatarBorder | undefined>>();
+const _missingBorderCache = new Map<string, number>();
+const MISSING_BORDER_TTL_MS = 60_000;
+
 // Lookup asinkronus (query langsung ke Supabase jika item belum ada di memori lokal)
 export async function getBorderByIdAsync(id: string | null | undefined): Promise<AvatarBorder | undefined> {
   if (!id) return undefined;
   const existing = getBorderById(id);
   if (existing && existing.assetUrl) return existing;
 
-  try {
-    const { data } = await supabase
-      .from("avatar_borders_config")
-      .select("id, name, rarity, asset_url, inner_ratio, offset_x, offset_y, scale, is_released, description, price_crystal, is_active")
-      .eq("id", id)
-      .maybeSingle();
+  const missingAt = _missingBorderCache.get(id);
+  if (missingAt !== undefined && Date.now() - missingAt < MISSING_BORDER_TTL_MS) {
+    return existing;
+  }
 
-    if (data) {
-      const rawRarity = String(data.rarity || "Normal").trim();
-      const normRarity = (rawRarity.charAt(0).toUpperCase() + rawRarity.slice(1).toLowerCase()) as BorderRarity;
-      const safeRarity = BORDER_RARITIES.includes(normRarity)
-        ? normRarity
-        : BORDER_RARITIES.includes(rawRarity as BorderRarity)
-        ? (rawRarity as BorderRarity)
-        : rawRarity.toLowerCase().includes("legend")
-        ? "Legends"
-        : "Normal";
+  const inFlight = _inFlightBorderFetches.get(id);
+  if (inFlight) return inFlight;
 
-      const border: AvatarBorder = {
-        id: data.id,
-        name: data.name || "Border Avatar",
-        rarity: safeRarity,
-        assetUrl: data.asset_url ?? null,
-        innerRatio: Number(data.inner_ratio) > 0 ? Number(data.inner_ratio) : 0.74,
-        offsetX: Number(data.offset_x) || 0.0,
-        offsetY: Number(data.offset_y) || 0.0,
-        scale: Number(data.scale) > 0 ? Number(data.scale) : 1.0,
-        isReleased: data.is_released ?? true,
-        description: data.description || `Border avatar tingkat ${safeRarity}`,
-        priceCrystal: data.price_crystal ? Number(data.price_crystal) : null,
-        isActive: data.is_active ?? true,
-      };
-      _liveCatalogMap.set(border.id, border);
-      return border;
+  const fetchPromise = (async (): Promise<AvatarBorder | undefined> => {
+    try {
+      const { data } = await supabase
+        .from("avatar_borders_config")
+        .select("id, name, rarity, asset_url, inner_ratio, offset_x, offset_y, scale, is_released, description, price_crystal, is_active")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (data) {
+        const rawRarity = String(data.rarity || "Normal").trim();
+        const normRarity = (rawRarity.charAt(0).toUpperCase() + rawRarity.slice(1).toLowerCase()) as BorderRarity;
+        const safeRarity = BORDER_RARITIES.includes(normRarity)
+          ? normRarity
+          : BORDER_RARITIES.includes(rawRarity as BorderRarity)
+          ? (rawRarity as BorderRarity)
+          : rawRarity.toLowerCase().includes("legend")
+          ? "Legends"
+          : "Normal";
+
+        const border: AvatarBorder = {
+          id: data.id,
+          name: data.name || "Border Avatar",
+          rarity: safeRarity,
+          assetUrl: data.asset_url ?? null,
+          innerRatio: Number(data.inner_ratio) > 0 ? Number(data.inner_ratio) : 0.74,
+          offsetX: Number(data.offset_x) || 0.0,
+          offsetY: Number(data.offset_y) || 0.0,
+          scale: Number(data.scale) > 0 ? Number(data.scale) : 1.0,
+          isReleased: data.is_released ?? true,
+          description: data.description || `Border avatar tingkat ${safeRarity}`,
+          priceCrystal: data.price_crystal ? Number(data.price_crystal) : null,
+          isActive: data.is_active ?? true,
+        };
+        _missingBorderCache.delete(id);
+        _liveCatalogMap.set(border.id, border);
+        return border;
+      }
+      _missingBorderCache.set(id, Date.now());
+    } catch {
+      _missingBorderCache.set(id, Date.now());
     }
-  } catch {}
 
-  return existing;
+    return existing;
+  })();
+
+  _inFlightBorderFetches.set(id, fetchPromise);
+  try {
+    return await fetchPromise;
+  } finally {
+    _inFlightBorderFetches.delete(id);
+  }
 }
 
 export function updateLiveBorderInCache(border: AvatarBorder) {

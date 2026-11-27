@@ -57,26 +57,6 @@ export function useComments(animeId?: number, episodeNumber?: number) {
     const { data: profiles, error: profilesError } = await supabase.from("profiles").select("id, username, display_name, avatar_url, banner_url, member_number, level, role, is_vip, equipped_border").in("id", authorIds);
     if (profilesError) return rows.map((comment) => ({ ...comment, author: null }));
 
-    // Pre-seed keanggotaan klan & kota ke React Query cache agar plakat instan 0ms tanpa loading
-    try {
-      const { data: clanMembers } = await supabase
-        .from("rpg_clan_members")
-        .select("user_id, role, status, rpg_clans(id, name, tag, city_id, level, logo_url, status)")
-        .in("user_id", authorIds)
-        .eq("status", "active");
-
-      clanMembers?.forEach((m) => {
-        const rawClan = (m as any).rpg_clans;
-        const joinedClan = Array.isArray(rawClan) ? rawClan[0] : rawClan;
-        if (joinedClan && joinedClan.status !== "disbanded") {
-          queryClient.setQueryData(["user-clan-profile-banner", m.user_id], {
-            clan: joinedClan,
-            role: m.role,
-          });
-        }
-      });
-    } catch {}
-
     const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
     return rows.map((comment) => ({ ...comment, author: profileById.get(comment.user_id) ?? null }));
   } });
@@ -96,26 +76,6 @@ export function useComments(animeId?: number, episodeNumber?: number) {
     if (!authorIds.length) return rows.map((comment) => ({ ...comment, author: null }));
     const { data: profiles, error: profilesError } = await supabase.from("profiles").select("id, username, display_name, avatar_url, banner_url, member_number, level, role, is_vip, equipped_border").in("id", authorIds);
     if (profilesError) return rows.map((comment) => ({ ...comment, author: null }));
-
-    // Pre-seed keanggotaan klan & kota ke React Query cache agar plakat instan 0ms tanpa loading
-    try {
-      const { data: clanMembers } = await supabase
-        .from("rpg_clan_members")
-        .select("user_id, role, status, rpg_clans(id, name, tag, city_id, level, logo_url, status)")
-        .in("user_id", authorIds)
-        .eq("status", "active");
-
-      clanMembers?.forEach((m) => {
-        const rawClan = (m as any).rpg_clans;
-        const joinedClan = Array.isArray(rawClan) ? rawClan[0] : rawClan;
-        if (joinedClan && joinedClan.status !== "disbanded") {
-          queryClient.setQueryData(["user-clan-profile-banner", m.user_id], {
-            clan: joinedClan,
-            role: m.role,
-          });
-        }
-      });
-    } catch {}
 
     const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
     return rows.map((comment) => ({ ...comment, author: profileById.get(comment.user_id) ?? null }));

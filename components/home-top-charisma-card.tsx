@@ -12,7 +12,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppIcon } from "@/components/app-icon";
 import { BorderAvatar } from "@/components/border-avatar";
 import { UserVerificationBadge } from "@/components/user-verification-badge";
-import { ProfileCityPlaque } from "@/components/profile-city-plaque";
 import { getTierForLevel } from "@/components/level-progress-modal";
 import {
   getTopCharismaLeaderboard,
@@ -22,7 +21,8 @@ import {
 import { supabase } from "@/lib/supabase";
 import { hapticLight } from "@/lib/haptics";
 import { isSpecialRole } from "@/lib/admin-service";
-import { Image } from "expo-image";
+import { SafeImage } from "@/components/safe-image";
+import { createShadow } from "@/lib/shadow-style";
 
 const GOLD = "#F59E0B";
 const SILVER = "#CBD5E1";
@@ -65,8 +65,10 @@ function crownIcon(rank: number): string | null {
 // ── Podium Item Mini Card untuk Top Charisma ────────────────────────────────
 const HomeCharismaPodiumItem = React.memo(function HomeCharismaPodiumItem({
   entry,
+  onPressLeaderboard,
 }: {
   entry: ProfileCharismaLeaderboardEntry;
+  onPressLeaderboard: () => void;
 }) {
   const isFirst = entry.rank === 1;
   const clr = rankColor(entry.rank);
@@ -81,78 +83,90 @@ const HomeCharismaPodiumItem = React.memo(function HomeCharismaPodiumItem({
         isFirst ? styles.podiumItemFirst : styles.podiumItemOther,
       ]}
     >
-      {/* Crown on top */}
-      <View style={styles.crownWrapper}>
-        <Text style={[styles.crownText, isFirst && styles.crownTextFirst]}>
-          {crownIcon(entry.rank)}
-        </Text>
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Buka Leaderboard Charisma - ${entry.displayName}`}
+        onPress={onPressLeaderboard}
+        style={({ pressed }) => [styles.podiumTapSection, pressed && { opacity: 0.78 }]}
+      >
+        {/* Crown on top */}
+        <View style={styles.crownWrapper}>
+          <Text style={[styles.crownText, isFirst && styles.crownTextFirst]}>
+            {crownIcon(entry.rank)}
+          </Text>
+        </View>
 
-      {/* Avatar + Border + Rank Badge */}
-      <View style={styles.avatarContainer}>
-        <BorderAvatar
-          avatarUrl={entry.avatarUrl}
-          borderId={entry.equippedBorder}
-          fallbackText={entry.displayName}
-          avatarSize={avatarSize}
-        />
+        {/* Avatar + Border + Rank Badge */}
+        <View style={styles.avatarContainer}>
+          <BorderAvatar
+            avatarUrl={entry.avatarUrl}
+            borderId={entry.equippedBorder}
+            fallbackText={entry.displayName}
+            avatarSize={avatarSize}
+          />
 
-        {/* Rank Number Badge (1, 2, 3) */}
+          {/* Rank Number Badge (1, 2, 3) */}
+          <View
+            style={[
+              styles.nearAvatarBadge,
+              {
+                backgroundColor: clr,
+                bottom: isFirst ? -2 : -4,
+                right: isFirst ? -2 : -4,
+              },
+            ]}
+          >
+            <Text style={styles.nearAvatarText}>{entry.rank}</Text>
+          </View>
+        </View>
+
+        {/* User Name & Verification Badge */}
+        <View style={styles.nameRow}>
+          <Text style={[styles.userName, { color: nameColor }]} numberOfLines={1}>
+            {entry.displayName}
+          </Text>
+          <UserVerificationBadge role={entry.role} isVip={entry.isVip} size={10} />
+        </View>
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Lihat peringkat Charisma ${entry.displayName}`}
+        onPress={onPressLeaderboard}
+        style={({ pressed }) => [styles.podiumTapSection, pressed && { opacity: 0.78 }]}
+      >
+        {/* Level Tier Badge */}
         <View
           style={[
-            styles.nearAvatarBadge,
+            styles.tierPill,
             {
-              backgroundColor: clr,
-              bottom: isFirst ? -2 : -4,
-              right: isFirst ? -2 : -4,
+              borderColor: `${currentTier.color}35`,
+              backgroundColor: `${currentTier.color}15`,
             },
           ]}
         >
-          <Text style={styles.nearAvatarText}>{entry.rank}</Text>
+          <SafeImage
+            source={currentTier.imageUrl}
+            style={styles.tierIcon}
+            contentFit="contain"
+            transition={150}
+            fallbackIconName="shield-star"
+            fallbackIconSize={10}
+            fallbackIconColor={currentTier.color}
+          />
+          <Text style={[styles.tierText, { color: currentTier.color }]}>
+            {isInfinity ? "∞" : `Lv.${entry.level}`}
+          </Text>
         </View>
-      </View>
 
-      {/* User Name & Verification Badge */}
-      <View style={styles.nameRow}>
-        <Text style={[styles.userName, { color: nameColor }]} numberOfLines={1}>
-          {entry.displayName}
-        </Text>
-        <UserVerificationBadge role={entry.role} isVip={entry.isVip} size={10} />
-      </View>
-
-      {/* Plakat Kota & Klan */}
-      <View style={styles.homeCityClanRow}>
-        <ProfileCityPlaque userId={entry.userId} podium />
-      </View>
-
-      {/* Level Tier Badge */}
-      <View
-        style={[
-          styles.tierPill,
-          {
-            borderColor: `${currentTier.color}35`,
-            backgroundColor: `${currentTier.color}15`,
-          },
-        ]}
-      >
-        <Image
-          source={{ uri: currentTier.imageUrl }}
-          style={styles.tierIcon}
-          contentFit="contain"
-          transition={150}
-        />
-        <Text style={[styles.tierText, { color: currentTier.color }]}>
-          {isInfinity ? "∞" : `Lv.${entry.level}`}
-        </Text>
-      </View>
-
-      {/* Charisma Count Badge */}
-      <View style={styles.charismaCountPill}>
-        <Text style={styles.charismaCountText}>
-          {formatCharisma(entry.charismaCount)}
-        </Text>
-        <Text style={styles.charismaSubText}>Charisma</Text>
-      </View>
+        {/* Charisma Count Badge */}
+        <View style={styles.charismaCountPill}>
+          <Text style={styles.charismaCountText}>
+            {formatCharisma(entry.charismaCount)}
+          </Text>
+          <Text style={styles.charismaSubText}>Charisma</Text>
+        </View>
+      </Pressable>
     </View>
   );
 });
@@ -183,26 +197,30 @@ export const HomeTopCharismaCard = React.memo(function HomeTopCharismaCard() {
       queryClient.invalidateQueries({ queryKey: ["home-top-charisma-leaderboard"] });
     };
 
-    try {
-      channel = supabase
-        .channel(channelName)
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "user_profile_gifts" },
-          throttledInvalidate
-        )
-        .subscribe();
-    } catch (err) {
-      console.warn("[home-top-charisma] Supabase realtime subscription warning:", err);
-    }
+    const timer = setTimeout(() => {
+      if (!isMounted) return;
+      try {
+        channel = supabase
+          .channel(channelName)
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "user_profile_gifts" },
+            throttledInvalidate
+          )
+          .subscribe();
+      } catch (err) {
+        console.warn("[home-top-charisma] Supabase realtime subscription warning:", err);
+      }
+    }, 150);
 
     return () => {
       isMounted = false;
+      clearTimeout(timer);
       if (channel) {
         try {
           void channel.unsubscribe();
           void supabase.removeChannel(channel);
-        } catch {}
+        } catch { }
       }
     };
   }, [queryClient]);
@@ -217,10 +235,10 @@ export const HomeTopCharismaCard = React.memo(function HomeTopCharismaCard() {
     top3.length >= 3
       ? [top3[1], top3[0], top3[2]]
       : top3.length === 2
-      ? [top3[1], top3[0], null]
-      : top3.length === 1
-      ? [null, top3[0], null]
-      : [];
+        ? [top3[1], top3[0], null]
+        : top3.length === 1
+          ? [null, top3[0], null]
+          : [];
 
   const handleOpenCharismaLeaderboard = () => {
     hapticLight();
@@ -265,20 +283,19 @@ export const HomeTopCharismaCard = React.memo(function HomeTopCharismaCard() {
           </Text>
         </Pressable>
       ) : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Buka Leaderboard Charisma"
-          onPress={handleOpenCharismaLeaderboard}
-          style={styles.podiumRow}
-        >
+        <View style={styles.podiumRow}>
           {podiumOrder.map((entry, idx) =>
             entry ? (
-              <HomeCharismaPodiumItem key={entry.userId} entry={entry} />
+              <HomeCharismaPodiumItem
+                key={entry.userId}
+                entry={entry}
+                onPressLeaderboard={handleOpenCharismaLeaderboard}
+              />
             ) : (
               <View key={`empty-${idx}`} style={styles.podiumItemEmpty} />
             )
           )}
-        </Pressable>
+        </View>
       )}
     </View>
   );
@@ -298,8 +315,8 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     ...(Platform.OS === "web"
       ? ({
-          cursor: "pointer",
-        } as any)
+        cursor: "pointer",
+      } as any)
       : {}),
   },
 
@@ -388,6 +405,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 4,
   },
+  podiumTapSection: {
+    width: "100%",
+    alignItems: "center",
+  },
   podiumItemFirst: {
     backgroundColor: "rgba(245, 158, 11, 0.05)",
     borderWidth: 1,
@@ -433,11 +454,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1.5,
     borderColor: "#0B0E14",
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.35,
-    shadowRadius: 1.5,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 1 }, opacity: 0.35, radius: 1.5, elevation: 3 }),
     zIndex: 10,
   },
   nearAvatarText: {

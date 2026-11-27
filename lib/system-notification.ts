@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import * as Notifications from "expo-notifications";
+import * as Notifications from "@/lib/notifications-compat";
 
 export interface SystemBarNotificationOptions {
   title: string;

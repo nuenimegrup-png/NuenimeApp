@@ -1,4 +1,5 @@
 import { StyleSheet } from "react-native";
+import { createShadow } from "@/lib/shadow-style";
 import { nothing } from "@/components/nothing-ui";
 
 export const chrome = StyleSheet.create({
@@ -128,10 +129,7 @@ export const chrome = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: "#FFF",
     elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 1 }, opacity: 0.3, radius: 2 }),
   },
   actionRail: {
     flexDirection: "row",
@@ -175,10 +173,7 @@ export const chrome = StyleSheet.create({
     justifyContent: "center",
     marginHorizontal: 3,
     elevation: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 2 }, opacity: 0.3, radius: 4 }),
   },
   lockedOverlay: {
     ...StyleSheet.absoluteFillObject,

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   ActivityIndicator,
   AppState,
   Linking,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -11,6 +11,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 
@@ -500,11 +501,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.09)",
     padding: 20,
     gap: 14,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.55,
-    shadowRadius: 24,
-    elevation: 24,
+    ...createShadow({ color: "#000000", offset: { width: 0, height: 12 }, opacity: 0.55, radius: 24, elevation: 24 }),
   },
   closeBtn: {
     position: "absolute",
@@ -814,10 +811,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.25)",
     borderRadius: 14,
     elevation: 0,
-    shadowColor: "transparent",
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    shadowOffset: { width: 0, height: 0 },
+    ...createShadow({ color: "transparent", offset: { width: 0, height: 0 }, opacity: 0, radius: 0 }),
     ...(Platform.OS === "web"
       ? ({
         backdropFilter: "blur(14px)",
@@ -842,10 +836,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: "rgba(255, 255, 255, 0.05)",
     elevation: 0,
-    shadowColor: "transparent",
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    shadowOffset: { width: 0, height: 0 },
+    ...createShadow({ color: "transparent", offset: { width: 0, height: 0 }, opacity: 0, radius: 0 }),
     ...(Platform.OS === "web"
       ? ({
         backdropFilter: "blur(14px)",

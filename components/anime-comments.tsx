@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import { router } from "expo-router";
 import {
   ActivityIndicator,
@@ -25,7 +26,6 @@ import { BorderAvatar } from "@/components/border-avatar";
 import { getEquippedBorderId } from "@/lib/avatar-borders";
 import { UserVerificationBadge } from "@/components/user-verification-badge";
 import { getTierForLevel } from "@/components/level-progress-modal";
-import { ProfileCityPlaque } from "@/components/profile-city-plaque";
 import { hapticLight } from "@/lib/haptics";
 import {
   checkDiscussionCooldown,
@@ -211,15 +211,6 @@ function CommentAuthor({ comment }: { comment: SharedComment }) {
           {memberTag ? (
             <Text style={styles.memberTagText}>{memberTag}</Text>
           ) : null}
-        </View>
-
-        {/* Baris 2: Plakat Kota & Klan (Posisinya seragam di bawah nama, persis DRAKONIA / GELANDANGAN) */}
-        <View style={styles.cityClanRow}>
-          <ProfileCityPlaque
-            userId={comment.user_id}
-            compact
-            inlineClan
-          />
         </View>
 
         {/* Baris 3: Rank Tier Pill (e.g. GOLD) + Level Pill (Lvl 11) + Timestamp */}
@@ -1279,11 +1270,7 @@ const styles = StyleSheet.create({
   },
   commentCardWithBanner: {
     borderColor: "rgba(255, 255, 255, 0.14)",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 4,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 4 }, opacity: 0.35, radius: 10, elevation: 4 }),
   },
   commentBannerOverlay: {
     ...StyleSheet.absoluteFillObject,

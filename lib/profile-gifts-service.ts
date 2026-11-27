@@ -2,7 +2,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 import { getCrystalBalance, deductCrystalBalance } from "@/lib/topup-service";
 import { isSpecialRole } from "@/lib/admin-service";
-import { batchPreloadClanProfiles } from "@/lib/global-chat-service";
 
 export type GiftCurrency = "crystal" | "coin";
 export type GiftRarity = "common" | "rare" | "epic" | "legendary";
@@ -612,7 +611,6 @@ export async function getTopCharismaLeaderboard(
       }));
 
       charismaLeaderboardCache = { data: results, timestamp: Date.now() };
-      batchPreloadClanProfiles(results.map((r) => r.userId)).catch(() => {});
       return results;
     }
   } catch (err) {
@@ -681,7 +679,6 @@ export async function getTopCharismaLeaderboard(
     }));
 
     charismaLeaderboardCache = { data: results, timestamp: Date.now() };
-    batchPreloadClanProfiles(results.map((r) => r.userId)).catch(() => {});
     return results;
   } catch (err) {
     console.warn("[getTopCharismaLeaderboard] Fallback error:", err);

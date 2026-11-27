@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { FilterChipGroup } from "@/components/filter-chip-group";
 import { AppIcon } from "@/components/app-icon";
 import {

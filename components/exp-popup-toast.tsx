@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   Animated,
   Platform,
@@ -84,7 +85,7 @@ export const ExpPopupToast = memo(function ExpPopupToast({
   const isLevelUp = Boolean(data.levelUp && (data.oldLevel ?? 0) < data.level);
 
   return (
-    <View style={styles.toastWrapper} pointerEvents="box-none">
+    <View style={[styles.toastWrapper, { pointerEvents: "box-none" }]}>
       <Animated.View
         style={[
           styles.container,
@@ -181,11 +182,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    elevation: 12,
+    ...createShadow({ color: "#000000", offset: { width: 0, height: 10 }, opacity: 0.5, radius: 18, elevation: 12 }),
   },
   levelUpBanner: {
     flexDirection: "row",

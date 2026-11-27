@@ -91,13 +91,13 @@ export const ProfileAffinityShowcase: React.FC<ProfileAffinityShowcaseProps> = R
             toValue: 1.15,
             duration: 1100,
             easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
+            useNativeDriver: Platform.OS !== "web",
           }),
           Animated.timing(pulseAnim, {
             toValue: 1,
             duration: 1100,
             easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
+            useNativeDriver: Platform.OS !== "web",
           }),
         ])
       );

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
-  Modal,
   View,
   Text,
   StyleSheet,
@@ -9,6 +9,7 @@ import {
   ScrollView,
   Platform,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppIcon } from "@/components/app-icon";
 import { useAnirakuAuth } from "@/providers/auth-provider";
@@ -259,11 +260,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingTop: 20,
     paddingBottom: 22,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 10,
+    ...createShadow({ color: "#000", offset: { width: 0, height: 10 }, opacity: 0.5, radius: 20, elevation: 10 }),
   },
   headerRow: {
     flexDirection: "row",

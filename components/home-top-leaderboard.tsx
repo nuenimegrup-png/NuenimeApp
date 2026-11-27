@@ -7,13 +7,12 @@ import {
   Text,
   View,
 } from "react-native";
-import { Image } from "expo-image";
+import { SafeImage } from "@/components/safe-image";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppIcon } from "@/components/app-icon";
 import { BorderAvatar } from "@/components/border-avatar";
 import { UserVerificationBadge } from "@/components/user-verification-badge";
-import { ProfileCityPlaque } from "@/components/profile-city-plaque";
 import { getTierForLevel } from "@/components/level-progress-modal";
 import { getLeaderboard, formatXp, type LeaderboardEntry } from "@/lib/leaderboard-service";
 import { supabase } from "@/lib/supabase";
@@ -59,7 +58,13 @@ function crownIcon(rank: number): string | null {
 }
 
 // ── Podium Item Mini Card ───────────────────────────────────────────────────
-const HomePodiumItem = React.memo(function HomePodiumItem({ entry }: { entry: LeaderboardEntry }) {
+const HomePodiumItem = React.memo(function HomePodiumItem({
+  entry,
+  onPressLeaderboard,
+}: {
+  entry: LeaderboardEntry;
+  onPressLeaderboard: () => void;
+}) {
   const isFirst = entry.rank === 1;
   const clr = rankColor(entry.rank);
   const avatarSize = isFirst ? 52 : 42;
@@ -73,78 +78,87 @@ const HomePodiumItem = React.memo(function HomePodiumItem({ entry }: { entry: Le
         isFirst ? styles.podiumItemFirst : styles.podiumItemOther,
       ]}
     >
-      {/* Crown on top */}
-      <View style={styles.crownWrapper}>
-        <Text style={[styles.crownText, isFirst && styles.crownTextFirst]}>
-          {crownIcon(entry.rank)}
-        </Text>
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Buka Top Leaderboard - ${entry.displayName}`}
+        onPress={onPressLeaderboard}
+        style={({ pressed }) => [styles.podiumTapSection, pressed && { opacity: 0.78 }]}
+      >
+        {/* Crown on top */}
+        <View style={styles.crownWrapper}>
+          <Text style={[styles.crownText, isFirst && styles.crownTextFirst]}>
+            {crownIcon(entry.rank)}
+          </Text>
+        </View>
 
-      {/* Avatar + Border + Rank Badge menempel di kanan bawah */}
-      <View style={styles.avatarContainer}>
-        <BorderAvatar
-          avatarUrl={entry.avatarUrl}
-          borderId={entry.equippedBorder}
-          fallbackText={entry.displayName}
-          avatarSize={avatarSize}
-        />
+        {/* Avatar + Border + Rank Badge menempel di kanan bawah */}
+        <View style={styles.avatarContainer}>
+          <BorderAvatar
+            avatarUrl={entry.avatarUrl}
+            borderId={entry.equippedBorder}
+            fallbackText={entry.displayName}
+            avatarSize={avatarSize}
+          />
 
-        {/* Rank Number Badge (1, 2, 3) */}
+          {/* Rank Number Badge (1, 2, 3) */}
+          <View
+            style={[
+              styles.nearAvatarBadge,
+              {
+                backgroundColor: clr,
+                bottom: isFirst ? -2 : -4,
+                right: isFirst ? -2 : -4,
+              },
+            ]}
+          >
+            <Text style={styles.nearAvatarText}>{entry.rank}</Text>
+          </View>
+        </View>
+
+        {/* User Name & Verification Badge */}
+        <View style={styles.nameRow}>
+          <Text style={[styles.userName, { color: nameColor }]} numberOfLines={1}>
+            {entry.displayName}
+          </Text>
+          <UserVerificationBadge role={entry.role} isVip={entry.isVip} size={10} />
+        </View>
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Lihat XP ${entry.displayName}`}
+        onPress={onPressLeaderboard}
+        style={({ pressed }) => [styles.podiumTapSection, pressed && { opacity: 0.78 }]}
+      >
+        {/* Level Tier Badge with Official Tier Icon */}
         <View
           style={[
-            styles.nearAvatarBadge,
+            styles.tierPill,
             {
-              backgroundColor: clr,
-              bottom: isFirst ? -2 : -4,
-              right: isFirst ? -2 : -4,
+              borderColor: `${currentTier.color}35`,
+              backgroundColor: `${currentTier.color}15`,
             },
           ]}
         >
-          <Text style={styles.nearAvatarText}>{entry.rank}</Text>
+          <SafeImage
+            source={currentTier.imageUrl}
+            style={styles.tierIcon}
+            contentFit="contain"
+            transition={150}
+            fallbackIconName="shield-star"
+            fallbackIconSize={10}
+            fallbackIconColor={currentTier.color}
+          />
+          <Text style={[styles.tierText, { color: currentTier.color }]}>
+            {isInfinity ? "∞" : `Lv.${entry.level}`}
+          </Text>
         </View>
-      </View>
 
-      {/* User Name & Verification Badge */}
-      <View style={styles.nameRow}>
-        <Text style={[styles.userName, { color: nameColor }]} numberOfLines={1}>
-          {entry.displayName}
+        {/* XP Counter */}
+        <Text style={[styles.xpText, { color: clr }]}>
+          {formatXp(entry.xpGained)}
         </Text>
-        <UserVerificationBadge role={entry.role} isVip={entry.isVip} size={10} />
-      </View>
-
-      {/* Plakat Kota & Klan (DRAKONIA / GELANDANGAN) */}
-      <View style={styles.homeCityClanRow}>
-        <ProfileCityPlaque
-          userId={entry.userId}
-          podium
-        />
-      </View>
-
-      {/* Level Tier Badge with Official Tier Icon */}
-      <View
-        style={[
-          styles.tierPill,
-          {
-            borderColor: `${currentTier.color}35`,
-            backgroundColor: `${currentTier.color}15`,
-          },
-        ]}
-      >
-        <Image
-          source={{ uri: currentTier.imageUrl }}
-          style={styles.tierIcon}
-          contentFit="contain"
-          transition={150}
-        />
-        <Text style={[styles.tierText, { color: currentTier.color }]}>
-          {isInfinity ? "∞" : `Lv.${entry.level}`}
-        </Text>
-      </View>
-
-      {/* XP Counter */}
-      <Text style={[styles.xpText, { color: clr }]}>
-        {formatXp(entry.xpGained)}
-      </Text>
+      </Pressable>
     </View>
   );
 });
@@ -175,26 +189,30 @@ export const HomeTopLeaderboard = React.memo(function HomeTopLeaderboard() {
       queryClient.invalidateQueries({ queryKey: ["home-top-leaderboard"] });
     };
 
-    try {
-      channel = supabase
-        .channel(channelName)
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "user_xp_transactions" },
-          throttledInvalidate
-        )
-        .subscribe();
-    } catch (err) {
-      console.warn("[home-leaderboard] Supabase realtime subscription warning:", err);
-    }
+    const timer = setTimeout(() => {
+      if (!isMounted) return;
+      try {
+        channel = supabase
+          .channel(channelName)
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "user_xp_transactions" },
+            throttledInvalidate
+          )
+          .subscribe();
+      } catch (err) {
+        console.warn("[home-leaderboard] Supabase realtime subscription warning:", err);
+      }
+    }, 150);
 
     return () => {
       isMounted = false;
+      clearTimeout(timer);
       if (channel) {
         try {
           void channel.unsubscribe();
           void supabase.removeChannel(channel);
-        } catch {}
+        } catch { }
       }
     };
   }, [queryClient]);
@@ -209,10 +227,10 @@ export const HomeTopLeaderboard = React.memo(function HomeTopLeaderboard() {
     top3.length >= 3
       ? [top3[1], top3[0], top3[2]]
       : top3.length === 2
-      ? [top3[1], top3[0], null]
-      : top3.length === 1
-      ? [null, top3[0], null]
-      : [];
+        ? [top3[1], top3[0], null]
+        : top3.length === 1
+          ? [null, top3[0], null]
+          : [];
 
   const handleOpenLeaderboard = () => {
     hapticLight();
@@ -224,10 +242,13 @@ export const HomeTopLeaderboard = React.memo(function HomeTopLeaderboard() {
       {/* Header Row */}
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
-          <Image
-            source={{ uri: "https://i.ibb.co.com/ccJmQCfx/download-7-removebg-preview.png" }}
+          <SafeImage
+            source="https://i.ibb.co.com/ccJmQCfx/download-7-removebg-preview.png"
             style={styles.leaderboardIcon}
             contentFit="contain"
+            fallbackIconName="trophy"
+            fallbackIconSize={14}
+            fallbackIconColor="#38BDF8"
           />
           <Text style={styles.headerTitle}>TOP LEADERBOARD</Text>
           <View style={styles.livePulseDot} />
@@ -255,18 +276,19 @@ export const HomeTopLeaderboard = React.memo(function HomeTopLeaderboard() {
           </Text>
         </View>
       ) : (
-        <Pressable
-          onPress={handleOpenLeaderboard}
-          style={styles.podiumRow}
-        >
+        <View style={styles.podiumRow}>
           {podiumOrder.map((entry, idx) =>
             entry ? (
-              <HomePodiumItem key={entry.userId} entry={entry} />
+              <HomePodiumItem
+                key={entry.userId}
+                entry={entry}
+                onPressLeaderboard={handleOpenLeaderboard}
+              />
             ) : (
               <View key={`empty-${idx}`} style={styles.podiumItemEmpty} />
             )
           )}
-        </Pressable>
+        </View>
       )}
     </View>
   );
@@ -336,6 +358,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 4,
     paddingBottom: 10,
+    gap: 3,
+  },
+  podiumTapSection: {
+    width: "100%",
+    alignItems: "center",
     gap: 3,
   },
   podiumItemFirst: {

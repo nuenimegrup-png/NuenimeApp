@@ -21,7 +21,7 @@ export function AppIcon({
     SVG_PATHS["circle-outline"];
 
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" pointerEvents="none" style={[{ pointerEvents: "none" as any }, style]}>
+    <Svg width={size} height={size} viewBox="0 0 24 24" style={[{ pointerEvents: "none" as any }, style]}>
       <Path d={d} fill={color} />
     </Svg>
   );

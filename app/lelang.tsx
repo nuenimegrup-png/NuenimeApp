@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { createShadow } from "@/lib/shadow-style";
 import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { SafeModal as Modal } from "@/components/safe-modal";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Image } from "expo-image";
@@ -874,7 +875,7 @@ export default function LelangScreen() {
                     {
                       backgroundColor: "rgba(148, 163, 184, 0.12)",
                       borderColor: "rgba(148, 163, 184, 0.3)",
-                      shadowColor: "#64748B",
+                      ...createShadow({ color: "#64748B" }),
                     },
                   ]}
                 >
@@ -1496,7 +1497,7 @@ export default function LelangScreen() {
                       {
                         backgroundColor:
                           selectedDetailItem.glowColor || "rgba(56, 189, 248, 0.18)",
-                        shadowColor: selectedDetailItem.accentColor,
+                        ...createShadow({ color: selectedDetailItem.accentColor }),
                       },
                     ]}
                   />
@@ -3116,7 +3117,7 @@ export default function LelangScreen() {
 
       {/* ── FLOATING TOAST NOTIFICATION ── */}
       {toastMessage && (
-        <View style={styles.toastWrap} pointerEvents="none">
+        <View style={[styles.toastWrap, { pointerEvents: "none" }]}>
           <View style={styles.toastCard}>
             <AppIcon name="check" size={14} color="#10B981" />
             <Text style={styles.toastText}>{toastMessage}</Text>
@@ -4453,11 +4454,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    shadowColor: "#EF4444",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 3,
+    ...createShadow({ color: "#EF4444", offset: { width: 0, height: 2 }, opacity: 0.25, radius: 6, elevation: 3 }),
   },
   profileQuickBtn: {
     flex: 1,
@@ -4650,10 +4647,7 @@ const styles = StyleSheet.create({
     height: 170,
     borderRadius: 85,
     backgroundColor: "rgba(168, 85, 247, 0.15)",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 20,
-    elevation: 8,
+    ...createShadow({ offset: { width: 0, height: 0 }, opacity: 0.6, radius: 20, elevation: 8 }),
   },
   bannerShowcaseBox: {
     width: "100%",
@@ -5801,11 +5795,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#EF4444",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 4,
+    ...createShadow({ color: "#EF4444", offset: { width: 0, height: 4 }, opacity: 0.3, radius: 10, elevation: 4 }),
   },
   klaimPayBtnDone: {
     backgroundColor: "rgba(16, 185, 129, 0.2)",
@@ -5864,11 +5854,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 12,
-    shadowColor: "#F59E0B",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    elevation: 6,
+    ...createShadow({ color: "#F59E0B", offset: { width: 0, height: 0 }, opacity: 0.5, radius: 16, elevation: 6 }),
   },
   hasilCelebrationTitle: {
     fontFamily: "Nunito-Black",
